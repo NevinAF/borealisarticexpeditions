@@ -61,13 +61,23 @@ class Gameplay extends GameState
         if (! BoardModel::hasAllColorsAtLocation($sci, $activePlayerId, $location)) {
             throw new UserException(clienttranslate('You need all three scientist colors at this location'));
         }
-        $def = Material::decodeAnimalCard($found);
-        $sci = BoardModel::applyObserveMoves($sci, $activePlayerId, $location, $def['moves']);
+        $def = Game::animalDefById($card_id);
+        $moves = [
+            ['color' => (int) $def['left_move'], 'dir' => 'shift_left'],
+            ['color' => (int) $def['right_move'], 'dir' => 'shift_right'],
+        ];
+        $sci = BoardModel::applyObserveMoves($sci, $activePlayerId, $location, $moves);
         $flags = $g->getFlags();
         $fi = (int) ($flags[$activePlayerId][$location] ?? 0);
         if ($fi < 7) {
             $next = $fi + 1;
-            $vehiclesOnSpace = Material::TRACK_SIDE_A_VEHICLES[$location][$next] ?? [];
+            $boardA = Material::getPlayerBoardsData()[0] ?? null;
+            $vehiclesPerLocation = [
+                $boardA['left_location'] ?? [],
+                $boardA['mid_location'] ?? [],
+                $boardA['right_location'] ?? [],
+            ];
+            $vehiclesOnSpace = $vehiclesPerLocation[$location][$next - 1] ?? [];
             if (in_array((int) $def['vehicle'], $vehiclesOnSpace, true)) {
                 $flags[$activePlayerId][$location] = $fi + 1;
             }

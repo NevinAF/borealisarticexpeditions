@@ -73,9 +73,8 @@ export class Game {
     html += `<section class="bae_center"><h3 class="bae_heading">${_("Table")}</h3>`;
     html += `<div class="bae_pool"><span class="bae_label">${_("Pool")}</span>`;
     for (const slot of d.pool) {
-      html += `<button type="button" class="bae_card bae_pool_slot" data-pool-slot="${slot.slot}" title="${_("Take this card")}">${this.cardFace(
-        slot.species,
-        slot.vehicle,
+      html += `<button type="button" class="bae_card bae_pool_slot" data-pool-slot="${slot.slot}" title="${_("Take this card")}">${this.cardFaceById(
+        slot.id,
       )}</button>`;
     }
     html += `</div>`;
@@ -107,7 +106,7 @@ export class Game {
         html += `<div class="bae_anim_pile">`;
         const pile = d.boards[pid]?.[loc] ?? [];
         for (const c of pile) {
-          html += `<div class="bae_card bae_onboard">${this.cardFace(c.species, c.vehicle, c.bonus_vp)}</div>`;
+          html += `<div class="bae_card bae_onboard">${this.cardFaceById(c.id, true)}</div>`;
         }
         html += `</div></div>`;
         html += `<div class="bae_track" data-track="${loc}" aria-label="${_("Exploration track")}">`;
@@ -172,11 +171,24 @@ export class Game {
     return parts.join(" · ");
   }
 
-  private cardFace(species: number, vehicle: number, bonus?: number): string {
-    const si = Number(species);
-    const vi = Number(vehicle);
+  private getAnimalDef(cardId: number): AnimalCardDefinitionClient | null {
+    const cards = this.gamedatas.materials?.animal_cards;
+    const cid = Number(cardId);
+    if (!cards || Number.isNaN(cid)) return null;
+    const def = (cards as Record<number, AnimalCardDefinitionClient>)[cid];
+    return def ?? null;
+  }
+
+  private cardFaceById(cardId: number, showBonus = false): string {
+    const def = this.getAnimalDef(cardId);
+    if (!def) {
+      return `<span class="bae_sym">?</span><span class="bae_sym">?</span>`;
+    }
+    const si = Number(def.species);
+    const vi = Number(def.vehicle);
     const s = SPECIES_SVG[si] ?? "?";
     const v = VEHICLE_SVG[vi] ?? "?";
+    const bonus = showBonus ? Number(def.bonus_vp ?? 0) : 0;
     const b = bonus ? `<span class="bae_bonus">+${bonus}</span>` : "";
 
     return `<span class="bae_sym">${s}</span><span class="bae_sym">${v}</span>${b}`;
@@ -199,11 +211,7 @@ export class Game {
         const id = Number(c.id);
         const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
         const selRg = this.campSelected && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
-        html += `<button type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFace(
-          c.species,
-          c.vehicle,
-          c.bonus_vp,
-        )}</button>`;
+        html += `<button type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id, true)}</button>`;
       }
     }
     wrap.innerHTML = html;

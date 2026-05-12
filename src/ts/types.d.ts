@@ -2,16 +2,35 @@ interface BorealisArticExpeditionsPlayer extends Player {}
 
 interface AnimalCardClient {
   id: number;
-  species: number;
-  vehicle: number;
-  bonus_vp?: number;
 }
 
 interface PoolSlotClient {
   slot: number;
   id: number;
+}
+
+interface AnimalCardDefinitionClient {
   species: number;
   vehicle: number;
+  bonus_vp: number;
+  left_move: number;
+  right_move: number;
+}
+
+interface MaterialsClient {
+  animal_cards: AnimalCardDefinitionClient[] | Record<number, AnimalCardDefinitionClient>;
+  objectives: Record<number, { title: string; description: string; type: number }>;
+  scoring_cards: Record<number, { title: string; description: string; explaination: string }>;
+  player_boards: Record<number, {
+    left_location: number[][];
+    mid_location: number[][];
+    right_location: number[][];
+  }>;
+  species_names: string[];
+  vehicle_names: string[];
+  location_names: string[];
+  scientist_names: string[];
+  objective_type_names: string[];
 }
 
 interface ObjectiveClient {
@@ -35,6 +54,7 @@ interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExped
   hands: Record<number, AnimalCardClient[] | number>;
   objectives: ObjectiveClient[];
   scoring_cards: number[];
+  materials: MaterialsClient;
   track?: TrackUiClient;
 }
 

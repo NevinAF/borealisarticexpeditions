@@ -73,9 +73,27 @@ class Game extends \Bga\GameFramework\Table
         }
         $result['objectives'] = $this->getObjectivesState();
         $result['scoring_cards'] = $this->getScoringCardIds();
+        $boardA = Material::getPlayerBoardsData()[0] ?? null;
         $result['track'] = [
             'vpPerSpace' => Material::TRACK_SPACE_VP,
-            'vehiclesPerLocation' => Material::TRACK_SIDE_A_VEHICLES,
+            'vehiclesPerLocation' => [
+                $boardA['left_location'] ?? [],
+                $boardA['mid_location'] ?? [],
+                $boardA['right_location'] ?? [],
+            ],
+        ];
+        
+        // Material definitions passed once at game start for client use
+        $result['materials'] = [
+            'animal_cards' => Material::ANIMAL_CARDS_DEFINITION,
+            'objectives' => Material::getObjectivesData(),
+            'scoring_cards' => Material::getScoringCardsData(),
+            'player_boards' => Material::getPlayerBoardsData(),
+            'species_names' => Material::getSpeciesNames(),
+            'vehicle_names' => Material::getVehicleNames(),
+            'location_names' => Material::getLocationNames(),
+            'scientist_names' => Material::getScientistNames(),
+            'objective_type_names' => Material::getObjectiveTypeNames(),
         ];
 
         return $result;
@@ -182,51 +200,53 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * Normalize a DB row from the Deck into a stable shape for the client (ids + decoded animal fields).
-     *
      * @param array<string, mixed> $c
-     * @return array{id:int, species:int, vehicle:int, bonus_vp:int}
      */
-    public static function enrichAnimalCardRow(array $c): array
+    public static function cardIdFromRow(array $c): int
     {
-        $def = Material::decodeAnimalCard($c);
-
-        return [
-            'id' => (int) ($c['id'] ?? $c['card_id'] ?? 0),
-            'species' => $def['species'],
-            'vehicle' => $def['vehicle'],
-            'bonus_vp' => $def['bonus_vp'],
-        ];
+        return (int) ($c['id'] ?? $c['card_id'] ?? 0);
     }
 
     /**
-     * @return list<array{id:int, species:int, vehicle:int, bonus_vp:int}>
+     * @return array{species:int, vehicle:int, bonus_vp:int, left_move:int, right_move:int}
+     */
+    public static function animalDefById(int $cardId): array
+    {
+        $def = Material::ANIMAL_CARDS_DEFINITION[$cardId] ?? null;
+        if ($def === null) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Invalid card'));
+        }
+
+        return $def;
+    }
+
+    /**
+     * @return list<array{id:int}>
      */
     public function getHandCardsFor(int $playerId): array
     {
         $cards = $this->animals->getCardsInLocation('hand', $playerId, 'card_location_arg');
         $out = [];
         foreach ($cards as $c) {
-            $out[] = self::enrichAnimalCardRow($c);
+            $out[] = [
+                'id' => self::cardIdFromRow($c),
+            ];
         }
 
         return $out;
     }
 
     /**
-     * @return list<array{slot:int, id:int, species:int, vehicle:int}>
+     * @return list<array{slot:int, id:int}>
      */
     public function getPoolCards(): array
     {
         $cards = $this->animals->getCardsInLocation('pool', null, 'card_location_arg');
         $out = [];
         foreach ($cards as $c) {
-            $row = self::enrichAnimalCardRow($c);
             $out[] = [
                 'slot' => (int) ($c['location_arg'] ?? $c['card_location_arg'] ?? 0),
-                'id' => $row['id'],
-                'species' => $row['species'],
-                'vehicle' => $row['vehicle'],
+                'id' => self::cardIdFromRow($c),
             ];
         }
         usort($out, fn ($a, $b) => $a['slot'] <=> $b['slot']);
@@ -235,7 +255,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @return array<int, list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>>>
+     * @return array<int, list<list<array{id:int}>>>
      */
     public function getPublicBoards(): array
     {
@@ -250,7 +270,9 @@ class Game extends \Bga\GameFramework\Table
                 $locStr = BoardModel::boardLocationStr($pid, $loc);
                 $cards = $this->animals->getCardsInLocation($locStr, null, 'card_location_arg');
                 foreach ($cards as $c) {
-                    $boards[$pid][$loc][] = self::enrichAnimalCardRow($c);
+                    $boards[$pid][$loc][] = [
+                        'id' => self::cardIdFromRow($c),
+                    ];
                 }
             }
         }
@@ -321,28 +343,29 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @param array<int, list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>>> $boards
+     * @param array<int, list<list<array{id:int}>>> $boards
      * @param array<int, array<int, int>> $flags
      */
     public function evalObjectiveMeets(int $objectiveId, int $playerId, array $boards, array $flags): bool
     {
         return match ($objectiveId) {
-            Material::OBJ_ANIMAL_SAMPLE => $this->countSpeciesOnBoard($boards, $playerId, 0) >= 2,
-            Material::OBJ_SCIENTIST_SAMPLE => $this->maxScientistsOneLocation($playerId) >= 5,
-            Material::OBJ_VEHICLE_SAMPLE => $this->maxFlag($flags, $playerId) >= 2,
+            Material::OBJECTIVE_SPOTTING_LIST => $this->countSpeciesOnBoard($boards, $playerId, 0) >= 5,
+            Material::OBJECTIVE_MORNING_SHIFT => $this->maxScientistsOneLocation($playerId) >= 5,
+            Material::OBJECTIVE_BOLD_EXPLORERS => $this->maxFlag($flags, $playerId) >= 5,
             default => false,
         };
     }
 
     /**
-     * @param array<int, list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>>> $boards
+     * @param array<int, list<list<array{id:int}>>> $boards
      */
     private function countSpeciesOnBoard(array $boards, int $playerId, int $species): int
     {
         $n = 0;
         foreach ($boards[$playerId] ?? [] as $pile) {
             foreach ($pile as $c) {
-                if ((int) $c['species'] === $species) {
+                $def = self::animalDefById((int) $c['id']);
+                if ((int) $def['species'] === $species) {
                     $n++;
                 }
             }
@@ -472,7 +495,8 @@ class Game extends \Bga\GameFramework\Table
             }
             foreach ($boards[$pid] ?? [] as $pile) {
                 foreach ($pile as $c) {
-                    $add += (int) $c['bonus_vp'];
+                    $def = self::animalDefById((int) $c['id']);
+                    $add += (int) $def['bonus_vp'];
                 }
             }
             foreach ($scoringIds as $sid) {
@@ -485,13 +509,14 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @param list<array{id:int, species:int, vehicle:int, bonus_vp:int}> $pile
+     * @param list<array{id:int}> $pile
      */
     private function scoreSpeciesSets(array $pile): int
     {
         $by = array_fill(0, Material::SPECIES_COUNT, 0);
         foreach ($pile as $c) {
-            $by[(int) $c['species']]++;
+            $def = self::animalDefById((int) $c['id']);
+            $by[(int) $def['species']]++;
         }
         $vp = 0;
         foreach ($by as $cnt) {
@@ -504,7 +529,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @param array<int, list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>>> $boards
+     * @param array<int, list<list<array{id:int}>>> $boards
      * @param array<int, array<int, int>> $flags
      * @param array<int, array<int, list<int>>> $sci
      */
@@ -519,7 +544,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @param list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>> $playerBoard
+     * @param list<list<array{id:int}>> $playerBoard
      */
     private function scoreInterspecies(array $playerBoard): int
     {
@@ -527,7 +552,8 @@ class Game extends \Bga\GameFramework\Table
         foreach ($playerBoard as $pile) {
             $sp = [];
             foreach ($pile as $c) {
-                $sp[(int) $c['species']] = true;
+                $def = self::animalDefById((int) $c['id']);
+                $sp[(int) $def['species']] = true;
             }
             if (count($sp) === 2) {
                 $vp += 3;
@@ -538,7 +564,7 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
-     * @param list<list<array{id:int, species:int, vehicle:int, bonus_vp:int>>> $playerBoard
+     * @param list<list<array{id:int}>> $playerBoard
      */
     private function scoreOuterLands(array $playerBoard): int
     {
@@ -600,13 +626,11 @@ class Game extends \Bga\GameFramework\Table
         $this->setFlags(BoardModel::initialFlags($playerIds));
 
         $objPick = [];
-        $animalPool = [Material::OBJ_ANIMAL_SAMPLE];
-        $sciPool = [Material::OBJ_SCIENTIST_SAMPLE];
-        $vehPool = [Material::OBJ_VEHICLE_SAMPLE];
-        shuffle($animalPool);
-        shuffle($sciPool);
-        shuffle($vehPool);
-        foreach ([$animalPool[0], $sciPool[0], $vehPool[0]] as $oid) {
+        $objTypes = Material::getObjectivesByType();
+        shuffle($objTypes['animal']);
+        shuffle($objTypes['scientist']);
+        shuffle($objTypes['vehicle']);
+        foreach ([$objTypes['animal'][0], $objTypes['scientist'][0], $objTypes['vehicle'][0]] as $oid) {
             $playersSt = [];
             foreach ($playerIds as $pid) {
                 $playersSt[$pid] = 'unmet';

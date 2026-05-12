@@ -136,11 +136,6 @@ final class BoardModel
                 self::POS_LEFT => self::POS_CAMP_L,
                 default => $from,
             },
-            'to_nearest_camp' => match ($from) {
-                self::POS_LEFT, self::POS_MID => self::POS_CAMP_L,
-                self::POS_RIGHT => self::POS_CAMP_R,
-                default => $from,
-            },
             default => $from,
         };
     }
