@@ -1,18 +1,52 @@
-interface BorealisArticExpeditionsPlayer extends Player {
-    energy: number; // any information you add on each result['players']
+interface BorealisArticExpeditionsPlayer extends Player {}
+
+interface AnimalCardClient {
+  id: number;
+  species: number;
+  vehicle: number;
+  bonus_vp?: number;
+}
+
+interface PoolSlotClient {
+  slot: number;
+  id: number;
+  species: number;
+  vehicle: number;
+}
+
+interface ObjectiveClient {
+  id: number;
+  active: boolean;
+  players: Record<number, "unmet" | "meets" | "claimed">;
+}
+
+interface TrackUiClient {
+  vpPerSpace: number[];
+  vehiclesPerLocation: number[][][];
 }
 
 interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
-    // Add here variables you set up in getAllDatas
+  scientists: Record<number, Record<number, number[]>>;
+  flags: Record<number, Record<number, number>>;
+  pool: PoolSlotClient[];
+  deck_count: number;
+  discard_count: number;
+  boards: Record<number, AnimalCardClient[][]>;
+  hands: Record<number, AnimalCardClient[] | number>;
+  objectives: ObjectiveClient[];
+  scoring_cards: number[];
+  track?: TrackUiClient;
 }
-   
-/*
- * Describe here the types for your state args
- */
-interface PlayerTurnArgs {
-    playableCardsIds: number[];
+
+interface GameplayArgs {
+  locationCount: number;
 }
-   
-/*
- * Describe here the types for your notif args
- */
+
+interface ReplenishArgs {
+  pool: PoolSlotClient[];
+  canMulligan: boolean;
+}
+
+interface AssignCampArgs {
+  locationCount: number;
+}

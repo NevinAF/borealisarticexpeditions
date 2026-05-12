@@ -5,39 +5,33 @@ declare(strict_types=1);
 namespace Bga\Games\BorealisArticExpeditions\States;
 
 use Bga\GameFramework\StateType;
+use Bga\GameFramework\States\GameState;
 use Bga\Games\BorealisArticExpeditions\Game;
 
-class NextPlayer extends \Bga\GameFramework\States\GameState
+class NextPlayer extends GameState
 {
-
-    function __construct(
+    public function __construct(
         protected Game $game,
     ) {
-        parent::__construct($game,
+        parent::__construct(
+            $game,
             id: 90,
             type: StateType::GAME,
+            name: 'nextPlayer',
             updateGameProgression: true,
         );
     }
 
-    /**
-     * Game state action, example content.
-     *
-     * The onEnteringState method of state `nextPlayer` is called everytime the current game state is set to `nextPlayer`.
-     */
-    function onEnteringState(int $activePlayerId) {
-
-        // Give some extra time to the active player when he completed an action
+    public function onEnteringState(int $activePlayerId)
+    {
         $this->game->giveExtraTime($activePlayerId);
-        
+        $leader = $this->game->getRoundLeaderId();
+        $next = $this->game->getPlayerAfter($activePlayerId);
+        if ($next === $leader) {
+            return EndOfRound::class;
+        }
         $this->game->activeNextPlayer();
 
-        // Go to another gamestate
-        $gameEnd = false; // Here, we would detect if the game is over to make the appropriate transition
-        if ($gameEnd) {
-            return EndScore::class;
-        } else {
-            return PlayerTurn::class;
-        }
+        return Gameplay::class;
     }
 }
