@@ -1,0 +1,17 @@
+// @use 'variables' as v;
+
+
+// /* the other files */
+// @use "./Animations";
+// @use "./Board";
+
+// #ebd-body {
+//     background-image: url(img/woodbg.jpg);
+//     background-repeat: repeat;
+// }
+
+// @each $key, $val in v.$colors-list {
+//     .fgcolor#{$key} {
+//         color: #{$val};
+//     }
+// }
