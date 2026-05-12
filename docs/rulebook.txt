@@ -1,0 +1,527 @@
+In Borealis: Arctic Expeditions you become the leaders of scientific teams venturing into uncharted
+boreal territories to observe and photograph wild animals. To succeed, you need to coordinate the
+efforts of your 9-person crew of specialists from 3 different fields of expertise, represented by meeples
+of different colors. You also have to choose suitable modes of transport for the inaccessible lands,
+icefields and waters of the Far North. The one who gathers the most impressive collection of animal
+photographs while traveling deepest into the frosty land, will gain everlasting fame along with their
+own encyclopedia entry and a tiny snow-covered island named after them.
+
+Rulebook
+
+Components
+
+4 player boards 1 rulebook
+
+100 animal cards 12 objective cards 10 scoring cards 4 player aid cards
+(63 x 88 mm) (63 x 88 mm) (63 x 88 mm) (63 x 88 mm)
+‘ / ig »
+i, 4 AY is . "a
+\ isd t
+=— easel
+1 first player token 36 scientist meeples 12 flag tokens 1 score pad
+(12 of each type, differing in color
+and the item they carry)
+me * \
+=“ = Ase |
+\: — | \
+| ; 5
+24 scoring tokens 12 scoring tokens 12 scoring tokens
+
+worth 1 ae each worth 3 + each worth 5 se each
+
+Animal cards
+
+A - scientists that must be
+moved in order to play the
+card
+
+B - species’ Latin name
+
+C - species icon
+
+D - additional victory point
+(only present on some cards)
+
+E - vehicle icon
+
+There are 5 different species that appear on animal
+cards: polar bear, Arctic fox, snowy owl, harp seal
+and Atlantic puffin.
+
+7 wt dA
+
+There are also 5 different vehicles: sleigh, zeppelin,
+submarine, kayak and skis.
+
+Yer, > by FH KL
+
+There are an equal number of each species and each
+vehicle in the animal cards deck.
+
+Scoring cards
+and objective cards
+
+Scoring cards describe
+additional rules for scoring
+at the end of the game.
+
+For each game, 2 scoring cards
+
+are chosen at random.
+24% for each card with |
+
+your most common —
+
+vehicle type
+
+,
+
+Objective cards are
+divided into 3 types:
+
+i. . 9 Geo
+i animal objectives,
+& scientist objectives
+
+- vehicle objectives.
+
+Each objective card describes a goal that players
+compete to be the first to achieve during the game.
+
+For each game, 3 objective cards (1 of each type) are
+chosen at random.
+
+Player board
+
+A player board has 3 locations where different species
+(animal cards) are observed by the scientists (wooden
+meeples). Each location has its respective exploration
+track below, divided into 8 spaces used to track your
+advance through uncharted territory. There are also
+two camps where the scientists may rest.
+
+All 4 player boards share an identical pattern
+of vehicle icons on side I, but each has a unique
+pattern on side II.
+
+A - location with scientists and animal cards in play
+
+B - exploration track
+
+C-camp
+
+D - scientist
+
+E - flag
+
+Setup
+
+Refer to the setup illustration on the next page. Each player:
+
+Shuffle all the animal cards to form the animal deck and place it 1) takes a player board (E) and places it in front
+face down on the table (A). of them with side I or side II up, as agreed
+Reveal 4 animal cards from the deck and place them face up in 2) puts 3 scientists of different colors in each
+the middle of the play area to form the pool of available cards (B). location on their board (F)
+
+Choose at random 2 scoring cards and place them face up on 3) places a flag on the starting space of each
+the table (C). of their exploration tracks (G)
+
+Choose at random 1 objective card of each type (3 in total), place 4) takes 2 scoring tokens worth 1 + each (1)
+them face up on the table and then, next to each, place a number 5) draws 4 animal cards from the animal deck
+of 5 4 scoring tokens equal to the player count (D). to form their hand (H), which they don’t show to
+Put the rest of the scoring and objective cards back in the box. their opponents.
+
+Ph aoe
+
+If a player is not satisfied with their starting hand, they can discard some or all of their cards
+and draw an equal number of cards from the deck. A player can do this only once. :
+Give the 1st player token (J) to the player who lives northernmost (or you can choose who goes first in any other way
+you agree upon). oe
+
+Gameplay
+
+Players take turns sequentially, starting from the 1st player.
+
+On their turn, a player must perform one of the following actions: OBSERVE AN ANIMAL or REGROUP.
+
+Action: OBSERVE AN ANIMAL
+
+1. Play an animal card from your hand, placing it in
+
+a location containing the scientists matching those
+printed on the card. Each new card in a location should be
+placed on top of the previous one, covering its upper part
+but leaving the bottom part with species and vehicle icons
+visible. All the cards in all your locations are collectively
+described as “your cards in play”.
+
+2. Move the scientists as directed by the arrows printed
+on the card. Each scientist goes to an adjacent location
+or camp to observe the animal from a distance, while
+not scaring it off. Scientists moved to a new location can
+be moved in the following rounds after playing a card,
+while those moved to a camp stay there until the player
+performs a REGROUP action.
+
+3. If the vehicle on the card matches one of the vehicles
+- on your respective exploration track one space below your
+flag, move the flag down one space.
+
+4. Take a card of your choice from the pool of available
+cards and refill the pool with a card from the animal
+deck.
+
+IMPORTANT: If you are not satisfied with the available
+cards, you can either
+
+> draw the top card from the animal deck instead
+
+or
+> pay 1 ae to discard all 4 available cards forming the
+pool and replace them with 4 new ones from the deck
+before choosing your card (you can do this only once
+around)
+
+6
+
+Action: REGROUP
+
+1. Discard as many animal cards as you want from your
+hand (this can be 0 cards)
+
+2. Draw that many cards from the animal deck
+
+3. Take as many 1 : tokens as scientists you have in
+your camps
+
+4. Take all your scientists from both camps and put
+them allin a single location of your choice
+
+Once all the players have performed their actions,
+the round ends and a new one begins, starting
+from the same player.
+
+As a result of players discarding animal cards
+
+from their hand or the pool of available cards,
+a face-up discard pile is formed.
+
+If the animal deck is exhausted, shuffle the cards
+from the discard pile to form a new one.
+
+Example
+
+In his turn, Ootah plays an animal card onto the right
+location (it’s the only one with scientists matching the card).
+The arrows on the card show that he has to move one amber
+scientist left (to the middle location) and one amber scientist —
+right (to a camp). ee
+
+Because the vehicle icon on the card matches one of
+the vehicle icons printed on the next space on the right
+exploration track, Ootah moves his flag one space forward.
+
+In his next turn, Ootah plays an animal card onto the middle
+location and moves an amber scientist left and a mint
+scientist right, as shown by the arrows on the card.
+
+The vehicle icon on the card doesn’t match any of the vehicle
+icons on the next space of the middle exploration track,
+so this time Ootah doesn’t move the flag.
+
+In his next turn, Ootah decides to perform the regroup action. Fc,
+
+On top of discarding a chosen number of cards from his hand
+and drawing that many from the animal deck, he moves all
+his scientists from both camps to a single location.
+
+He chooses the left location.
+
+He gets 4 + for moving the 4 scientists there.
+
+Claiming an Objective
+
+Once a player fulfills the requirements printed on an
+objective card, they claim it and take one of the + tokens
+lying next to it. After a player claims an objective, other
+players have until the end of the current round to claim it,
+too. Once the turn ends, both the objective card and all its
+remainin 5 + tokens are removed from the game.
+
+If a player realizes they already fulfilled an objective
+requirement in one of the previous rounds and didn’t
+notice, they may instantly claim the objective if the
+objective card is still in play. The other players have until
+the end of the current round to claim this objective as well.
+
+Scoring
+
+Your final score is the sum of the following:
+
+1. He awarded for the sets of animals
+of the same species you have in a single
+location. Each species in each location
+_ is scored independently according to
+the table shown below, which is also
+printed on the player boards.
+
+60.
+oe
+number of animals
+
+of the same species
+in a location
+
+a
+
+victory points
+
+End of the game
+
+The game end is triggered when one of the players has 7
+
+cards in one of their locations. Then the current round is
+played until the end, so each player has played the same
+
+number of turns. Finally, the players count their victory
+
+points 2) using the scoring pad.
+
+2. The sum of +e values printed on exploration track
+spaces you have flags on
+
+3. The sum of the * printed on the animal cards you
+have in play
+
+4. +e calculated from the scoring cards.
+Scoring conditions for each card are explained in detail
+on pages 11-12.
+
+5. Total e value of the +e tokens you have collected
+
+The player with the highest total score wins. In case of
+
+a tie, the player with the flag furthest down the exploration
+track wins the tie. If still tied, the player with most points
+on their He tokens wins the tie. If even this doesn’t settle
+the tie, the players must live with the fact they don’t know
+who was better this time.
+Example
+
+The illustration below shows the situation on Britta’s board
+at the end of the game.
+
+For the animal sets she collected, Britta gets 12 se:
+> left location: 3 @ worth 2 3 and 1 @— worth 0
+> middle location: 5 @ worth 10 +, 1@®@ worth 0 ae
+
+and 1 ¥ worth 0
+> right location: 2 ¥ worth 1 a and 1 @®@ worth 0 a
+
+On the exploration track she scores 12 +, as her flags are
+
+on spaces worth 3 +, 6 ae and 3 te.
+
+—= Se —_——————
+
+Ea) :
+908 ed
+
+2 of Britta’s cards have the He symbol printed on it,
+so she scores 2 .
+
+The scoring cards chosen for this game were
+Interspecies Relationships and Mating Season.
+
+Britta has 2 locations with exactly 2 species of animals
+(ed + @R in the left one and @— + W in the right one),
+so she scores 6 +e for Interspecies Relationships.
+
+She has 3 pairs of animals of the same species
+
+(ed ed in the left location,  # in the middle one
+
+and ¥ ¥ in the right one), so she scores 6 He for
+Mating Season.
+
+By returning scientists from camps and completing
+objectives, Britta gathered e tokens worth 16 3.
+
+Britta’s total score equals 54 3.
+
+& \|pritta
+/| 12
+
+Ac h 1€ ve Mm en ts The more achievements you score,
+
+the more prestigious the title you bear:
+Below is a list of additional achievements you can complete while 0-4 * Tundra Tourist
+playing Arctic Expeditions. Write your name on top of the achievement 5-8 # Arctic Amateur
+track of a chosen color (up to 6 players can simultaneously track
+their progress). After each game, draw an X mark in the snowflake
+
+9-12 “# Boreal Backpacker
+
+13-16 *#* Experienced Expeditioner
+next to the achievement you completed. If you completed multiple 17+ # Polar Pro
+
+achievements in a single game, mark them all.
+
+Your name
+
+Scoring cards explained
+
+Common Destination - 12 +e if you have
+all 3 flags in a horizontal line or 5 a if
+| you have 2 of them in a horizontal line.
+
+=| Example: your left flag is 3 spaces from
+the start, the middle flag is 4 spaces from
+the start and the left flag is 3 spaces from the start. Two
+flags (the left and the right) are in the same horizontal
+line, thus you score 5 ke.
+
+_| Expansive Species - 5 : for each
+horizontal row of 3 animals of the same
+
+| species. A horizontal row consists of
+three animal cards, each in a different
+location, that are adjacent to each other
+horizontally. Example: you have the following sequences
+of animals in your locations:
+
+The 1st (bottom) card in all 3 locations
+is a @@ and the 3rd card in all
+locations is a Y. For these
+
+two horizontal lines (3 @& and 3 WB),
+
+you score 2x5%= 10 a.
+
+Interspecies Relationships -— 3 +e for each
+location with animals of exactly 2 species.
+«9 If in a given location there are animal
+
+) cards of exactly 2 different species, you
+score 3 e for this location. Example: you
+have the following animals in your locations.
+
+i es
+
+You score 3 ae for the middle
+location and no points for
+the remaining two.
+
+AAAAAN
+
+SARL
+RBA,
+
+Outer Lands - 7 ea for each location with
+more animal cards than the middle location.
+Example: you have 5 cards in the left
+location, 5 cards in the middle one and 6
+cards in the right one. As you have more
+cards in the right location than in the middle one, you
+
+score 7 .
+
+Farewell Party - 2 He for each scientist
+
+in a location of your choice at the end of the
+game. At the end of the game, choose 1
+location and score 2 ca for each of your
+scientists there. Remember that a camp
+doesn’t count as a location. Example: you have 4 scientists
+in the left location, 1 scientist in the middle location and 2
+scientists in the right one. You choose the left location for
+
+scoring and get 4x2 aa =8 .
+
+| Mating Season - 2 +e for each set of exactly
+_| 2 animals of the same species next to each
+
+~| other in a location. Points are awarded for
+each pair of cards with animals of the
+same species, in the same location and
+touching each other. While there can be other cards with
+this species in this location, they can’t touch the scoring
+pair. You score for all such pairs in all your locations.
+Example: in the middle location you have the following
+sequence of cards: #&, GE, BW, W, WB, KE, KE. Two pairs
+of @®@ fulfill the condition, so you score 2x2 a =4 +e
+for this location. You also score for whatever pairs you
+have in the other two locations, of course.
+
+| Safe Return - 3 3 for each scientist in
+
+_| acamp at the end of the game. You take the
+total number of scientists in both camps.
+| Example: you have 2 scientists in the left
+camp and 3 scientists in the right camp.
+
+You score 5x3 ae 15 ak.
+
+Popular Vehicle - 2 +e for each card
+
+,. | with your most common vehicle type.
+
+-= | Your most common vehicle type is the
+| one which appears most often on your
+cards in play. If there are 2 or more
+
+| Territorial Animals - 6 He for each location
+with no animals of the same species adjacent
+to each other. You take into account only the
+animals adjacent in the same location - it
+doesn’t matter if there is a horizontally
+
+Sehicis types that are considered most common, you adjacent animal of the same species in a neighboring
+score only for one of them. Example: you have 1 3 , location. Example: you have the following sequences of
+36D, 3 xX, 4 Seay and 4 Qe, on your cards in play. animals.
+You score 4x 23 = 8 a
+=~ | - 8 ed
+OEE ae ee aad! Only the left and right locations
+> the value of your least-scoring flag. If 2 a ob fulfill th ; diti th
+| fl ella ies ace A me te ulfill the scoring condition, as there
+Onm Ore ea aaa B are 2 @™& adjacent to each other in
+you use the value of just one of them vy a Ad the middle location
+while calculating your Untrodden Path i oe ot :
+
+You score 2x 6 3 = 12 4.
+
+score. Example: your flags are at spaces worth 3 4,
+4 e and 5 +. The least-scoring flag is worth 3 +,
+so you score 2 x 3 = 6 ae from the Untrodden Path
+card.
+
+Credits
+
+Game Design: Dariusz Mindur
+_ Illustrations:
+Product Owner: Marek Cholostiakow
+Development: Wojciech Grajkowski,
+Tomasz Napierata, Grzegorz Szczepartiski
+Art Direction: Tomasz Badalski
+Creative Director: Mateusz Komada
+Graphic Design:
+Project Manager: Lukasz Cyran
+Production Manager: Radostaw Milewski
+
+Imported and Distributed in the UK by:
+Vivid Toy Group Ltd, GU3 1LS, UK
+
+The team members at Lucky Duck Games
+work very hard to deliver the best possible
+product and experience to you, through our
+games. However, if you find any pieces are
+
+Proofreading: ney : ‘
+
+missing or if you have any questions, please
+English Edition: contact us online at LuckyDuckGames.com
+Sales: Sean Wainwright or through info@luckyduckgames.com
+Marketing: Risa Petrone and we will be happy to help you.
+
+Events: Chris Strecker
+
