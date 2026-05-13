@@ -86,7 +86,7 @@ class Gameplay extends GameState
 
         $g->updateObjectiveConditions();
 
-        foreach ($g->getNextPlayerTable() as $pid) {
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,
@@ -146,7 +146,7 @@ class Gameplay extends GameState
         if ($camp > 0) {
             $this->bga->playerScore->inc($activePlayerId, $camp, null);
         }
-        foreach ($g->getNextPlayerTable() as $pid) {
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,

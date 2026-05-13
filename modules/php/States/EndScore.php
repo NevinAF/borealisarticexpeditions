@@ -26,7 +26,7 @@ class EndScore extends GameState
     public function onEnteringState()
     {
         $this->game->applyEndScoring();
-        foreach ($this->game->getNextPlayerTable() as $pid) {
+        foreach ($this->game->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,

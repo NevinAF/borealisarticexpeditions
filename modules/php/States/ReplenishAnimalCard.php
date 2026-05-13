@@ -50,7 +50,7 @@ class ReplenishAnimalCard extends GameState
         $g = $this->game;
         if ($pool_slot === -1) {
             $g->drawFromAnimalDeckFor($activePlayerId);
-            foreach ($g->getNextPlayerTable() as $pid) {
+            foreach ($g->getNextPlayerTable() as $pid => $_) {
                 if ($pid === 0) continue;
                 $this->bga->notify->player(
                     (int)$pid,
@@ -76,7 +76,7 @@ class ReplenishAnimalCard extends GameState
             $hands[$activePlayerId][] = $cardId;
             $g->setHands($hands);
             $g->drawFromAnimalDeckToPool($pool_slot);
-            foreach ($g->getNextPlayerTable() as $pid) {
+            foreach ($g->getNextPlayerTable() as $pid => $_) {
                 if ($pid === 0) continue;
                 $this->bga->notify->player(
                     (int)$pid,

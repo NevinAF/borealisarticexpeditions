@@ -47,7 +47,7 @@ class AssignCampScientists extends GameState
         $g->setScientists($sci);
         $g->updateObjectiveConditions();
 
-        foreach ($g->getNextPlayerTable() as $pid) {
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,

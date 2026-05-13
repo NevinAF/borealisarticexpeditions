@@ -26,7 +26,7 @@ class EndOfRound extends GameState
     {
         $g = $this->game;
         $g->deactivateClaimedObjectives();
-        foreach ($g->getNextPlayerTable() as $pid) {
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,

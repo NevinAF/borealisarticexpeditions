@@ -39,7 +39,7 @@ class Game extends \Bga\GameFramework\Table
     {
         $max = 0;
         $boards = $this->getBoards();
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0 || $pid === '0') {
                 continue;
             }
@@ -90,7 +90,7 @@ class Game extends \Bga\GameFramework\Table
         $result['discard_count'] = count($this->getDiscard());
         $result['boards'] = $this->getPublicBoards();
         $result['hands'] = [];
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {
                 continue;
             }
@@ -355,7 +355,7 @@ class Game extends \Bga\GameFramework\Table
     {
         $rawBoards = $this->getBoards();
         $boards = [];
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {
                 continue;
             }
@@ -414,7 +414,7 @@ class Game extends \Bga\GameFramework\Table
         $boards = $this->getPublicBoards();
         $flags = $this->getFlags();
         $pids = [];
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid !== 0) {
                 $pids[] = (int) $pid;
             }
@@ -518,7 +518,7 @@ class Game extends \Bga\GameFramework\Table
         if ($st !== 'meets') {
             throw new \Bga\GameFramework\UserException(clienttranslate('You cannot claim this objective yet'));
         }
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {
                 continue;
             }
@@ -531,7 +531,7 @@ class Game extends \Bga\GameFramework\Table
         }
         $this->setObjectivesState($objectives);
         $oid = (int) $objectives[$objectiveIndex]['id'];
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,
@@ -567,7 +567,7 @@ class Game extends \Bga\GameFramework\Table
     public function anyLocationHasSevenPlusCards(): bool
     {
         $boards = $this->getBoards();
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {
                 continue;
             }
@@ -588,7 +588,7 @@ class Game extends \Bga\GameFramework\Table
         $flags = $this->getFlags();
         $sci = $this->getScientists();
         $scoringIds = $this->getScoringCardIds();
-        foreach ($this->getNextPlayerTable() as $pid) {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {
                 continue;
             }
@@ -695,7 +695,6 @@ class Game extends \Bga\GameFramework\Table
     protected function setupNewGame($players, $options = [])
     {
         $playerIds = array_map('intval', array_keys($players));
-        $this->bga->playerScore->initDb($playerIds, 0);
 
         $gameinfos = $this->getGameinfos();
         $default_colors = $gameinfos['player_colors'];
@@ -715,6 +714,7 @@ class Game extends \Bga\GameFramework\Table
         );
         $this->reattributeColorsBasedOnPreferences($players, $gameinfos['player_colors']);
         $this->reloadPlayersBasicInfos();
+        $this->bga->playerScore->initDb($playerIds, 2);
 
         $deck = array_keys(Material::ANIMAL_CARDS_DEFINITION);
         shuffle($deck);
