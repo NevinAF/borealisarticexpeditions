@@ -26,7 +26,17 @@ class EndScore extends GameState
     public function onEnteringState()
     {
         $this->game->applyEndScoring();
-        $this->bga->notify->all('finalScoring', clienttranslate('Final scoring applied'), []);
+        foreach ($this->game->getNextPlayerTable() as $pid) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'finalScoring',
+                clienttranslate('Final scoring applied'),
+                [
+                    'boardState' => $this->game->getBoardState((int)$pid),
+                ]
+            );
+        }
 
         return ST_END_GAME;
     }

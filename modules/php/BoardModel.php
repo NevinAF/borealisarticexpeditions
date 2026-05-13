@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bga\Games\BorealisArticExpeditions;
 
-use Bga\GameFramework\Components\Deck;
 use Bga\GameFramework\UserException;
 
 /**
@@ -61,20 +60,6 @@ final class BoardModel
         }
 
         return $n;
-    }
-
-    /**
-     * @param array<int, array<int, list<int>>> $scientists
-     */
-    public static function hasAllColorsAtLocation(array $scientists, int $playerId, int $location): bool
-    {
-        for ($c = 0; $c < Material::SCIENTIST_COLORS; $c++) {
-            if (self::colorCountAtLocation($scientists, $playerId, $location, $c) < 1) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /**
@@ -179,27 +164,5 @@ final class BoardModel
         return $n;
     }
 
-    public static function boardLocationStr(int $playerId, int $loc): string
-    {
-        return 'board_' . $playerId . '_' . $loc;
-    }
-
-    /**
-     * @return list<array{id:int, type:string, type_arg:int, location:string, location_arg:int}>
-     */
-    public static function cardsInLocationOrdered(Deck $deck, string $location, ?int $locationArg = null): array
-    {
-        return $deck->getCardsInLocation($location, $locationArg, 'card_location_arg');
-    }
-
-    public static function maxStackDepth(Deck $deck, int $playerId): int
-    {
-        $m = 0;
-        for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
-            $locStr = self::boardLocationStr($playerId, $loc);
-            $m = max($m, (int) $deck->countCardsInLocation($locStr));
-        }
-
-        return $m;
-    }
 }
+

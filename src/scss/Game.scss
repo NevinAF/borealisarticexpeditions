@@ -1,3 +1,14 @@
+#bae_playarea button {
+    width: auto;
+}
+
+.bae_toprow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
 .bae {
   font-family: system-ui, sans-serif;
   color: #1a1a1a;
@@ -24,6 +35,67 @@
 .bae_playerboard {
   min-width: min(100%, 720px);
   flex: 1 1 560px;
+  padding: 8.75rem 1rem 0.75rem 1rem;
+}
+
+.bae_board_canvas {
+  position: relative;
+  width: min(100%, 980px);
+  aspect-ratio: 3788 / 2600;
+  background-size: cover;
+  background-position: center;
+  border-radius: 10px;
+  margin: 0 auto;
+}
+
+.bae_camp_zone,
+.bae_location_zone {
+  position: absolute;
+}
+
+.bae_camp_zone {
+  width: 11%;
+  height: 25.5%;
+  top: 4.2%;
+  border: 2px dashed rgba(42, 111, 219, 0.35);
+  border-radius: 10px;
+  background: rgba(245, 250, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  cursor: pointer;
+}
+
+.bae_camp_left {
+  left: 2.2%;
+}
+
+.bae_camp_right {
+  right: 2.2%;
+}
+
+.bae_slot_left {
+  left: 14.7%;
+}
+
+.bae_slot_mid {
+  left: 40.2%;
+}
+
+.bae_slot_right {
+  right: 14.7%;
+}
+
+.bae_location_zone {
+  top: 1.5%;
+  width: 19%;
+  height: 95.6%;
+  border: 2px dashed rgba(42, 111, 219, 0.28);
+  border-radius: 10px;
+  background: rgba(245, 250, 255, 0.2);
+  cursor: pointer;
+  overflow: visible;
 }
 
 .bae_heading {
@@ -31,16 +103,21 @@
   font-size: 1rem;
 }
 
+
 .bae_label {
   font-weight: 600;
   margin-right: 0.35rem;
+  display: inline;
+  align-self: flex-start;
+  margin-bottom: 0;
+  line-height: 1.2;
 }
 
 .bae_pool {
   display: flex;
-  flex-wrap: wrap;
+  flex-flow: row wrap;
   gap: 0.35rem;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 0.5rem;
 }
 
@@ -54,13 +131,24 @@
 .bae_scoring {
   margin-top: 0.35rem;
   display: flex;
-  flex-wrap: wrap;
+  flex-flow: row wrap;
   gap: 0.35rem;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .bae_obj {
+  display: inline-flex;
+  flex: none;
   cursor: pointer;
+  border: 1px solid #c9d2dc;
+  border-radius: 6px;
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.bae_obj:disabled {
+  opacity: 0.55;
 }
 
 .bae_columns {
@@ -114,8 +202,49 @@
   cursor: pointer;
 }
 
+.bae_location_zone .bae_loc_head {
+  position: absolute;
+  top: 1%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+  z-index: 4;
+}
+
+.bae_location_zone .bae_anim_pile {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.bae_location_zone .bae_sci_shelf {
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 68%;
+  z-index: 3;
+  min-height: 1.5rem;
+}
+
+.bae_location_zone .bae_card_img {
+  width: 50%;
+  min-width: 40px;
+  max-width: 120px;
+}
+
+.bae_onboard_card {
+  position: absolute;
+  top: 0;
+  left: calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
+  top: calc(((var(--stack, 0)) * 50% * -0.08 + 50% * -0.2)); /* 20% of card width per stack */
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
 .bae_loc_selected {
   border-color: #2a6fdb;
+  background: rgba(238, 244, 255, 0.38);
   box-shadow: 0 0 0 1px #2a6fdb33;
 }
 
@@ -133,14 +262,7 @@
 }
 
 .bae_flag_badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  background: #fff3e0;
-  border: 1px solid #e65100;
-  color: #bf360c;
-  border-radius: 999px;
-  padding: 0.1rem 0.45rem;
-  white-space: nowrap;
+  display: none;
 }
 
 .bae_anim_pile {
@@ -150,55 +272,27 @@
 }
 
 .bae_track {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: #b8c5d6;
-  border-radius: 4px;
-  padding: 2px;
-  flex: 0 0 auto;
-  min-height: 4rem;
+  position: absolute;
+  top: 17.8%;
+  left: 0;
+  width: 100%;
+  height: 80%;
+  display: block;
 }
 
-.bae_track_row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.68rem;
-  background: #f7f9fc;
-  padding: 0.12rem 0.25rem;
-  border-radius: 2px;
-}
-
-.bae_track_row_flag {
-  background: #fff8e1;
-  outline: 2px solid #ff8f00;
-  outline-offset: -1px;
-}
-
-.bae_track_vp {
-  font-weight: 700;
-  color: #1565c0;
-  min-width: 1rem;
-}
-
-.bae_track_veh {
-  display: flex;
-  gap: 0.12rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.bae_track_v {
-  display: inline-block;
-  min-width: 0.95rem;
-  text-align: center;
-  background: #eceff1;
-  border-radius: 2px;
-  font-weight: 700;
-  font-size: 0.62rem;
-  color: #37474f;
+.bae_track_flag_only {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 65%;
+  height: 12.5%;
+  padding-block: 2%;
+  box-sizing: border-box;
+  background-color: rgba(110, 55, 10, 0.93);
+  background-clip: content-box;
+  border: 2px solid rgba(70, 30, 5, 0.9);
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55), 0 2px 5px rgba(0, 0, 0, 0.15);
 }
 
 .bae_camps {
@@ -217,20 +311,21 @@
 
 .bae_hand {
   display: flex;
-  flex-wrap: wrap;
+  flex-flow: row wrap;
   gap: 0.35rem;
+  align-items: flex-start;
 }
 
 .bae_card {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 0.15rem;
-  padding: 0.25rem 0.4rem;
+  padding: 0;
   border-radius: 6px;
-  border: 1px solid #ccc;
+  border: 1px solid #c9d2dc;
   background: #fff;
   cursor: pointer;
-  font-size: 1.1rem;
+  overflow: hidden;
 }
 
 .bae_card_selected {
@@ -241,9 +336,40 @@
   outline: 2px solid #c45c00;
 }
 
-.bae_onboard {
-  cursor: default;
-  margin-top: 0.15rem;
+.bae_card_img,
+.bae_obj_img,
+.bae_score_img,
+.bae_board_img {
+  display: block;
+  height: auto;
+}
+
+.bae_card_img {
+  width: 74px;
+}
+
+.bae_obj_img,
+.bae_score_img {
+  width: 96px;
+}
+
+.bae_score_card {
+  display: inline-flex;
+  border: 1px solid #c9d2dc;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.bae_board_img_wrap {
+  display: none;
+}
+
+.bae_board_img {
+  width: min(100%, 260px);
+  border: 1px solid #c9d2dc;
+  border-radius: 8px;
+  background: #fff;
 }
 
 .bae_bonus {

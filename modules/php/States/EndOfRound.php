@@ -26,7 +26,17 @@ class EndOfRound extends GameState
     {
         $g = $this->game;
         $g->deactivateClaimedObjectives();
-        $this->bga->notify->all('endOfRound', clienttranslate('End of round'), []);
+        foreach ($g->getNextPlayerTable() as $pid) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'endOfRound',
+                clienttranslate('End of round'),
+                [
+                    'boardState' => $g->getBoardState((int)$pid),
+                ]
+            );
+        }
         if ($g->anyLocationHasSevenPlusCards()) {
             return EndScore::class;
         }

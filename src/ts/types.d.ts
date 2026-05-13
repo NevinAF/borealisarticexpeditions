@@ -44,7 +44,7 @@ interface TrackUiClient {
   vehiclesPerLocation: number[][][];
 }
 
-interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
+interface BoardState {
   scientists: Record<number, Record<number, number[]>>;
   flags: Record<number, Record<number, number>>;
   pool: PoolSlotClient[];
@@ -54,8 +54,12 @@ interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExped
   hands: Record<number, AnimalCardClient[] | number>;
   objectives: ObjectiveClient[];
   scoring_cards: number[];
-  materials: MaterialsClient;
   track?: TrackUiClient;
+}
+
+interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
+    boardState: BoardState;
+    materials: MaterialsClient;
 }
 
 interface GameplayArgs {

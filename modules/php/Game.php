@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bga\Games\BorealisArticExpeditions;
 
-use Bga\GameFramework\Components\Deck;
 use Bga\Games\BorealisArticExpeditions\States\Gameplay;
 
 class Game extends \Bga\GameFramework\Table
@@ -21,24 +20,33 @@ class Game extends \Bga\GameFramework\Table
 
     public const GLOBAL_MULLIGAN = 'mulligan_used';
 
-    public Deck $animals;
+    public const GLOBAL_DECK = 'deck';
+
+    public const GLOBAL_DISCARD = 'discard';
+
+    public const GLOBAL_POOL = 'pool';
+
+    public const GLOBAL_HANDS = 'hands';
+
+    public const GLOBAL_BOARDS = 'boards';
 
     public function __construct()
     {
         parent::__construct();
-        $this->animals = $this->bga->deckFactory->createDeck('card');
     }
 
     public function getGameProgression(): int
     {
         $max = 0;
-        $table = $this->getNextPlayerTable();
-        foreach ($table as $pid => $_) {
+        $boards = $this->getBoards();
+        foreach ($this->getNextPlayerTable() as $pid) {
             if ($pid === 0 || $pid === '0') {
                 continue;
             }
             $pid = (int) $pid;
-            $max = max($max, BoardModel::maxStackDepth($this->animals, $pid));
+            for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
+                $max = max($max, count($boards[$pid][$loc] ?? []));
+            }
         }
         if ($max >= 7) {
             return 99;
@@ -47,41 +55,14 @@ class Game extends \Bga\GameFramework\Table
         return min(95, 10 + $max * 12);
     }
 
-    protected function getAllDatas(int $currentPlayerId): array
+    public function getAllDatas(int $currentPlayerId): array
     {
         $result = [];
         $result['players'] = $this->getCollectionFromDb(
             'SELECT `player_id` AS `id`, `player_score` AS `score` FROM `player`'
         );
-        $result['scientists'] = $this->getScientists();
-        $result['flags'] = $this->getFlags();
-        $result['pool'] = $this->getPoolCards();
-        $result['deck_count'] = (int) $this->animals->countCardsInLocation('deck');
-        $result['discard_count'] = (int) $this->animals->countCardsInLocation('discard');
-        $result['boards'] = $this->getPublicBoards();
-        $result['hands'] = [];
-        foreach ($this->getNextPlayerTable() as $pid) {
-            if ($pid === 0) {
-                continue;
-            }
-            $pid = (int) $pid;
-            if ($pid === $currentPlayerId) {
-                $result['hands'][$pid] = $this->getHandCardsFor($pid);
-            } else {
-                $result['hands'][$pid] = (int) $this->animals->countCardsInLocation('hand', $pid);
-            }
-        }
-        $result['objectives'] = $this->getObjectivesState();
-        $result['scoring_cards'] = $this->getScoringCardIds();
-        $boardA = Material::getPlayerBoardsData()[0] ?? null;
-        $result['track'] = [
-            'vpPerSpace' => Material::TRACK_SPACE_VP,
-            'vehiclesPerLocation' => [
-                $boardA['left_location'] ?? [],
-                $boardA['mid_location'] ?? [],
-                $boardA['right_location'] ?? [],
-            ],
-        ];
+        
+        $result['boardState'] = $this->getBoardState($currentPlayerId);
         
         // Material definitions passed once at game start for client use
         $result['materials'] = [
@@ -96,6 +77,41 @@ class Game extends \Bga\GameFramework\Table
             'objective_type_names' => Material::getObjectiveTypeNames(),
         ];
 
+        return $result;
+    }
+
+    public function getBoardState(int $currentPlayerId): array
+    {
+        $result = [];
+        $result['scientists'] = $this->getScientists();
+        $result['flags'] = $this->getFlags();
+        $result['pool'] = $this->getPoolCards();
+        $result['deck_count'] = count($this->getDeck());
+        $result['discard_count'] = count($this->getDiscard());
+        $result['boards'] = $this->getPublicBoards();
+        $result['hands'] = [];
+        foreach ($this->getNextPlayerTable() as $pid) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            if ($pid === $currentPlayerId) {
+                $result['hands'][$pid] = $this->getHandCardsFor($pid);
+            } else {
+                $result['hands'][$pid] = count($this->getHands()[$pid] ?? []);
+            }
+        }
+        $result['objectives'] = $this->getObjectivesState();
+        $result['scoring_cards'] = $this->getScoringCardIds();
+        $boardA = Material::getPlayerBoardsData()[0] ?? null;
+        $result['track'] = [
+            'vpPerSpace' => Material::TRACK_SPACE_VP,
+            'vehiclesPerLocation' => [
+                $boardA['left_location'] ?? [],
+                $boardA['mid_location'] ?? [],
+                $boardA['right_location'] ?? [],
+            ],
+        ];
         return $result;
     }
 
@@ -200,6 +216,96 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
+     * @return list<int>
+     */
+    public function getDeck(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_DECK, []);
+
+        return is_array($v) ? array_map('intval', $v) : [];
+    }
+
+    /**
+     * @param list<int> $deck
+     */
+    public function setDeck(array $deck): void
+    {
+        $this->bga->globals->set(self::GLOBAL_DECK, $deck);
+    }
+
+    /**
+     * @return list<int>
+     */
+    public function getDiscard(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_DISCARD, []);
+
+        return is_array($v) ? array_map('intval', $v) : [];
+    }
+
+    /**
+     * @param list<int> $discard
+     */
+    public function setDiscard(array $discard): void
+    {
+        $this->bga->globals->set(self::GLOBAL_DISCARD, $discard);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    public function getPool(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_POOL, []);
+
+        return is_array($v) ? array_map('intval', $v) : [];
+    }
+
+    /**
+     * @param array<int, int> $pool
+     */
+    public function setPool(array $pool): void
+    {
+        $this->bga->globals->set(self::GLOBAL_POOL, $pool);
+    }
+
+    /**
+     * @return array<int, list<int>>
+     */
+    public function getHands(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_HANDS, []);
+
+        return is_array($v) ? $v : [];
+    }
+
+    /**
+     * @param array<int, list<int>> $hands
+     */
+    public function setHands(array $hands): void
+    {
+        $this->bga->globals->set(self::GLOBAL_HANDS, $hands);
+    }
+
+    /**
+     * @return array<int, list<list<int>>>
+     */
+    public function getBoards(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_BOARDS, []);
+
+        return is_array($v) ? $v : [];
+    }
+
+    /**
+     * @param array<int, list<list<int>>> $boards
+     */
+    public function setBoards(array $boards): void
+    {
+        $this->bga->globals->set(self::GLOBAL_BOARDS, $boards);
+    }
+
+    /**
      * @param array<string, mixed> $c
      */
     public static function cardIdFromRow(array $c): int
@@ -225,15 +331,7 @@ class Game extends \Bga\GameFramework\Table
      */
     public function getHandCardsFor(int $playerId): array
     {
-        $cards = $this->animals->getCardsInLocation('hand', $playerId, 'card_location_arg');
-        $out = [];
-        foreach ($cards as $c) {
-            $out[] = [
-                'id' => self::cardIdFromRow($c),
-            ];
-        }
-
-        return $out;
+        return array_map(fn ($id) => ['id' => (int) $id], $this->getHands()[$playerId] ?? []);
     }
 
     /**
@@ -241,13 +339,9 @@ class Game extends \Bga\GameFramework\Table
      */
     public function getPoolCards(): array
     {
-        $cards = $this->animals->getCardsInLocation('pool', null, 'card_location_arg');
         $out = [];
-        foreach ($cards as $c) {
-            $out[] = [
-                'slot' => (int) ($c['location_arg'] ?? $c['card_location_arg'] ?? 0),
-                'id' => self::cardIdFromRow($c),
-            ];
+        foreach ($this->getPool() as $slot => $id) {
+            $out[] = ['slot' => (int) $slot, 'id' => (int) $id];
         }
         usort($out, fn ($a, $b) => $a['slot'] <=> $b['slot']);
 
@@ -259,6 +353,7 @@ class Game extends \Bga\GameFramework\Table
      */
     public function getPublicBoards(): array
     {
+        $rawBoards = $this->getBoards();
         $boards = [];
         foreach ($this->getNextPlayerTable() as $pid) {
             if ($pid === 0) {
@@ -267,46 +362,50 @@ class Game extends \Bga\GameFramework\Table
             $pid = (int) $pid;
             $boards[$pid] = [[], [], []];
             for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
-                $locStr = BoardModel::boardLocationStr($pid, $loc);
-                $cards = $this->animals->getCardsInLocation($locStr, null, 'card_location_arg');
-                foreach ($cards as $c) {
-                    $boards[$pid][$loc][] = [
-                        'id' => self::cardIdFromRow($c),
-                    ];
-                }
+                $boards[$pid][$loc] = array_map(
+                    fn ($id) => ['id' => (int) $id],
+                    $rawBoards[$pid][$loc] ?? []
+                );
             }
         }
 
         return $boards;
     }
 
-    public function drawFromAnimalDeckFor(int $playerId): array
+    public function drawFromAnimalDeckFor(int $playerId): void
     {
-        if ((int) $this->animals->countCardsInLocation('deck') === 0) {
-            $this->animals->moveAllCardsInLocation('discard', 'deck');
-            $this->animals->shuffle('deck');
+        $deck = $this->getDeck();
+        if (empty($deck)) {
+            $deck = $this->getDiscard();
+            shuffle($deck);
+            $this->setDiscard([]);
         }
-        $card = $this->animals->getCardOnTop('deck');
-        if ($card === null) {
+        if (empty($deck)) {
             throw new \Bga\GameFramework\UserException(clienttranslate('The animal deck is empty'));
         }
-        $this->animals->pickCard('deck', $playerId);
-
-        return $card;
+        $cardId = (int) array_pop($deck);
+        $this->setDeck($deck);
+        $hands = $this->getHands();
+        $hands[$playerId][] = $cardId;
+        $this->setHands($hands);
     }
 
-    public function drawFromAnimalDeckToLocation(string $location, int $locationArg = 0): array
+    public function drawFromAnimalDeckToPool(int $slot): void
     {
-        if ((int) $this->animals->countCardsInLocation('deck') === 0) {
-            $this->animals->moveAllCardsInLocation('discard', 'deck');
-            $this->animals->shuffle('deck');
+        $deck = $this->getDeck();
+        if (empty($deck)) {
+            $deck = $this->getDiscard();
+            shuffle($deck);
+            $this->setDiscard([]);
         }
-        $card = $this->animals->pickCardForLocation('deck', $location, $locationArg);
-        if ($card === null) {
+        if (empty($deck)) {
             throw new \Bga\GameFramework\UserException(clienttranslate('The animal deck is empty'));
         }
-
-        return $card;
+        $cardId = (int) array_pop($deck);
+        $this->setDeck($deck);
+        $pool = $this->getPool();
+        $pool[$slot] = $cardId;
+        $this->setPool($pool);
     }
 
     public function updateObjectiveConditions(): void
@@ -432,14 +531,19 @@ class Game extends \Bga\GameFramework\Table
         }
         $this->setObjectivesState($objectives);
         $oid = (int) $objectives[$objectiveIndex]['id'];
-        $this->bga->notify->all(
-            'objectiveClaimed',
-            clienttranslate('Players claimed an objective'),
-            [
-                'objective_index' => $objectiveIndex,
-                'objective_id' => $oid,
-            ]
-        );
+        foreach ($this->getNextPlayerTable() as $pid) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'objectiveClaimed',
+                clienttranslate('Players claimed an objective'),
+                [
+                    'objective_index' => $objectiveIndex,
+                    'objective_id' => $oid,
+                    'boardState' => $this->getBoardState((int)$pid),
+                ]
+            );
+        }
     }
 
     public function deactivateClaimedObjectives(): void
@@ -462,12 +566,16 @@ class Game extends \Bga\GameFramework\Table
 
     public function anyLocationHasSevenPlusCards(): bool
     {
+        $boards = $this->getBoards();
         foreach ($this->getNextPlayerTable() as $pid) {
             if ($pid === 0) {
                 continue;
             }
-            if (BoardModel::maxStackDepth($this->animals, (int) $pid) >= 7) {
-                return true;
+            $pid = (int) $pid;
+            for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
+                if (count($boards[$pid][$loc] ?? []) >= 7) {
+                    return true;
+                }
             }
         }
 
@@ -608,19 +716,32 @@ class Game extends \Bga\GameFramework\Table
         $this->reattributeColorsBasedOnPreferences($players, $gameinfos['player_colors']);
         $this->reloadPlayersBasicInfos();
 
-        $cards = [];
-        for ($i = 0; $i < 100; $i++) {
-            $cards[] = ['type' => 'animal', 'type_arg' => $i, 'nbr' => 1];
-        }
-        $this->animals->createCards($cards, 'deck');
-        $this->animals->shuffle('deck');
+        $deck = array_keys(Material::ANIMAL_CARDS_DEFINITION);
+        shuffle($deck);
 
+        $pool = [];
         for ($slot = 0; $slot < 4; $slot++) {
-            $this->animals->pickCardForLocation('deck', 'pool', $slot);
+            $pool[$slot] = (int) array_pop($deck);
         }
+        $this->setPool($pool);
+
+        $hands = [];
         foreach ($playerIds as $pid) {
-            $this->animals->pickCards(4, 'deck', $pid);
+            $hands[$pid] = [];
+            for ($i = 0; $i < 4; $i++) {
+                $hands[$pid][] = (int) array_pop($deck);
+            }
         }
+        $this->setHands($hands);
+
+        $this->setDeck(array_values($deck));
+        $this->setDiscard([]);
+
+        $boards = [];
+        foreach ($playerIds as $pid) {
+            $boards[$pid] = [[], [], []];
+        }
+        $this->setBoards($boards);
 
         $this->setScientists(BoardModel::initialScientists($playerIds));
         $this->setFlags(BoardModel::initialFlags($playerIds));

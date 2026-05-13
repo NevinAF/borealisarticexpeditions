@@ -46,21 +46,13 @@ class Gameplay extends GameState
         array $args,
     ) {
         $g = $this->game;
-        $hand = $g->animals->getCardsInLocation('hand', $activePlayerId);
-        $found = null;
-        foreach ($hand as $c) {
-            if ((int) ($c['id'] ?? $c['card_id'] ?? 0) === $card_id) {
-                $found = $c;
-                break;
-            }
-        }
-        if ($found === null) {
+        $hands = $g->getHands();
+        $playerHand = $hands[$activePlayerId] ?? [];
+        $handIndex = array_search($card_id, $playerHand, true);
+        if ($handIndex === false) {
             throw new UserException(clienttranslate('That card is not in your hand'));
         }
         $sci = $g->getScientists();
-        if (! BoardModel::hasAllColorsAtLocation($sci, $activePlayerId, $location)) {
-            throw new UserException(clienttranslate('You need all three scientist colors at this location'));
-        }
         $def = Game::animalDefById($card_id);
         $moves = [
             ['color' => (int) $def['left_move'], 'dir' => 'shift_left'],
@@ -85,26 +77,30 @@ class Gameplay extends GameState
         $g->setScientists($sci);
         $g->setFlags($flags);
 
-        $locStr = BoardModel::boardLocationStr($activePlayerId, $location);
-        $z = (int) $g->animals->countCardsInLocation($locStr);
-        $cid = (int) ($found['id'] ?? $found['card_id'] ?? 0);
-        if ($cid <= 0) {
-            throw new UserException(clienttranslate('Invalid card'));
-        }
-        $g->animals->moveCard($cid, $locStr, $z);
+        array_splice($playerHand, $handIndex, 1);
+        $hands[$activePlayerId] = array_values($playerHand);
+        $g->setHands($hands);
+        $boards = $g->getBoards();
+        $boards[$activePlayerId][$location][] = $card_id;
+        $g->setBoards($boards);
 
         $g->updateObjectiveConditions();
 
-        $this->bga->notify->all(
-            'observeAnimal',
-            clienttranslate('${player_name} observes an animal'),
-            [
-                'player_id' => $activePlayerId,
-                'player_name' => $g->getPlayerNameById($activePlayerId),
-                'card_id' => $card_id,
-                'location' => $location,
-            ]
-        );
+        foreach ($g->getNextPlayerTable() as $pid) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'observeAnimal',
+                clienttranslate('${player_name} observes an animal'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $g->getPlayerNameById($activePlayerId),
+                    'card_id' => $card_id,
+                    'location' => $location,
+                    'boardState' => $g->getBoardState((int)$pid),
+                ]
+            );
+        }
 
         return ReplenishAnimalCard::class;
     }
@@ -127,20 +123,22 @@ class Gameplay extends GameState
         if (count($ids) !== count(array_unique($ids))) {
             throw new UserException(clienttranslate('Duplicate cards in regroup selection'));
         }
+        $hands = $g->getHands();
+        $playerHand = $hands[$activePlayerId] ?? [];
         foreach ($ids as $cid) {
-            $c = $g->animals->getCard($cid);
-            if ($c === null) {
-                throw new UserException(clienttranslate('Invalid card for regroup'));
-            }
-            $loc = $c['location'] ?? $c['card_location'] ?? '';
-            $locArg = (int) ($c['location_arg'] ?? $c['card_location_arg'] ?? 0);
-            if ($loc !== 'hand' || $locArg !== $activePlayerId) {
+            if (array_search($cid, $playerHand, true) === false) {
                 throw new UserException(clienttranslate('Invalid card for regroup'));
             }
         }
+        $discard = $g->getDiscard();
         foreach ($ids as $cid) {
-            $g->animals->moveCard($cid, 'discard', 0);
+            $idx = array_search($cid, $playerHand, true);
+            array_splice($playerHand, $idx, 1);
+            $discard[] = $cid;
         }
+        $hands[$activePlayerId] = array_values($playerHand);
+        $g->setHands($hands);
+        $g->setDiscard($discard);
         foreach ($ids as $_) {
             $g->drawFromAnimalDeckFor($activePlayerId);
         }
@@ -148,16 +146,21 @@ class Gameplay extends GameState
         if ($camp > 0) {
             $this->bga->playerScore->inc($activePlayerId, $camp, null);
         }
-        $this->bga->notify->all(
-            'regroup',
-            clienttranslate('${player_name} regroups'),
-            [
-                'player_id' => $activePlayerId,
-                'player_name' => $g->getPlayerNameById($activePlayerId),
-                'discarded' => $ids,
-                'vp_from_camps' => $camp,
-            ]
-        );
+        foreach ($g->getNextPlayerTable() as $pid) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'regroup',
+                clienttranslate('${player_name} regroups'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $g->getPlayerNameById($activePlayerId),
+                    'discarded' => $ids,
+                    'vp_from_camps' => $camp,
+                    'boardState' => $g->getBoardState((int)$pid),
+                ]
+            );
+        }
 
         return AssignCampScientists::class;
     }
