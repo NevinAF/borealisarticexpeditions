@@ -68,6 +68,10 @@ class Game {
         const n = this.currentStateName().toLowerCase();
         return n === "assigncamp" || n.includes("assigncamp") || n.includes("assign_camp");
     }
+    isOpeningMulliganLike() {
+        const n = this.currentStateName().toLowerCase();
+        return n === "openingmulligan" || n.includes("openingmulligan") || n.includes("opening_mulligan");
+    }
     enterRegroupMode() {
         this.selectedCardId = null;
         this.selectedLocation = null;
@@ -135,12 +139,14 @@ class Game {
         html += `</div>`; // close bae_table_row
         html += `</section>`;
         html += `</div>`; // close bae_toprow
-        // Order: current player first, then others in turn order
-        const allPids = Object.keys(this.gamedatas.players).map(Number);
-        const currentIdx = allPids.indexOf(myId);
-        const orderedPids = currentIdx === -1
-            ? allPids
-            : [myId, ...allPids.slice(currentIdx + 1), ...allPids.slice(0, currentIdx)];
+        // Order player boards by table order, from first player to last player.
+        const orderedPids = Object.keys(this.gamedatas.players)
+            .map(Number)
+            .sort((leftPid, rightPid) => {
+            const leftNo = this.bga.players.getPlayerNoById(leftPid) ?? Number.MAX_SAFE_INTEGER;
+            const rightNo = this.bga.players.getPlayerNoById(rightPid) ?? Number.MAX_SAFE_INTEGER;
+            return leftNo - rightNo;
+        });
         for (const pid of orderedPids) {
             const isSelf = pid === myId;
             const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length + 1), 1) ?? 1;
@@ -481,7 +487,7 @@ class Game {
             for (const c of h) {
                 const id = Number(c.id);
                 const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
-                const selRg = this.campSelected && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
+                const selRg = (this.campSelected || this.isOpeningMulliganLike()) && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
                 html += `<button type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}</button>`;
             }
             for (let i = h.length; i < HAND_RESERVE; i++) {
@@ -501,16 +507,23 @@ class Game {
                 const id = Number(ev.currentTarget.dataset.handCard);
                 if (!this.bga.players.isCurrentPlayerActive())
                     return;
-                if (!this.isGameplayLike())
-                    return;
-                if (this.campSelected) {
+                if (this.isOpeningMulliganLike()) {
                     if (this.selectedRegroupIds.has(id))
                         this.selectedRegroupIds.delete(id);
                     else
                         this.selectedRegroupIds.add(id);
                 }
-                else {
+                else if (this.campSelected) {
+                    if (this.selectedRegroupIds.has(id))
+                        this.selectedRegroupIds.delete(id);
+                    else
+                        this.selectedRegroupIds.add(id);
+                }
+                else if (this.isGameplayLike()) {
                     this.selectedCardId = this.selectedCardId === id ? null : id;
+                }
+                else {
+                    return;
                 }
                 this.renderAll();
                 // Refresh action buttons so the Regroup label/count updates immediately
@@ -647,7 +660,7 @@ class Game {
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         const n = stateName.toLowerCase();
-        if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign")) {
+        if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign") || n.includes("openingmulligan")) {
             this.renderAll();
         }
     }
@@ -657,10 +670,33 @@ class Game {
         if (!this.bga.players.isCurrentPlayerActive())
             return;
         const sn = stateName.toLowerCase();
+        if (sn.includes("openingmulligan")) {
+            const replaceCount = this.selectedRegroupIds.size;
+            const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(replaceCount));
+            this.bga.statusBar.addActionButton(replaceLabel, () => {
+                const ids = Array.from(this.selectedRegroupIds);
+                void this.bga.actions.performAction("actMulliganHand", {
+                    card_ids_json: JSON.stringify(ids),
+                });
+            }, {
+                disabled: false,
+                tooltip: _("Select any cards to replace, or keep your hand as is and confirm to begin the game."),
+            });
+            const clearDisabled = this.selectedRegroupIds.size === 0;
+            this.bga.statusBar.addActionButton(_('Clear selection'), () => {
+                this.selectedRegroupIds.clear();
+                this.renderAll();
+                this.onUpdateActionButtons(this.currentStateName(), null);
+            }, {
+                disabled: clearDisabled,
+                tooltip: clearDisabled ? _("No cards selected.") : _("Clear selected cards.")
+            });
+            return;
+        }
         if (sn.includes("gameplay")) {
             if (this.campSelected) {
                 const regroupCount = this.selectedRegroupIds.size;
-                const replaceLabel = regroupCount === 1 ? _("Replace 1 Card") : `${_('Replace')} ${regroupCount} ${_('Cards')}`;
+                const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
                 this.bga.statusBar.addActionButton(replaceLabel, () => {
                     const ids = Array.from(this.selectedRegroupIds);
                     void this.bga.actions.performAction("actRegroup", {
@@ -738,6 +774,12 @@ class Game {
         const pid = Number(_args.player_id ?? _args.playerId ?? 0);
         const ctr = this.bga.playerPanels.getScoreCounter(pid);
         ctr.incValue(-1);
+    }
+    async notif_mulliganHand(_args) {
+        if (_args.boardState) {
+            this.gamedatas.boardState = _args.boardState;
+        }
+        this.renderAll();
     }
     async notif_regroup(_args) {
         // animate VP from camps (if any) for the acting player

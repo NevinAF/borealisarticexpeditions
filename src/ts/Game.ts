@@ -693,7 +693,7 @@ export class Game {
     const sn = stateName.toLowerCase();
     if (sn.includes("openingmulligan")) {
       const replaceCount = this.selectedRegroupIds.size;
-      const replaceLabel = replaceCount === 1 ? _("Replace 1 Card") : `${_('Replace')} ${replaceCount} ${_('Cards')}`;
+      const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(replaceCount));
       this.bga.statusBar.addActionButton(replaceLabel, () => {
         const ids = Array.from(this.selectedRegroupIds);
         void this.bga.actions.performAction("actMulliganHand", {
@@ -719,7 +719,7 @@ export class Game {
     if (sn.includes("gameplay")) {
       if (this.campSelected) {
         const regroupCount = this.selectedRegroupIds.size;
-        const replaceLabel = regroupCount === 1 ? _("Replace 1 Card") : `${_('Replace')} ${regroupCount} ${_('Cards')}`;
+        const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
         this.bga.statusBar.addActionButton(replaceLabel, () => {
           const ids = Array.from(this.selectedRegroupIds);
           void this.bga.actions.performAction("actRegroup", {

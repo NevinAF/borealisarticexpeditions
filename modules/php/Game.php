@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Bga\Games\BorealisArticExpeditions;
 
 use Bga\Games\BorealisArticExpeditions\States\Gameplay;
+use Bga\Games\BorealisArticExpeditions\States\OpeningMulligan;
+
+require_once __DIR__ . '/States/OpeningMulligan.php';
 
 class Game extends \Bga\GameFramework\Table
 {
@@ -1197,7 +1200,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setRoundLeaderId((int) $order[0]);
         $this->updateObjectiveConditions();
 
-        return Gameplay::class;
+        return OpeningMulligan::class;
     }
 
     public function upgradeTableDb($from_version)
