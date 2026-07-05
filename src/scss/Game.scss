@@ -1,10 +1,12 @@
 @use "sass:math";
 
-// Function that converts a design pixel length into a real CSS value
-// using the runtime `--board-scale` variable placed on the playarea.
-// This yields: calc(var(--board-scale) * <design-px>px)
-@function board-scale($value) {
-  @return calc(var(--board-scale) * #{$value}px);
+// Function that converts a pixel length or point to a percentage based on the reference size of the board (3788x2600)
+@function px-to-percent-in-width($value) {
+  @return math.div($value, 3788) * 100%;
+}
+
+@function px-to-percent-in-height($value) {
+  @return math.div($value, 2600) * 100%;
 }
 
 $board_width: 3788;
@@ -19,14 +21,10 @@ $location_sci_shelf_height: 394;
 $meeple_yellow_width: 214;
 $meeple_teal_width: 209;
 $meeple_pink_width: 243;
-$card_width: 528;
-$card_height: 745;
+$animal_card_width: 528;
+$animal_card_height: 745;
 $animal_card_shift_x: 105;
 $animal_card_shift_y: 170;
-// Fallback board scale (unitless number) used only before JS measures the element.
-// Compute as design fallback width (980px) divided by design board width.
-$fallback_board_width: 980;
-$fallbackBoardScale: math.div($fallback_board_width, $board_width);
 
 #bae_playarea button {
     width: auto;
@@ -38,10 +36,6 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
   align-items: center;
   gap: 1.25rem;
   margin-bottom: 1.25rem;
-}
-#bae_playarea {
-  /* emit a unitless numeric fallback (overridden by JS at runtime) */
-  --board-scale: #{$fallbackBoardScale};
 }
 .bae {
   font-family: system-ui, sans-serif;
@@ -61,7 +55,8 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
 .bae_handwrap {
   background: #f4f6f8;
   border-radius: 8px;
-  padding: board-scale(6);
+  padding: 0.75rem 1rem;
+  min-width: 200px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
@@ -108,11 +103,11 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
   flex-direction: column;
   gap: 0.35rem;
   align-items: center;
-  width: board-scale($card_width);
+  width: 76px; /* matches .bae_card_placeholder width */
 }
 
 .bae_player_handcol .bae_card {
-  width: board-scale($card_width);
+  width: 76px;
 }
 
 .bae_playerboard * {
@@ -126,8 +121,12 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
   background-size: cover;
   background-position: center;
     border-radius: 10px;
-    --bae_board_top_margin: calc(var(--board-scale) * (#{$card_height}px + #{$animal_card_shift_y}px * (var(--animal-card-slots, 1) - 1)));
-    margin: var(--bae_board_top_margin) auto 0 auto;
+    /* Compute the board's rendered height from its declared width and aspect ratio,
+      then base the top margin on that height so spacing scales with the element. */
+    --bae_board_width: min(100%, 980px);
+     --bae_board_h: calc(var(--bae_board_width) * #{math.div($board_height, $board_width)});
+     --bae_board_top_margin: calc(var(--bae_board_h) * ((#{$animal_card_height}px + #{$animal_card_shift_y}px * (var(--animal-card-slots, 1) - 1)) / #{$board_height}px));
+     margin: var(--bae_board_top_margin) auto 0 auto;
 }
 
 .bae_camp_zone,
@@ -136,9 +135,9 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
 }
 
 .bae_camp_zone {
-  top: board-scale(95);
-  width: board-scale($camp_width);
-  height: board-scale($camp_height);
+  top: px-to-percent-in-height(95);
+  width: px-to-percent-in-width($camp_width);
+  height: px-to-percent-in-height($camp_height);
 
   border: 2px dashed rgba(42, 111, 219, 0.35);
   border-radius: 10px;
@@ -154,34 +153,34 @@ $fallbackBoardScale: math.div($fallback_board_width, $board_width);
     width: 100%;
     height: 100%;
   }
-}
 
-.bae_meeple_yellow {
-width: board-scale($meeple_yellow_width);
-}
+  .bae_meeple_yellow {
+    width: math.div($meeple_yellow_width, $camp_width) * 100%;
+  }
 
-.bae_meeple_teal {
-    width: board-scale($meeple_teal_width);
-}
+    .bae_meeple_teal {
+        width: math.div($meeple_teal_width, $camp_width) * 100%;
+    }
 
-.bae_meeple_pink {
-    width: board-scale($meeple_pink_width);
+    .bae_meeple_pink {
+        width: math.div($meeple_pink_width, $camp_width) * 100%;
+    }
 }
 
 .bae_camp_left {
-  left: board-scale(100);
+  left: px-to-percent-in-width(100);
 
 }
 
 .bae_camp_right {
-  left: board-scale(3258);
+  left: px-to-percent-in-width(3258);
 }
 
 
 .bae_location_zone {
-  top: board-scale(0);
-  width: board-scale($location_width);
-  height: board-scale($location_height);
+  top: px-to-percent-in-height(0);
+  width: px-to-percent-in-width($location_width);
+  height: px-to-percent-in-height($location_height);
   border: 2px dashed rgba(42, 111, 219, 0.28);
   border-top: none;
   border-radius: 10px;
@@ -212,22 +211,34 @@ width: board-scale($meeple_yellow_width);
   .bae_sci_shelf {
     position: absolute;
     top: 0;
-    left: board-scale(40);
-    width: board-scale($location_sci_shelf_width);
-    height: board-scale($location_sci_shelf_height);
+    left: math.div(40, $location_width) * 100%;
+    width: math.div($location_sci_shelf_width, $location_width) * 100%;
+    height: math.div($location_sci_shelf_height, $location_height) * 100%;
   }
+
+  .bae_meeple_yellow {
+    width: math.div($meeple_yellow_width, $location_sci_shelf_width) * 100%;
+  }
+
+    .bae_meeple_teal {
+        width: math.div($meeple_teal_width, $location_sci_shelf_width) * 100%;
+    }
+
+    .bae_meeple_pink {
+        width: math.div($meeple_pink_width, $location_sci_shelf_width) * 100%;
+    }
 }
 
 .bae_slot_left {
-  left: board-scale(526);
+  left: px-to-percent-in-width(526);
 }
 
 .bae_slot_mid {
-  left: board-scale(1489);
+  left: px-to-percent-in-width(1489);
 }
 
 .bae_slot_right {
-  left: board-scale(2452);
+  left: px-to-percent-in-width(2452);
 }
 
 .bae_heading {
@@ -339,10 +350,51 @@ width: board-scale($meeple_yellow_width);
   cursor: pointer;
 }
 
+.bae_location_zone .bae_loc_head {
+  position: absolute;
+  top: 1%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 0;
+  z-index: 4;
+}
+
+.bae_location_zone .bae_card_img {
+  width: 50%;
+  min-width: 40px;
+  max-width: 120px;
+}
+
+.bae_onboard_card {
+  position: absolute;
+  top: 0;
+  left: calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
+  top: calc(((var(--stack, 0)) * 50% * -0.08 + 50% * -0.2)); /* 20% of card width per stack */
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
 .bae_loc_selected {
   border-color: #2a6fdb;
   background: rgba(238, 244, 255, 0.38);
   box-shadow: 0 0 0 1px #2a6fdb33;
+}
+
+.bae_loc_head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.bae_loc_title {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.bae_flag_badge {
+  display: none;
 }
 
 /* Pile slots for onboard animal cards (7 fixed slots per location) */
@@ -376,10 +428,10 @@ width: board-scale($meeple_yellow_width);
     height: 100%;
 
     .bae_pile_slot {
-      top: calc((sibling-index() - 1) * var(--board-scale) * -#{$animal_card_shift_y}px);
-      left: calc(50% + (sibling-index() - 1) * var(--board-scale) * #{$animal_card_shift_x}px);
-      width: board-scale($card_width);
-      height: board-scale($card_height);
+      top: calc((sibling-index() - 1) * math.div(-$animal_card_shift_y, $location_height) * 100%);
+      left: calc(50% + (sibling-index() - 1) * math.div($animal_card_shift_x, $location_width) * 100%);
+      width: math.div($animal_card_width, $location_width) * 100%;
+      height: math.div($animal_card_height, $location_height) * 100%;
       transform: translate(-50%, -100%);
     }
   }
@@ -394,14 +446,13 @@ width: board-scale($meeple_yellow_width);
 }
 
 .bae_track_position {
-  position: absolute;
-  /* top: base offset + per-space increment, both in design px scaled by --board-scale */
-  top: calc(var(--board-scale) * 513px + (sibling-index() - 1) * var(--board-scale) * 247.5px);
-  height: board-scale(230);
-  left: board-scale(34);
-  width: board-scale(736);
-  /* explicit height (duplicate removed): */
-  /* height: board-scale(230); */
+    position: absolute;
+    top: calc(math.div(526 - 13, 2494) * 100% + (sibling-index() - 1) * math.div(230 + 17.5, 2494) * 100%);
+    height: px-to-percent-in-height(230);
+    width: px-to-percent-in-width(730);
+    left:  math.div(34, 800) * 100%;
+    width:  math.div(736, 800) * 100%;
+    height:  math.div(230, 2494) * 100%;
 }
 
 .bae_track_flag_only {
@@ -409,7 +460,7 @@ width: board-scale($meeple_yellow_width);
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: board-scale(229);
+  width: math.div(229, 730) * 100%;
   height: auto;
   pointer-events: none;
   user-select: none;
@@ -441,6 +492,9 @@ width: board-scale($meeple_yellow_width);
   flex: none;
   align-items: center;
   padding: 0;
+  border-radius: 6px;
+  border: 1px solid #c9d2dc;
+  background: #fff;
   cursor: pointer;
   overflow: hidden;
 }
@@ -455,26 +509,25 @@ width: board-scale($meeple_yellow_width);
 
 .bae_card_placeholder {
   visibility: hidden;
-  width: board-scale($card_width);
-  aspect-ratio: math.div($card_width, $card_height);
+  width: 76px;
+  aspect-ratio: 480 / 672;
 }
 
 .bae_card_img,
+.bae_obj_img,
 .bae_score_img,
 .bae_board_img {
   display: block;
   height: auto;
 }
 
-.bae_card_img,
-.bae_score_img {
-  width: board-scale($card_width);
+.bae_card_img {
+  width: 74px;
 }
 
-.bae_obj_img {
-  display: block;
-  height: board-scale($card_width);
-  width: auto;
+.bae_obj_img,
+.bae_score_img {
+  width: 96px;
 }
 
 .bae_score_card {

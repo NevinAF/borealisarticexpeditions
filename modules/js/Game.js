@@ -32,25 +32,22 @@ class Game {
         this.gamedatas = this.gamedatas;
     }
     updateBoardScale() {
-        if (!this.root)
-            return;
-        const designWidth = 3788 + 528 + 12;
-        const boardEl = document.getElementById('bae_playarea');
-        let scale = 980 / designWidth; // fallback matches SCSS default
-        if (boardEl) {
-            const rect = boardEl.getBoundingClientRect();
-            if (rect && rect.width > 0) {
-                scale = rect.width / designWidth;
-            }
-            else {
-                const cssW = window.getComputedStyle(boardEl).getPropertyValue('width');
-                const parsed = parseFloat(cssW || '0');
-                if (parsed > 0)
-                    scale = parsed / designWidth;
-                scale = Math.min(scale, 0.5); // don't upscale beyond 100%
-            }
-            boardEl.style.setProperty('--board-scale', String(scale));
-        }
+        // if (!this.root) return;
+        // const designWidth = 3788 + 528 + 12;
+        // const boardEl = document.getElementById('bae_playarea') as HTMLElement | null;
+        // let scale = 980 / designWidth; // fallback matches SCSS default
+        // if (boardEl) {
+        //   const rect = boardEl.getBoundingClientRect();
+        //   if (rect && rect.width > 0) {
+        //     scale = rect.width / designWidth;
+        //   } else {
+        //     const cssW = window.getComputedStyle(boardEl).getPropertyValue('width');
+        //     const parsed = parseFloat(cssW || '0');
+        //     if (parsed > 0) scale = parsed / designWidth;
+        //     scale = Math.min(scale, 0.5); // don't upscale beyond 100%
+        //   }
+        //   boardEl.style.setProperty('--board-scale', String(scale));
+        // }
     }
     /** Main state name (handles nested private_state in some BGA builds). */
     currentStateName() {
