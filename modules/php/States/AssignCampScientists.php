@@ -43,9 +43,18 @@ class AssignCampScientists extends GameState
         array $args,
     ) {
         $g = $this->game;
+        $beforeCount = BoardModel::countScientistsInCamps($g->getScientists(), $activePlayerId);
+        $last = $g->getLastReturnedCounts();
+        $last[$activePlayerId] = $beforeCount;
+        $g->setLastReturnedCounts($last);
+
         $sci = BoardModel::moveAllCampScientistsToLocation($g->getScientists(), $activePlayerId, $location);
         $g->setScientists($sci);
         $g->updateObjectiveConditions();
+
+        // clear the transient value after evaluating objectives
+        $last[$activePlayerId] = 0;
+        $g->setLastReturnedCounts($last);
 
         foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;

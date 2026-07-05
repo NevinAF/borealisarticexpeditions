@@ -1,13 +1,47 @@
+@use "sass:math";
+
+// Function that converts a design pixel length into a real CSS value
+// using the runtime `--board-scale` variable placed on the playarea.
+// This yields: calc(var(--board-scale) * <design-px>px)
+@function board-scale($value) {
+  @return calc(var(--board-scale) * #{$value}px);
+}
+
+$board_width: 3788;
+$board_height: 2600;
+
+$location_width: 800;
+$location_height: 2494;
+$camp_width: 420;
+$camp_height: 700;
+$location_sci_shelf_width: 718;
+$location_sci_shelf_height: 394;
+$meeple_yellow_width: 214;
+$meeple_teal_width: 209;
+$meeple_pink_width: 243;
+$card_width: 528;
+$card_height: 745;
+$animal_card_shift_x: 105;
+$animal_card_shift_y: 170;
+// Fallback board scale (unitless number) used only before JS measures the element.
+// Compute as design fallback width (980px) divided by design board width.
+$fallback_board_width: 980;
+$fallbackBoardScale: math.div($fallback_board_width, $board_width);
+
 #bae_playarea button {
     width: auto;
 }
 
 .bae_toprow {
   display: flex;
-  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
   gap: 1.25rem;
-  align-items: flex-start;
   margin-bottom: 1.25rem;
+}
+#bae_playarea {
+  /* emit a unitless numeric fallback (overridden by JS at runtime) */
+  --board-scale: #{$fallbackBoardScale};
 }
 .bae {
   font-family: system-ui, sans-serif;
@@ -27,25 +61,73 @@
 .bae_handwrap {
   background: #f4f6f8;
   border-radius: 8px;
-  padding: 0.75rem 1rem;
-  min-width: 200px;
+  padding: board-scale(6);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Centered table layout: groups (pool/objectives/scoring) sit in a single row */
+.bae_center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bae_table_row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: nowrap; /* keep groups on single row; allow them to shrink */
+}
+
+.bae_table_group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+  flex: 0 1 auto; /* allow shrinking if space is tight */
+  min-width: 0;
 }
 
 .bae_playerboard {
   min-width: min(100%, 720px);
   flex: 1 1 560px;
-  padding: 8.75rem 1rem 0.75rem 1rem;
+  padding: 0.75rem 1rem 0.75rem 1rem;
+}
+
+/* Layout: place a small 4-slot hand column to the left of the player board canvas */
+.bae_playerboard_inner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.bae_player_handcol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: center;
+  width: board-scale($card_width);
+}
+
+.bae_player_handcol .bae_card {
+  width: board-scale($card_width);
+}
+
+.bae_playerboard * {
+  box-sizing: border-box;
 }
 
 .bae_board_canvas {
   position: relative;
   width: min(100%, 980px);
-  aspect-ratio: 3788 / 2600;
+  aspect-ratio: math.div($board_width, $board_height);
   background-size: cover;
   background-position: center;
-  border-radius: 10px;
-  margin: 0 auto;
+    border-radius: 10px;
+    --bae_board_top_margin: calc(var(--board-scale) * (#{$card_height}px + #{$animal_card_shift_y}px * (var(--animal-card-slots, 1) - 1)));
+    margin: var(--bae_board_top_margin) auto 0 auto;
 }
 
 .bae_camp_zone,
@@ -54,9 +136,10 @@
 }
 
 .bae_camp_zone {
-  width: 11%;
-  height: 25.5%;
-  top: 4.2%;
+  top: board-scale(95);
+  width: board-scale($camp_width);
+  height: board-scale($camp_height);
+
   border: 2px dashed rgba(42, 111, 219, 0.35);
   border-radius: 10px;
   background: rgba(245, 250, 255, 0.45);
@@ -65,37 +148,86 @@
   justify-content: center;
   padding: 0.2rem;
   cursor: pointer;
+
+  .bae_sci_shelf {
+    position: static;
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.bae_meeple_yellow {
+width: board-scale($meeple_yellow_width);
+}
+
+.bae_meeple_teal {
+    width: board-scale($meeple_teal_width);
+}
+
+.bae_meeple_pink {
+    width: board-scale($meeple_pink_width);
 }
 
 .bae_camp_left {
-  left: 2.2%;
+  left: board-scale(100);
+
 }
 
 .bae_camp_right {
-  right: 2.2%;
+  left: board-scale(3258);
 }
 
-.bae_slot_left {
-  left: 14.7%;
-}
-
-.bae_slot_mid {
-  left: 40.2%;
-}
-
-.bae_slot_right {
-  right: 14.7%;
-}
 
 .bae_location_zone {
-  top: 1.5%;
-  width: 19%;
-  height: 95.6%;
+  top: board-scale(0);
+  width: board-scale($location_width);
+  height: board-scale($location_height);
   border: 2px dashed rgba(42, 111, 219, 0.28);
+  border-top: none;
   border-radius: 10px;
   background: rgba(245, 250, 255, 0.2);
   cursor: pointer;
   overflow: visible;
+
+  /* Visually extend the location's top area (background + border)
+     upward by the board top margin without changing the element's size.
+     This uses a pseudo-element so layout measurements remain unchanged. */
+  &::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(-1 * var(--bae_board_top_margin));
+    height: var(--bae_board_top_margin);
+    background: rgba(245, 250, 255, 0.2);
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-top: 2px dashed rgba(42, 111, 219, 0.28);
+    border-left: 2px dashed rgba(42, 111, 219, 0.28);
+    border-right: 2px dashed rgba(42, 111, 219, 0.28);
+    box-sizing: border-box;
+    cursor: pointer;
+  }
+
+  .bae_sci_shelf {
+    position: absolute;
+    top: 0;
+    left: board-scale(40);
+    width: board-scale($location_sci_shelf_width);
+    height: board-scale($location_sci_shelf_height);
+  }
+}
+
+.bae_slot_left {
+  left: board-scale(526);
+}
+
+.bae_slot_mid {
+  left: board-scale(1489);
+}
+
+.bae_slot_right {
+  left: board-scale(2452);
 }
 
 .bae_heading {
@@ -151,6 +283,23 @@
   opacity: 0.55;
 }
 
+/* Objective highlight states */
+.bae_obj_meets {
+  border-color: #0a6b2a;
+  box-shadow: 0 0 0 3px rgba(10, 107, 42, 0.6);
+}
+
+.bae_obj_claimed_by_you {
+  border-color: #2a6fdb;
+  box-shadow: 0 0 0 3px rgba(42, 111, 219, 0.8);
+}
+
+.bae_obj_claimed_round {
+  border-color: #c45c00;
+  box-shadow: 0 0 0 3px rgba(196, 92, 0, 0.6);
+  opacity: 0.95;
+}
+
 .bae_columns {
   display: flex;
   gap: 0.5rem;
@@ -167,29 +316,17 @@
 }
 
 .bae_sci_shelf {
-  min-height: 1.75rem;
-  padding: 0.2rem 0.35rem;
-  background: linear-gradient(180deg, #e8eef5 0%, #dfe8f2 100%);
   border-radius: 6px;
-  border: 1px solid #c5d0e0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem;
-  align-items: center;
+  position: relative;
 }
 
-.bae_meeple {
-  display: inline-block;
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.25);
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
-}
-
-.bae_meeple_empty {
-  opacity: 0.45;
-  font-size: 0.75rem;
+.bae_meeple_img {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
 }
 
 .bae_location {
@@ -202,97 +339,80 @@
   cursor: pointer;
 }
 
-.bae_location_zone .bae_loc_head {
-  position: absolute;
-  top: 1%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 0;
-  z-index: 4;
-}
-
-.bae_location_zone .bae_anim_pile {
-  position: absolute;
-  inset: 0;
-  overflow: visible;
-}
-
-.bae_location_zone .bae_sci_shelf {
-  position: absolute;
-  top: 10%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 68%;
-  z-index: 3;
-  min-height: 1.5rem;
-}
-
-.bae_location_zone .bae_card_img {
-  width: 50%;
-  min-width: 40px;
-  max-width: 120px;
-}
-
-.bae_onboard_card {
-  position: absolute;
-  top: 0;
-  left: calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
-  top: calc(((var(--stack, 0)) * 50% * -0.08 + 50% * -0.2)); /* 20% of card width per stack */
-  transform: translateX(-50%);
-  z-index: 2;
-}
-
 .bae_loc_selected {
   border-color: #2a6fdb;
   background: rgba(238, 244, 255, 0.38);
   box-shadow: 0 0 0 1px #2a6fdb33;
 }
 
-.bae_loc_head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.25rem;
+/* Pile slots for onboard animal cards (7 fixed slots per location) */
+.bae_pile_slot {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed rgba(42, 111, 219, 0.12);
+  border-radius: 8px;
+  background: rgba(42, 111, 219, 0.03);
+  overflow: hidden;
+  pointer-events: none; /* slots themselves are decorative; clicks go to location */
 }
 
-.bae_loc_title {
-  font-size: 0.75rem;
-  font-weight: 600;
+.bae_pile_card_img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: auto;
 }
 
-.bae_flag_badge {
-  display: none;
-}
+/* Positioning for the 7 fixed pile slots inside each location zone.
+   Uses the same board-referenced conversion helpers as other layout rules
+   so sizes and offsets scale consistently with the rest of the board. */
+.bae_location_zone {
+  .bae_anim_pile {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
 
-.bae_anim_pile {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+    .bae_pile_slot {
+      top: calc((sibling-index() - 1) * var(--board-scale) * -#{$animal_card_shift_y}px);
+      left: calc(50% + (sibling-index() - 1) * var(--board-scale) * #{$animal_card_shift_x}px);
+      width: board-scale($card_width);
+      height: board-scale($card_height);
+      transform: translate(-50%, -100%);
+    }
+  }
 }
 
 .bae_track {
   position: absolute;
-  top: 17.8%;
+  top: 0;
   left: 0;
   width: 100%;
-  height: 80%;
-  display: block;
+  height: 100%;
+}
+
+.bae_track_position {
+  position: absolute;
+  /* top: base offset + per-space increment, both in design px scaled by --board-scale */
+  top: calc(var(--board-scale) * 513px + (sibling-index() - 1) * var(--board-scale) * 247.5px);
+  height: board-scale(230);
+  left: board-scale(34);
+  width: board-scale(736);
+  /* explicit height (duplicate removed): */
+  /* height: board-scale(230); */
 }
 
 .bae_track_flag_only {
   position: absolute;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  width: 65%;
-  height: 12.5%;
-  padding-block: 2%;
-  box-sizing: border-box;
-  background-color: rgba(110, 55, 10, 0.93);
-  background-clip: content-box;
-  border: 2px solid rgba(70, 30, 5, 0.9);
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55), 0 2px 5px rgba(0, 0, 0, 0.15);
+  transform: translate(-50%, -50%);
+  width: board-scale(229);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
 }
 
 .bae_camps {
@@ -321,9 +441,6 @@
   flex: none;
   align-items: center;
   padding: 0;
-  border-radius: 6px;
-  border: 1px solid #c9d2dc;
-  background: #fff;
   cursor: pointer;
   overflow: hidden;
 }
@@ -336,21 +453,28 @@
   outline: 2px solid #c45c00;
 }
 
+.bae_card_placeholder {
+  visibility: hidden;
+  width: board-scale($card_width);
+  aspect-ratio: math.div($card_width, $card_height);
+}
+
 .bae_card_img,
-.bae_obj_img,
 .bae_score_img,
 .bae_board_img {
   display: block;
   height: auto;
 }
 
-.bae_card_img {
-  width: 74px;
+.bae_card_img,
+.bae_score_img {
+  width: board-scale($card_width);
 }
 
-.bae_obj_img,
-.bae_score_img {
-  width: 96px;
+.bae_obj_img {
+  display: block;
+  height: board-scale($card_width);
+  width: auto;
 }
 
 .bae_score_card {

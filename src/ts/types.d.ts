@@ -31,6 +31,7 @@ interface MaterialsClient {
   location_names: string[];
   scientist_names: string[];
   objective_type_names: string[];
+  track_space_vp: number[][];
 }
 
 interface ObjectiveClient {
@@ -40,7 +41,7 @@ interface ObjectiveClient {
 }
 
 interface TrackUiClient {
-  vpPerSpace: number[];
+  vpPerSpace: number[][];
   vehiclesPerLocation: number[][][];
 }
 
@@ -51,10 +52,13 @@ interface BoardState {
   deck_count: number;
   discard_count: number;
   boards: Record<number, AnimalCardClient[][]>;
+  board_for_players: Record<number, number>;
   hands: Record<number, AnimalCardClient[] | number>;
   objectives: ObjectiveClient[];
   scoring_cards: number[];
   track?: TrackUiClient;
+  vps: Record<number, number>;
+  playersEndingGame: number[];
 }
 
 interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {

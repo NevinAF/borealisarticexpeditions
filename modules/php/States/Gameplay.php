@@ -24,7 +24,7 @@ class Gameplay extends GameState
             type: StateType::ACTIVE_PLAYER,
             name: 'gameplay',
             description: clienttranslate('Waiting for ${actplayer}'),
-            descriptionMyTurn: clienttranslate('${you} must observe an animal or regroup'),
+            descriptionMyTurn: clienttranslate('${you}:'),
         );
     }
 
@@ -60,10 +60,11 @@ class Gameplay extends GameState
         ];
         $sci = BoardModel::applyObserveMoves($sci, $activePlayerId, $location, $moves);
         $flags = $g->getFlags();
+        $boardForPlayer = $g->getBoardForPlayers()[$activePlayerId] ?? 0;
         $fi = (int) ($flags[$activePlayerId][$location] ?? 0);
         if ($fi < 7) {
             $next = $fi + 1;
-            $boardA = Material::getPlayerBoardsData()[0] ?? null;
+            $boardA = Material::getPlayerBoardsData()[$boardForPlayer] ?? null;
             $vehiclesPerLocation = [
                 $boardA['left_location'] ?? [],
                 $boardA['mid_location'] ?? [],
@@ -86,18 +87,21 @@ class Gameplay extends GameState
 
         $g->updateObjectiveConditions();
 
+        $speciesName = Material::getSpeciesNames()[$def['species'] ?? 0] ?? '';
+
         foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,
                 'observeAnimal',
-                clienttranslate('${player_name} observes an animal'),
+                clienttranslate('${player_name} observes a ${species_name}'),
                 [
                     'player_id' => $activePlayerId,
                     'player_name' => $g->getPlayerNameById($activePlayerId),
                     'card_id' => $card_id,
                     'location' => $location,
                     'boardState' => $g->getBoardState((int)$pid),
+                    'species_name' => $speciesName,
                 ]
             );
         }
@@ -146,23 +150,29 @@ class Gameplay extends GameState
         if ($camp > 0) {
             $this->bga->playerScore->inc($activePlayerId, $camp, null);
         }
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'regroup',
-                clienttranslate('${player_name} regroups'),
-                [
-                    'player_id' => $activePlayerId,
-                    'player_name' => $g->getPlayerNameById($activePlayerId),
-                    'discarded' => $ids,
-                    'vp_from_camps' => $camp,
-                    'boardState' => $g->getBoardState((int)$pid),
-                ]
-            );
-        }
+            foreach ($g->getNextPlayerTable() as $pid => $_) {
+                if ($pid === 0) continue;
+                $this->bga->notify->player(
+                    (int)$pid,
+                    'regroup',
+                    // Include number of cards discarded and VP gained in the notification
+                    clienttranslate('${player_name} regrouped ${vp_from_camps} scientists for ${vp_from_camps} VP, and discarded ${discard_count} card(s)'),
+                    [
+                        'player_id' => $activePlayerId,
+                        'player_name' => $g->getPlayerNameById($activePlayerId),
+                        'discarded' => $ids,
+                        'discard_count' => count($ids),
+                        'vp_from_camps' => $camp,
+                        'boardState' => $g->getBoardState((int)$pid),
+                    ]
+                );
+            }
 
-        return AssignCampScientists::class;
+        if ($camp > 0) {
+            return AssignCampScientists::class;
+        } else {
+            return NextPlayer::class;
+        }
     }
 
     #[PossibleAction]

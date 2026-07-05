@@ -22,7 +22,7 @@ class ReplenishAnimalCard extends GameState
             type: StateType::ACTIVE_PLAYER,
             name: 'replenishAnimal',
             description: clienttranslate('Waiting for ${actplayer}'),
-            descriptionMyTurn: clienttranslate('${you}: take a card from the pool or draw from the deck'),
+            descriptionMyTurn: clienttranslate('${you}: take a card'),
         );
     }
 
@@ -123,7 +123,7 @@ class ReplenishAnimalCard extends GameState
         $mull[$pid] = true;
         $g->setMulliganUsed($mull);
 
-        foreach ($g->getNextPlayerTable() as $otherPid) {
+        foreach ($g->getNextPlayerTable() as $otherPid => $_) {
             if ($otherPid === 0) continue;
             $this->bga->notify->player(
                 (int)$otherPid,

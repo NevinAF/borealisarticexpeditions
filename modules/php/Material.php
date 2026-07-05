@@ -433,7 +433,11 @@ final class Material
      * Exploration track space values (index 0 = start; last is deepest).
      * @var list<int>
      */
-    public const TRACK_SPACE_VP = [0, 1, 2, 3, 5, 8, 11, 15];
+    public const TRACK_SPACE_VP = [
+        [0, 1, 2, 3, 5, 8, 11, 15],
+        [0, 1, 2, 3, 4, 6, 8, 11],
+        [0, 1, 2, 3, 5, 8, 11, 15],
+    ];
 
     /** @var list<array{species: int, vehicle: int, bonus_vp: int, left_move: int, right_move: int}> */
     public const ANIMAL_CARDS_DEFINITION = [

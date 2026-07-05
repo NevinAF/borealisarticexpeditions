@@ -26,6 +26,7 @@ class EndOfRound extends GameState
     {
         $g = $this->game;
         $g->deactivateClaimedObjectives();
+
         foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
@@ -37,7 +38,15 @@ class EndOfRound extends GameState
                 ]
             );
         }
-        if ($g->anyLocationHasSevenPlusCards()) {
+
+        $mull = [];
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) continue;
+            $mull[$pid] = false;
+        }
+        $g->setMulliganUsed($mull);
+
+        if (count($g->playersWithLocationSevenPlusCards()) > 0) {
             return EndScore::class;
         }
         $leader = $g->getRoundLeaderId();
