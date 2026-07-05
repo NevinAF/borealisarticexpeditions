@@ -68,6 +68,22 @@ class Game {
         const n = this.currentStateName().toLowerCase();
         return n === "assigncamp" || n.includes("assigncamp") || n.includes("assign_camp");
     }
+    enterRegroupMode() {
+        this.selectedCardId = null;
+        this.selectedLocation = null;
+        this.campSelected = true;
+        this.selectedRegroupIds.clear();
+        this.renderAll();
+        this.onUpdateActionButtons(this.currentStateName(), null);
+    }
+    clearSelection() {
+        this.selectedCardId = null;
+        this.selectedLocation = null;
+        this.campSelected = false;
+        this.selectedRegroupIds.clear();
+        this.renderAll();
+        this.onUpdateActionButtons(this.currentStateName(), null);
+    }
     renderAll() {
         this.syncGamedatas();
         const d = this.gamedatas.boardState;
@@ -170,14 +186,15 @@ class Game {
             }
             html += `</div>`; // close handcol
             const campSel = isSelf && this.campSelected ? " bae_camp_selected" : "";
+            const campDotsSel = isSelf && this.campSelected ? " bae_sci_shelf_camp_selected" : "";
             const boardBg = this.imagePath("Playerboards", d.board_for_players[pid] ?? 0);
             // Expose number of animal-card slots to CSS so margin spacing scales correctly
             html += `<div class="bae_board_canvas" style="background-image:url('${boardBg}'); --animal-card-slots: ${animal_card_slots}">`;
             html += `<div id="bae_camp_${pid}_left" class="bae_camp_zone bae_camp_left${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
-            html += `<div id="bae_sci_shelf_camp_${pid}_left" class="bae_sci_shelf">${this.renderScientistDots(pid, d.scientists[pid], 3)}</div>`;
+            html += `<div id="bae_sci_shelf_camp_${pid}_left" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 3)}</div>`;
             html += `</div>`;
             html += `<div id="bae_camp_${pid}_right" class="bae_camp_zone bae_camp_right${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
-            html += `<div id="bae_sci_shelf_camp_${pid}_right" class="bae_sci_shelf">${this.renderScientistDots(pid, d.scientists[pid], 4)}</div>`;
+            html += `<div id="bae_sci_shelf_camp_${pid}_right" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 4)}</div>`;
             html += `</div>`;
             for (let loc = 0; loc < 3; loc++) {
                 const sel = isSelf && this.selectedLocation === loc && !this.campSelected ? " bae_loc_selected" : "";
@@ -591,16 +608,11 @@ class Game {
                     return;
                 // Toggle camp selection when clicking the camp again
                 if (this.campSelected) {
-                    this.campSelected = false;
-                    this.selectedRegroupIds.clear();
+                    this.clearSelection();
                 }
                 else {
-                    this.campSelected = true;
+                    this.enterRegroupMode();
                 }
-                this.selectedLocation = null;
-                this.selectedCardId = null;
-                this.renderAll();
-                this.onUpdateActionButtons(this.currentStateName(), null);
             }, true);
         });
         this.root.querySelectorAll("[data-pool-slot]").forEach((el) => {
@@ -646,6 +658,26 @@ class Game {
             return;
         const sn = stateName.toLowerCase();
         if (sn.includes("gameplay")) {
+            if (this.campSelected) {
+                const regroupCount = this.selectedRegroupIds.size;
+                const replaceLabel = regroupCount === 1 ? _("Replace 1 Card") : `${_('Replace')} ${regroupCount} ${_('Cards')}`;
+                this.bga.statusBar.addActionButton(replaceLabel, () => {
+                    const ids = Array.from(this.selectedRegroupIds);
+                    void this.bga.actions.performAction("actRegroup", {
+                        card_ids_json: JSON.stringify(ids),
+                    });
+                }, {
+                    disabled: false,
+                    tooltip: _("Discard as many animal cards as you want from your hand (this can be 0 cards), draw that many cards from the deck. After confirming, you will take all your scientists from both camps and put them all in a single location of your choice. You are awarded as many VP as scientists moved from the camps."),
+                });
+                this.bga.statusBar.addActionButton(_('Clear Selection (Undo Regroup)'), () => {
+                    this.clearSelection();
+                }, {
+                    disabled: false,
+                    tooltip: _("Leave regroup mode and clear the discard selection."),
+                });
+                return;
+            }
             const observeDisabled = this.selectedCardId == null || this.selectedLocation == null;
             this.bga.statusBar.addActionButton(_("Observe"), () => {
                 if (observeDisabled)
@@ -658,29 +690,15 @@ class Game {
                 disabled: observeDisabled,
                 tooltip: (observeDisabled ? _("Select a card from your hand and a location to observe. ") : "") + _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card."),
             });
-            const regroupCount = this.selectedRegroupIds.size;
-            const regroupDisabled = !this.campSelected && regroupCount === 0;
-            const regroupLabel = !regroupDisabled ? `${_('Regroup')} (${regroupCount})` : _('Regroup');
-            this.bga.statusBar.addActionButton(regroupLabel, () => {
-                if (regroupDisabled)
-                    return;
-                const ids = Array.from(this.selectedRegroupIds);
-                void this.bga.actions.performAction("actRegroup", {
-                    card_ids_json: JSON.stringify(ids),
-                });
+            this.bga.statusBar.addActionButton(_('Start Regroup'), () => {
+                this.enterRegroupMode();
             }, {
-                disabled: regroupDisabled,
-                tooltip: (regroupDisabled ? _("Select a camp to start regrouping. ") : "") + _("Discard as many animal cards as you want from your hand (this can be 0 cards), draw that many cards from the deck. After confirming, you will take all your scientists from both camps and put them all in a single location of your choice. You are awarded as many VP as scientists moved from the camps."),
+                disabled: false,
+                tooltip: _("Start choosing cards to discard and select a camp to regroup."),
             });
             const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0;
             this.bga.statusBar.addActionButton(_('Clear selection'), () => {
-                this.selectedCardId = null;
-                this.selectedLocation = null;
-                this.campSelected = false;
-                this.selectedRegroupIds.clear();
-                this.renderAll();
-                // Ensure action buttons refresh after clearing selection
-                this.onUpdateActionButtons(this.currentStateName(), null);
+                this.clearSelection();
             }, {
                 disabled: clearDisabled,
                 tooltip: clearDisabled ? _("No selection to clear.") : _("Clear all selections.")

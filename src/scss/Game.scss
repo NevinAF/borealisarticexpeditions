@@ -331,6 +331,10 @@ $animal_card_shift_y: 170;
   position: relative;
 }
 
+.bae_sci_shelf_camp_selected .bae_meeple_img {
+  transform: translate(-50%, calc(-50% - 8px));
+}
+
 .bae_meeple_img {
   position: absolute;
   height: auto;
@@ -338,6 +342,7 @@ $animal_card_shift_y: 170;
   user-select: none;
   transform: translate(-50%, -50%);
   transform-origin: center center;
+  transition: transform 120ms ease;
 }
 
 .bae_location {
@@ -368,7 +373,8 @@ $animal_card_shift_y: 170;
 .bae_onboard_card {
   position: absolute;
   top: 0;
-  left: calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
+  left: 0;
+  //    calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
   top: calc(((var(--stack, 0)) * 50% * -0.08 + 50% * -0.2)); /* 20% of card width per stack */
   transform: translateX(-50%);
   z-index: 2;
