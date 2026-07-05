@@ -330,15 +330,6 @@
   max-width: 120px;
 }
 
-.bae_onboard_card {
-  position: absolute;
-  top: 0;
-  left: 0;
-  top: calc((var(--stack, 0)) * 50% * -0.08 - 10%); /* 20% of card width per stack */
-  transform: translateX(-50%);
-  z-index: 2;
-}
-
 .bae_loc_selected {
   border-color: #2a6fdb;
   background: rgba(238, 244, 255, 0.38);
@@ -393,7 +384,7 @@
 }
 .bae_location_zone .bae_anim_pile .bae_pile_slot {
   top: calc((sibling-index() - 1) * -0.0681635926 * 100%);
-  left: calc(50% + (sibling-index() - 1) * 0.13125 * 100%);
+  left: 50%;
   width: 66%;
   height: 29.8716920609%;
   transform: translate(-50%, -100%);

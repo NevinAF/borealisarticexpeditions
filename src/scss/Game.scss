@@ -370,16 +370,6 @@ $animal_card_shift_y: 170;
   max-width: 120px;
 }
 
-.bae_onboard_card {
-  position: absolute;
-  top: 0;
-  left: 0;
-  //    calc(50% + (var(--stack, 0) * 50% * 0.2)); /* 20% of card width per stack */
-  top: calc(((var(--stack, 0)) * 50% * -0.08 + 50% * -0.2)); /* 20% of card width per stack */
-  transform: translateX(-50%);
-  z-index: 2;
-}
-
 .bae_loc_selected {
   border-color: #2a6fdb;
   background: rgba(238, 244, 255, 0.38);
@@ -435,7 +425,7 @@ $animal_card_shift_y: 170;
 
     .bae_pile_slot {
       top: calc((sibling-index() - 1) * math.div(-$animal_card_shift_y, $location_height) * 100%);
-      left: calc(50% + (sibling-index() - 1) * math.div($animal_card_shift_x, $location_width) * 100%);
+      left: 50%;
       width: math.div($animal_card_width, $location_width) * 100%;
       height: math.div($animal_card_height, $location_height) * 100%;
       transform: translate(-50%, -100%);
