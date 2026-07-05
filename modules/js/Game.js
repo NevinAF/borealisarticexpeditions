@@ -19,6 +19,30 @@ class Game {
         window.addEventListener('resize', () => this.updateBoardScale());
         this.renderAll();
     }
+    renderPlayerPanelInfo() {
+        const d = this.gamedatas.boardState;
+        const firstPlayerId = Number((this.gamedatas.playerOrder ?? [])[0] ?? 0);
+        // const leftLabel = this.gamedatas.materials.location_names?.[0] ?? _("Left");
+        // const middleLabel = this.gamedatas.materials.location_names?.[1] ?? _("Middle");
+        // const rightLabel = this.gamedatas.materials.location_names?.[2] ?? _("Right");
+        for (const pidStr of Object.keys(this.gamedatas.players)) {
+            const pid = Number(pidStr);
+            const host = this.bga.playerPanels.getElement(pid);
+            let infoEl = host.querySelector('.bae_panel_info');
+            if (!infoEl) {
+                infoEl = document.createElement('div');
+                infoEl.className = 'bae_panel_info';
+                host.appendChild(infoEl);
+            }
+            const leftCount = d.boards[pid]?.[0]?.length ?? 0;
+            const middleCount = d.boards[pid]?.[1]?.length ?? 0;
+            const rightCount = d.boards[pid]?.[2]?.length ?? 0;
+            const firstPlayerIcon = pid === firstPlayerId
+                ? '  {first player}'
+                : '';
+            infoEl.innerHTML = `<span class="bae_panel_animals">${_('Observed')}: ${leftCount} · ${middleCount} · ${rightCount}</span>${firstPlayerIcon}`;
+        }
+    }
     setupNotifications() {
         this.bga.notifications.setupPromiseNotifications({
             prefix: "notif_",
@@ -139,14 +163,12 @@ class Game {
         html += `</div>`; // close bae_table_row
         html += `</section>`;
         html += `</div>`; // close bae_toprow
-        // Order player boards by table order, from first player to last player.
-        const orderedPids = Object.keys(this.gamedatas.players)
-            .map(Number)
-            .sort((leftPid, rightPid) => {
-            const leftNo = this.bga.players.getPlayerNoById(leftPid) ?? Number.MAX_SAFE_INTEGER;
-            const rightNo = this.bga.players.getPlayerNoById(rightPid) ?? Number.MAX_SAFE_INTEGER;
-            return leftNo - rightNo;
-        });
+        // Order: current player first, then others in turn order
+        const allPids = Object.keys(this.gamedatas.players).map(Number);
+        const currentIdx = allPids.indexOf(myId);
+        const orderedPids = currentIdx === -1
+            ? allPids
+            : [myId, ...allPids.slice(currentIdx + 1), ...allPids.slice(0, currentIdx)];
         for (const pid of orderedPids) {
             const isSelf = pid === myId;
             const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length + 1), 1) ?? 1;
@@ -235,6 +257,7 @@ class Game {
         this.updateBoardScale();
         // Register BGA tooltips for all elements that previously used `title` attributes
         this.registerTooltips();
+        this.renderPlayerPanelInfo();
         this.renderHand(myId);
         this.bindTableHandlers(myId);
     }

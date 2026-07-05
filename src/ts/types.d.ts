@@ -64,6 +64,7 @@ interface BoardState {
 interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
     boardState: BoardState;
     materials: MaterialsClient;
+  playerOrder?: number[];
 }
 
 interface GameplayArgs {

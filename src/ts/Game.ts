@@ -26,6 +26,35 @@ export class Game {
     this.renderAll();
   }
 
+  private renderPlayerPanelInfo(): void {
+    const d = this.gamedatas.boardState;
+    const firstPlayerId = Number((this.gamedatas.playerOrder ?? [])[0] ?? 0);
+    // const leftLabel = this.gamedatas.materials.location_names?.[0] ?? _("Left");
+    // const middleLabel = this.gamedatas.materials.location_names?.[1] ?? _("Middle");
+    // const rightLabel = this.gamedatas.materials.location_names?.[2] ?? _("Right");
+
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const pid = Number(pidStr);
+      const host = this.bga.playerPanels.getElement(pid);
+
+      let infoEl = host.querySelector('.bae_panel_info') as HTMLElement | null;
+      if (!infoEl) {
+        infoEl = document.createElement('div');
+        infoEl.className = 'bae_panel_info';
+        host.appendChild(infoEl);
+      }
+
+      const leftCount = d.boards[pid]?.[0]?.length ?? 0;
+      const middleCount = d.boards[pid]?.[1]?.length ?? 0;
+      const rightCount = d.boards[pid]?.[2]?.length ?? 0;
+      const firstPlayerIcon = pid === firstPlayerId
+        ? '  {first player}'
+        : '';
+
+      infoEl.innerHTML = `<span class="bae_panel_animals">${_('Observed')}: ${leftCount} · ${middleCount} · ${rightCount}</span>${firstPlayerIcon}`;
+    }
+  }
+
   setupNotifications() {
     this.bga.notifications.setupPromiseNotifications({
       prefix: "notif_",
@@ -263,6 +292,7 @@ export class Game {
     this.updateBoardScale();
     // Register BGA tooltips for all elements that previously used `title` attributes
     this.registerTooltips();
+    this.renderPlayerPanelInfo();
     this.renderHand(myId);
     this.bindTableHandlers(myId);
   }

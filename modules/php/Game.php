@@ -68,6 +68,7 @@ class Game extends \Bga\GameFramework\Table
         $result['players'] = $this->getCollectionFromDb(
             'SELECT `player_id` AS `id`, `player_score` AS `score` FROM `player`'
         );
+        $result['playerOrder'] = $this->getPlayerOrderFromNextTable();
         
         $result['boardState'] = $this->getBoardState($currentPlayerId);
         
@@ -86,6 +87,40 @@ class Game extends \Bga\GameFramework\Table
         ];
 
         return $result;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function getPlayerOrderFromNextTable(): array
+    {
+        $next = $this->getNextPlayerTable();
+        $leader = $this->getRoundLeaderId();
+
+        if ($leader <= 0 || ! isset($next[$leader])) {
+            foreach ($next as $pid => $_) {
+                $pid = (int) $pid;
+                if ($pid !== 0) {
+                    $leader = $pid;
+                    break;
+                }
+            }
+        }
+
+        if ($leader <= 0 || ! isset($next[$leader])) {
+            return [];
+        }
+
+        $order = [];
+        $seen = [];
+        $cur = $leader;
+        while ($cur !== 0 && ! isset($seen[$cur])) {
+            $seen[$cur] = true;
+            $order[] = $cur;
+            $cur = (int) ($next[$cur] ?? 0);
+        }
+
+        return $order;
     }
 
     public function getBoardState(int $currentPlayerId): array
