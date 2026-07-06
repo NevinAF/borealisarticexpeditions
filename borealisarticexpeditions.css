@@ -291,8 +291,8 @@ html[data-theme=dark] {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(-1 * var(--bae_board_top_margin));
-  height: var(--bae_board_top_margin);
+  top: calc(-1 * var(--bae_board_top_margin) + 2px);
+  height: calc(var(--bae_board_top_margin) - 2px);
   background: rgba(245, 250, 255, 0.2);
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
@@ -311,8 +311,8 @@ html[data-theme=dark] {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(-1 * var(--bae_board_top_margin));
-  height: calc(100% + var(--bae_board_top_margin));
+  top: calc(-1 * var(--bae_board_top_margin) + 2px);
+  height: calc(100% + var(--bae_board_top_margin) + 2px);
   background: rgba(238, 244, 255, 0.38);
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
@@ -587,7 +587,7 @@ html[data-theme=dark] {
 
 .bae_camp_selected {
   border-color: #2a6fdb;
-  background: #eef4ff;
+  background: rgba(238, 244, 255, 0.38);
 }
 
 .bae_hand {

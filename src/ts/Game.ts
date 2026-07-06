@@ -344,7 +344,7 @@ export class Game {
     html += `<div class="bae_playerboards">`;
     for (const pid of orderedPids) {
       const isSelf = pid === myId;
-      const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length + 1), 1) ?? 1;
+      const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length), 1) ?? 1;
       const rawPlayerColor = String(this.gamedatas.players[pid]?.color ?? "");
       const playerColor = rawPlayerColor.length > 0
         ? (rawPlayerColor.startsWith("#") ? rawPlayerColor : `#${rawPlayerColor}`)
@@ -408,15 +408,11 @@ export class Game {
         html += `<div class="bae_anim_pile">`;
         const pile = d.boards[pid]?.[loc] ?? [];
         for (let si = 0; si < animal_card_slots; si++) {
-          const slotId = `bae_pile_${pid}_${loc}_${si}`;
           const card = pile[si];
-          let inner = "";
-          let style = "";
-          if (card) {
-            inner = this.imageTag("AnimalCards", card.id, "bae_pile_card_img", `${_("Animal card")} #${card.id}`);
-            style = 'z-index: 1;'; // ensure proper layering of cards in the pile
-          }
-          html += `<div id="${slotId}" class="bae_pile_slot" style="${style}">${inner}</div>`;
+          if (!card) continue;
+          const slotId = `bae_pile_${pid}_${loc}_${si}`;
+          const inner = this.imageTag("AnimalCards", card.id, "bae_pile_card_img", `${_("Animal card")} #${card.id}`);
+          html += `<div id="${slotId}" class="bae_pile_slot" style="z-index: 1;">${inner}</div>`;
         }
         html += `</div>`;
 
