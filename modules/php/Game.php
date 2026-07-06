@@ -7,6 +7,9 @@ namespace Bga\Games\BorealisArticExpeditions;
 use Bga\Games\BorealisArticExpeditions\States\Gameplay;
 use Bga\Games\BorealisArticExpeditions\States\OpeningMulligan;
 use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
+use Bga\Games\BorealisArticExpeditions\States\AssignCampScientists;
+use Bga\Games\BorealisArticExpeditions\States\ReplenishAnimalCard;
+use Bga\Games\BorealisArticExpeditions\States\NextPlayer;
 
 require_once __DIR__ . '/States/OpeningMulligan.php';
 require_once __DIR__ . '/States/PromptClaimObjective.php';
@@ -40,6 +43,13 @@ class Game extends \Bga\GameFramework\Table
     public const GLOBAL_LAST_RETURNED = 'last_returned_counts';
 
     public const GLOBAL_PENDING_OBJECTIVE_PROMPTS = 'pending_objective_prompts';
+
+    public const GLOBAL_PROMPT_CLAIM_RETURN_STATE = 'prompt_claim_return_state';
+
+    public const PROMPT_RETURN_ASSIGN_CAMP = 'assignCamp';
+    public const PROMPT_RETURN_GAMEPLAY = 'gameplay';
+    public const PROMPT_RETURN_REPLENISH_ANIMAL = 'replenishAnimal';
+    public const PROMPT_RETURN_NEXT_PLAYER = 'nextPlayer';
 
     public function __construct()
     {
@@ -255,6 +265,62 @@ class Game extends \Bga\GameFramework\Table
     public function clearPendingObjectivePrompts(): void
     {
         $this->setPendingObjectivePrompts([]);
+    }
+
+    /**
+     * @return array<string, class-string>
+     */
+    private function getPromptClaimReturnStateMap(): array
+    {
+        return [
+            self::PROMPT_RETURN_ASSIGN_CAMP => AssignCampScientists::class,
+            self::PROMPT_RETURN_GAMEPLAY => Gameplay::class,
+            self::PROMPT_RETURN_REPLENISH_ANIMAL => ReplenishAnimalCard::class,
+            self::PROMPT_RETURN_NEXT_PLAYER => NextPlayer::class,
+        ];
+    }
+
+    public function setPromptClaimReturnState(string $stateName): void
+    {
+        $map = $this->getPromptClaimReturnStateMap();
+        if (! isset($map[$stateName])) {
+            $stateName = self::PROMPT_RETURN_GAMEPLAY;
+        }
+
+        $this->bga->globals->set(self::GLOBAL_PROMPT_CLAIM_RETURN_STATE, $stateName);
+    }
+
+    public function getPromptClaimReturnStateName(): string
+    {
+        $stateName = (string) $this->bga->globals->get(self::GLOBAL_PROMPT_CLAIM_RETURN_STATE, self::PROMPT_RETURN_GAMEPLAY);
+        $map = $this->getPromptClaimReturnStateMap();
+        if (! isset($map[$stateName])) {
+            return self::PROMPT_RETURN_GAMEPLAY;
+        }
+
+        return $stateName;
+    }
+
+    /**
+     * @return class-string
+     */
+    public function getPromptClaimReturnState(): string
+    {
+        $map = $this->getPromptClaimReturnStateMap();
+        $stateName = $this->getPromptClaimReturnStateName();
+
+        return $map[$stateName] ?? Gameplay::class;
+    }
+
+    public function clearPromptClaimReturnState(): void
+    {
+        $this->setPromptClaimReturnState(self::PROMPT_RETURN_GAMEPLAY);
+    }
+
+    public function enterPromptClaimObjectiveFrom(string $stateName): string
+    {
+        $this->setPromptClaimReturnState($stateName);
+        return PromptClaimObjective::class;
     }
 
     public function addPendingObjectivePrompt(int $playerId, int $objectiveIndex): void
@@ -941,6 +1007,7 @@ class Game extends \Bga\GameFramework\Table
         }
         $this->setObjectivesState($objectives);
         $this->clearPendingObjectivePrompts();
+        $this->clearPromptClaimReturnState();
     }
 
     public function playersWithLocationSevenPlusCards(): array
@@ -969,6 +1036,14 @@ class Game extends \Bga\GameFramework\Table
         $flags = $this->getFlags();
         $sci = $this->getScientists();
         $scoringIds = $this->getScoringCardIds();
+        $preEndTokenPoints = [];
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            $preEndTokenPoints[$pid] = $this->bga->playerScore->get($pid);
+        }
 
         // Friendly labels for locations (translated)
         $locNames = [clienttranslate('Left'), clienttranslate('Middle'), clienttranslate('Right')];
@@ -1082,6 +1157,51 @@ class Game extends \Bga\GameFramework\Table
                 }
                 $this->bga->playerScore->inc($pid, $delta, null);
             }
+        }
+
+        $this->recomputeTieBreakScores($preEndTokenPoints);
+    }
+
+    private function getFurthestExplorationFlagForTieBreak(int $playerId): int
+    {
+        $playerFlags = $this->getFlags()[$playerId] ?? [0, 0, 0];
+
+        return max(
+            (int) ($playerFlags[0] ?? 0),
+            (int) ($playerFlags[1] ?? 0),
+            (int) ($playerFlags[2] ?? 0)
+        );
+    }
+
+    /**
+     * "Token points" are the player's points before end-game scoring is applied.
+     *
+     * @param array<int, int>|null $preEndTokenPoints
+     */
+    private function getTokenPointsForTieBreak(int $playerId, ?array $preEndTokenPoints = null): int
+    {
+        if ($preEndTokenPoints !== null) {
+            return (int) ($preEndTokenPoints[$playerId] ?? 0);
+        }
+
+        return $this->bga->playerScore->get($playerId);
+    }
+
+    /**
+     * @param array<int, int>|null $preEndTokenPoints
+     */
+    private function recomputeTieBreakScores(?array $preEndTokenPoints = null): void
+    {
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            $furthestFlag = $this->getFurthestExplorationFlagForTieBreak($pid);
+            $tokenPoints = $this->getTokenPointsForTieBreak($pid, $preEndTokenPoints);
+            // Lexicographic tie-break encoded in one integer: first furthest flag, then token points.
+            $aux = $furthestFlag * 1000 + $tokenPoints;
+            $this->bga->playerScoreAux->set($pid, $aux, null);
         }
     }
 
@@ -1307,6 +1427,7 @@ class Game extends \Bga\GameFramework\Table
         $this->reattributeColorsBasedOnPreferences($players, $gameinfos['player_colors']);
         $this->reloadPlayersBasicInfos();
         $this->bga->playerScore->initDb($playerIds, 2);
+        $this->bga->playerScoreAux->initDb($playerIds, 0);
 
         $deck = array_keys(Material::ANIMAL_CARDS_DEFINITION);
         shuffle($deck);
@@ -1375,6 +1496,7 @@ class Game extends \Bga\GameFramework\Table
         $order = $this->getNextPlayerTable();
         $this->setRoundLeaderId((int) $order[0]);
         $this->updateObjectiveConditions();
+        $this->recomputeTieBreakScores();
 
         return OpeningMulligan::class;
     }
