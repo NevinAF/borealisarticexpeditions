@@ -75,7 +75,7 @@ class Game {
         const areaRect = area.getBoundingClientRect();
         const rootRect = this.root.getBoundingClientRect();
         const availableWidth = Math.max(1, areaRect.width);
-        const availableHeight = Math.max(1, window.innerHeight - rootRect.top - 8);
+        const availableHeight = Math.max(1, window.innerHeight);
         const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
         const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
         const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
@@ -1110,7 +1110,7 @@ Game.BOARD_REFERENCE_WIDTH_PX = 3788;
 Game.BOARD_REFERENCE_HEIGHT_PX = 2600;
 Game.TOP_ROW_REFERENCE_WIDTH_PX = 6124;
 Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
-Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 4;
+Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 8 + 400;
 Game.ZOOM_FACTORS = [0.75, 0.9, 1, 1.1, 1.25];
 
 export { Game };
