@@ -465,7 +465,7 @@ html[data-theme="dark"] {
   margin-top: 0;
 }
 
-.bae_obj {
+#bae_playarea .bae_obj {
   display: inline-flex;
   flex: none;
   cursor: pointer;
@@ -603,7 +603,8 @@ html[data-theme="dark"] {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  background-repeat: no-repeat;
+  background-position: var(--sprite-x, 0%) var(--sprite-y, 0%);
   pointer-events: auto;
 }
 
@@ -710,7 +711,28 @@ html[data-theme="dark"] {
 .bae_score_img,
 .bae_board_img {
   display: block;
-  height: auto;
+}
+
+.bae_card_img,
+.bae_obj_img,
+.bae_score_img {
+  background-repeat: no-repeat;
+  background-position: var(--sprite-x, 0%) var(--sprite-y, 0%);
+}
+
+.bae_sprite_animal {
+  background-image: var(--animal-sprite-url);
+  background-size: calc(#{11} * 100%) calc(#{10} * 100%);
+}
+
+.bae_sprite_objective {
+  background-image: var(--objective-sprite-url);
+  background-size: calc(#{4} * 100%) calc(#{4} * 100%);
+}
+
+.bae_sprite_scoring {
+  background-image: var(--scoring-sprite-url);
+  background-size: calc(#{4} * 100%) calc(#{3} * 100%);
 }
 
 .bae_card_img {
@@ -721,7 +743,7 @@ html[data-theme="dark"] {
 .bae_obj_img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  aspect-ratio: math.div($card_height, $card_width);
 }
 
 .bae_score_img {
@@ -748,6 +770,7 @@ html[data-theme="dark"] {
 }
 
 .bae_board_img {
+  height: auto;
   width: min(100%, 260px);
 }
 

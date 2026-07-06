@@ -67,8 +67,19 @@ class Game {
         }
         const scale = this.getScale();
         this.root.style.setProperty('--bae-scale', String(scale));
+        this.updateSpriteSheetUrls(scale);
         this.boardScaleTimeoutAccInterval = 10;
         this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
+    }
+    updateSpriteSheetUrls(scale) {
+        if (!this.root)
+            return;
+        const tier = scale >= 0.85 ? 'full' : scale >= 0.55 ? 'half' : 'quarter';
+        const base = this.bga.images.getImgUrl();
+        this.root.dataset.spriteTier = tier;
+        this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.png")`);
+        this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.png")`);
+        this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.png")`);
     }
     getScale() {
         const area = this.bga.gameArea.getElement();
@@ -163,7 +174,7 @@ class Game {
                 }
                 catch (_) { }
                 if (canHtmlTooltip) {
-                    const html = this.buildCardTooltipHtml(this.imagePath('AnimalCards', 9999), _('Hidden hand card'), [_('You cannot see cards in other players hands')]);
+                    const html = this.buildCardTooltipSpriteHtml('animal', 9999, _('Hidden hand card'), [_('You cannot see cards in other players hands')]);
                     this.bga.gameui.addTooltipHtml(id, html);
                 }
                 else {
@@ -186,7 +197,7 @@ class Game {
             catch (_) { }
             if (canHtmlTooltip) {
                 const numericCardId = Number(cardId);
-                const html = this.buildCardTooltipHtml(this.imagePath('AnimalCards', numericCardId), `${_('Animal card')} #${numericCardId}`, [actionText]);
+                const html = this.buildCardTooltipSpriteHtml('animal', numericCardId, `${_('Animal card')} #${numericCardId}`, [actionText]);
                 this.bga.gameui.addTooltipHtml(id, html);
             }
             else {
@@ -367,7 +378,7 @@ class Game {
                     if (!card)
                         continue;
                     const slotId = `bae_pile_${pid}_${loc}_${si}`;
-                    const inner = this.imageTag("AnimalCards", card.id, "bae_pile_card_img", `${_("Animal card")} #${card.id}`);
+                    const inner = this.spriteFaceById('animal', card.id, 'bae_pile_card_img', `${_("Animal card")} #${card.id}`);
                     html += `<div id="${slotId}" class="bae_pile_slot" style="z-index: 1;">${inner}</div>`;
                 }
                 html += `</div>`;
@@ -415,7 +426,7 @@ class Game {
             }
             catch (_) { }
             if (canHtmlTooltip) {
-                const html = this.buildCardTooltipHtml(this.imagePath('AnimalCards', slot.id), _('Pool card'), [_('Click to take this card')]);
+                const html = this.buildCardTooltipSpriteHtml('animal', slot.id, _('Pool card'), [_('Click to take this card')]);
                 this.bga.gameui.addTooltipHtml(id, html);
             }
             else {
@@ -438,7 +449,7 @@ class Game {
             const help = `${_('Objective')}: ${objectiveMat?.title ?? obj.id}<br>${objectiveMat?.description ?? ''}`;
             const action = obj.active ? _('Click to claim this objective') : '';
             if (canHtmlTooltip) {
-                const html = this.buildCardTooltipHtml(this.imagePath('ObjectiveCards', obj.id), objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [objectiveMat?.description ?? '', action]);
+                const html = this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [objectiveMat?.description ?? '', action]);
                 this.bga.gameui.addTooltipHtml(id, html);
             }
             else {
@@ -457,7 +468,7 @@ class Game {
             const description = scoringMat?.description ?? '';
             const explanation = scoringMat?.explanation ?? '';
             if (canHtmlTooltip) {
-                const html = this.buildCardTooltipHtml(this.imagePath('ScoringCards', scoringId), title, [
+                const html = this.buildCardTooltipSpriteHtml('scoring', scoringId, title, [
                     description ? `${_('Description')}: ${description}` : '',
                     explanation ? `${_('Explanation')}: ${explanation}` : '',
                 ]);
@@ -640,6 +651,73 @@ class Game {
         const attrs = extraAttrs ? ` ${extraAttrs}` : "";
         return `<img class="${className}" src="${src}" alt="${safeAlt}" draggable="false"${attrs}/>`;
     }
+    getSpriteIndex(id, lastIndex) {
+        const value = Number(id);
+        const safeId = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 9999;
+        if (safeId === 9999)
+            return lastIndex;
+        return Math.max(0, Math.min(lastIndex - 1, safeId));
+    }
+    spriteFaceById(type, id, className, alt) {
+        let columns = 1;
+        let rows = 1;
+        let lastIndex = 0;
+        let spriteClass = '';
+        if (type === 'animal') {
+            columns = Game.ANIMAL_SPRITE_COLUMNS;
+            rows = Game.ANIMAL_SPRITE_ROWS;
+            lastIndex = Game.ANIMAL_SPRITE_LAST_INDEX;
+            spriteClass = 'bae_sprite_animal';
+        }
+        else if (type === 'objective') {
+            columns = Game.OBJECTIVE_SPRITE_COLUMNS;
+            rows = Game.OBJECTIVE_SPRITE_ROWS;
+            lastIndex = Game.OBJECTIVE_SPRITE_LAST_INDEX;
+            spriteClass = 'bae_sprite_objective';
+        }
+        else {
+            columns = Game.SCORING_SPRITE_COLUMNS;
+            rows = Game.SCORING_SPRITE_ROWS;
+            lastIndex = Game.SCORING_SPRITE_LAST_INDEX;
+            spriteClass = 'bae_sprite_scoring';
+        }
+        const index = this.getSpriteIndex(id, lastIndex);
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const x = columns > 1 ? (col / (columns - 1)) * 100 : 0;
+        const y = rows > 1 ? (row / (rows - 1)) * 100 : 0;
+        const safeAlt = alt.replace(/"/g, "&quot;");
+        return `<div class="${className} ${spriteClass}" role="img" aria-label="${safeAlt}" style="--sprite-x:${x.toFixed(4)}%;--sprite-y:${y.toFixed(4)}%;"></div>`;
+    }
+    spriteMeta(type) {
+        if (type === 'animal') {
+            return {
+                columns: Game.ANIMAL_SPRITE_COLUMNS,
+                rows: Game.ANIMAL_SPRITE_ROWS,
+                lastIndex: Game.ANIMAL_SPRITE_LAST_INDEX,
+                sheetPrefix: 'AnimalCards',
+            };
+        }
+        if (type === 'objective') {
+            return {
+                columns: Game.OBJECTIVE_SPRITE_COLUMNS,
+                rows: Game.OBJECTIVE_SPRITE_ROWS,
+                lastIndex: Game.OBJECTIVE_SPRITE_LAST_INDEX,
+                sheetPrefix: 'ObjectiveCards',
+            };
+        }
+        return {
+            columns: Game.SCORING_SPRITE_COLUMNS,
+            rows: Game.SCORING_SPRITE_ROWS,
+            lastIndex: Game.SCORING_SPRITE_LAST_INDEX,
+            sheetPrefix: 'ScoringCards',
+        };
+    }
+    spriteSheetUrl(type) {
+        const tier = this.root?.dataset.spriteTier ?? 'full';
+        const { sheetPrefix } = this.spriteMeta(type);
+        return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.png`;
+    }
     escapeHtml(value) {
         return String(value)
             .replace(/&/g, '&amp;')
@@ -648,15 +726,25 @@ class Game {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
-    buildCardTooltipHtml(imageUrl, title, details) {
+    buildCardTooltipSpriteHtml(type, id, title, details) {
+        const { columns, rows, lastIndex } = this.spriteMeta(type);
+        const index = this.getSpriteIndex(id, lastIndex);
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+        const x = columns > 1 ? (col / (columns - 1)) * 100 : 0;
+        const y = rows > 1 ? (row / (rows - 1)) * 100 : 0;
         const safeTitle = this.escapeHtml(title);
         const detailHtml = details
             .filter((line) => line && line.trim().length > 0)
             .map((line) => `<div>${this.escapeHtml(line)}</div>`)
             .join('');
+        const backgroundImageUrl = this.spriteSheetUrl(type);
+        const bgSizeX = (columns * 100).toFixed(4);
+        const bgSizeY = (rows * 100).toFixed(4);
+        const aspectRatio = type === 'objective' ? '745 / 528' : '240 / 345';
         return `
       <div style="display:flex;gap:12px;align-items:flex-start;max-width:560px;">
-        <img src="${imageUrl}" alt="${safeTitle}" style="width:220px;height:auto;display:block;border-radius:6px;"/>
+        <div role="img" aria-label="${safeTitle}" style="width:220px;aspect-ratio:${aspectRatio};display:block;border-radius:6px;background-image:url('${backgroundImageUrl}');background-repeat:no-repeat;background-size:${bgSizeX}% ${bgSizeY}%;background-position:${x.toFixed(4)}% ${y.toFixed(4)}%;"></div>
         <div style="font-size:13px;line-height:1.35;">
           <div style="font-weight:700;margin-bottom:6px;">${safeTitle}</div>
           ${detailHtml}
@@ -665,13 +753,13 @@ class Game {
     `;
     }
     cardFaceById(cardId) {
-        return this.imageTag("AnimalCards", cardId, "bae_card_img", `${_("Animal card")} #${cardId}`);
+        return this.spriteFaceById('animal', cardId, 'bae_card_img', `${_("Animal card")} #${cardId}`);
     }
     objectiveFaceById(objectiveId) {
-        return this.imageTag("ObjectiveCards", objectiveId, "bae_obj_img", `${_("Objective")} #${objectiveId}`);
+        return this.spriteFaceById('objective', objectiveId, 'bae_obj_img', `${_("Objective")} #${objectiveId}`);
     }
     scoringFaceById(scoringId) {
-        return this.imageTag("ScoringCards", scoringId, "bae_score_img", `${_("Scoring card")} #${scoringId}`);
+        return this.spriteFaceById('scoring', scoringId, 'bae_score_img', `${_("Scoring card")} #${scoringId}`);
     }
     playerBoardFaceById(boardId) {
         return this.imageTag("Playerboards", boardId, "bae_board_img", `${_("Player board")} #${boardId}`);
@@ -1111,6 +1199,15 @@ Game.BOARD_REFERENCE_HEIGHT_PX = 2600;
 Game.TOP_ROW_REFERENCE_WIDTH_PX = 6124;
 Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
 Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 8 + 400;
+Game.ANIMAL_SPRITE_COLUMNS = 11;
+Game.ANIMAL_SPRITE_ROWS = 10;
+Game.ANIMAL_SPRITE_LAST_INDEX = 100;
+Game.OBJECTIVE_SPRITE_COLUMNS = 4;
+Game.OBJECTIVE_SPRITE_ROWS = 4;
+Game.OBJECTIVE_SPRITE_LAST_INDEX = 12;
+Game.SCORING_SPRITE_COLUMNS = 4;
+Game.SCORING_SPRITE_ROWS = 3;
+Game.SCORING_SPRITE_LAST_INDEX = 10;
 Game.ZOOM_FACTORS = [0.75, 0.9, 1, 1.1, 1.25];
 
 export { Game };
