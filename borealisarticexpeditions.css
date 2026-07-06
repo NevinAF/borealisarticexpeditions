@@ -3,70 +3,124 @@
 }
 
 .bae_toprow {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto auto;
   justify-content: center;
   align-items: center;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
+  gap: calc(42px * var(--bae-scale));
+  margin-bottom: calc(40px * var(--bae-scale));
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .bae {
+  --bae-scale: 0.2;
   font-family: system-ui, sans-serif;
   color: #1a1a1a;
-  margin: 0.5rem 0;
+  margin: 0;
 }
 
 .bae_table {
   display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: calc(30px * var(--bae-scale));
   align-items: flex-start;
 }
 
-.bae_center,
 .bae_playerboard,
-.bae_handwrap {
+.bae_top_group {
   background: #f4f6f8;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  min-width: 200px;
+  border-radius: calc(18px * var(--bae-scale));
+  padding: calc(20px * var(--bae-scale));
+  min-width: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-/* Centered table layout: groups (pool/objectives/scoring) sit in a single row */
-.bae_center {
+.bae_top_group {
   display: flex;
-  flex-direction: column;
   align-items: center;
-}
-
-.bae_table_row {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
   justify-content: center;
-  flex-wrap: nowrap; /* keep groups on single row; allow them to shrink */
+  min-height: calc(1160px * var(--bae-scale));
 }
 
-.bae_table_group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  align-items: center;
-  flex: 0 1 auto; /* allow shrinking if space is tight */
-  min-width: 0;
+.bae_top_objectives,
+.bae_top_scoring {
+  min-width: calc(1500px * var(--bae-scale));
+}
+
+.bae_top_pool {
+  min-width: calc(2920px * var(--bae-scale));
+}
+
+.bae_objectives,
+.bae_scoring {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: calc(30px * var(--bae-scale));
+  justify-content: center;
+  align-content: center;
+}
+
+.bae_objectives > :last-child:nth-child(odd),
+.bae_scoring > :last-child:nth-child(odd) {
+  grid-column: 1/3;
+  justify-self: center;
+}
+
+.bae_pool {
+  display: grid;
+  grid-template-columns: repeat(5, max-content);
+  gap: calc(30px * var(--bae-scale));
+  justify-content: center;
+  align-content: center;
+}
+
+.bae_pool > :last-child:nth-child(5n+1) {
+  grid-column: 3;
+}
+
+.bae_pool > :nth-last-child(2):nth-child(5n+1) {
+  grid-column: 2;
+}
+
+.bae_pool > :nth-last-child(3):nth-child(5n+1) {
+  grid-column: 2;
+}
+
+.bae_pool > :nth-last-child(4):nth-child(5n+1) {
+  grid-column: 1;
+}
+
+.bae_pool_deck {
+  position: relative;
+}
+
+.bae_deck_overlay {
+  position: absolute;
+  left: 50%;
+  bottom: calc(14px * var(--bae-scale));
+  transform: translateX(-50%);
+  padding: calc(6px * var(--bae-scale)) calc(10px * var(--bae-scale));
+  border-radius: calc(8px * var(--bae-scale));
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: calc(44px * var(--bae-scale));
+  line-height: 1.15;
+  text-align: center;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .bae_playerboard {
-  min-width: min(100%, 720px);
-  flex: 1 1 560px;
-  padding: 0.75rem 1rem 0.75rem 1rem;
+  min-width: calc(3788px * var(--bae-scale));
+  flex: 0 0 auto;
+  padding: calc(20px * var(--bae-scale));
 }
 
-/* Layout: place a small 4-slot hand column to the left of the player board canvas */
 .bae_playerboard_inner {
   display: flex;
-  gap: 0.75rem;
+  gap: calc(28px * var(--bae-scale));
   align-items: flex-start;
   justify-content: center;
 }
@@ -74,13 +128,13 @@
 .bae_player_handcol {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: calc(14px * var(--bae-scale));
   align-items: center;
-  width: 76px; /* matches .bae_card_placeholder width */
+  width: calc(528px * var(--bae-scale));
 }
 
 .bae_player_handcol .bae_card {
-  width: 76px;
+  width: calc(528px * var(--bae-scale));
 }
 
 .bae_playerboard * {
@@ -89,17 +143,26 @@
 
 .bae_board_canvas {
   position: relative;
-  width: min(100%, 980px);
+  width: calc(3788px * var(--bae-scale));
   aspect-ratio: 1.4569230769;
   background-size: cover;
   background-position: center;
-  border-radius: 10px;
-  /* Compute the board's rendered height from its declared width and aspect ratio,
-    then base the top margin on that height so spacing scales with the element. */
-  --bae_board_width: min(100%, 980px);
+  border-radius: calc(20px * var(--bae-scale));
+  --bae_board_width: calc(3788px * var(--bae-scale));
   --bae_board_h: calc(var(--bae_board_width) * 0.6863780359);
   --bae_board_top_margin: calc(var(--bae_board_h) * ((745px + 170px * (var(--animal-card-slots, 1) - 1)) / 2600px));
   margin: var(--bae_board_top_margin) auto 0 auto;
+}
+
+.bae_toprow .bae_label,
+.bae_toprow .bae_heading,
+.bae_toprow .bae_meta {
+  display: none;
+}
+
+.bae_table_group {
+  min-width: 0;
+  min-width: 0;
 }
 
 .bae_camp_zone,
@@ -111,13 +174,13 @@
   top: 3.6538461538%;
   width: 11.0876451954%;
   height: 26.9230769231%;
-  border: 2px dashed rgba(42, 111, 219, 0.35);
-  border-radius: 10px;
+  border: calc(2px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.35);
+  border-radius: calc(10px * var(--bae-scale));
   background: rgba(245, 250, 255, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem;
+  padding: calc(6px * var(--bae-scale));
   cursor: pointer;
 }
 .bae_camp_zone .bae_sci_shelf {
@@ -147,9 +210,9 @@
   top: 0%;
   width: 21.1193241816%;
   height: 95.9230769231%;
-  border: 2px dashed rgba(42, 111, 219, 0.28);
+  border: calc(2px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.28);
   border-top: none;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--bae-scale));
   background: rgba(245, 250, 255, 0.2);
   cursor: pointer;
   overflow: visible;
@@ -165,11 +228,11 @@
   top: calc(-1 * var(--bae_board_top_margin));
   height: var(--bae_board_top_margin);
   background: rgba(245, 250, 255, 0.2);
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-  border-top: 2px dashed rgba(42, 111, 219, 0.28);
-  border-left: 2px dashed rgba(42, 111, 219, 0.28);
-  border-right: 2px dashed rgba(42, 111, 219, 0.28);
+  border-top-left-radius: calc(10px * var(--bae-scale));
+  border-top-right-radius: calc(10px * var(--bae-scale));
+  border-top: calc(2px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.28);
+  border-left: calc(2px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.28);
+  border-right: calc(2px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.28);
   box-sizing: border-box;
   cursor: pointer;
 }
@@ -203,13 +266,13 @@
 }
 
 .bae_heading {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
+  margin: 0 0 calc(10px * var(--bae-scale));
+  font-size: calc(56px * var(--bae-scale));
 }
 
 .bae_label {
   font-weight: 600;
-  margin-right: 0.35rem;
+  margin-right: calc(10px * var(--bae-scale));
   display: inline;
   align-self: flex-start;
   margin-bottom: 0;
@@ -217,37 +280,31 @@
 }
 
 .bae_pool {
-  display: flex;
-  flex-flow: row wrap;
-  gap: 0.35rem;
-  align-items: flex-start;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 
 .bae_meta {
-  font-size: 0.85rem;
+  font-size: calc(48px * var(--bae-scale));
   opacity: 0.85;
-  margin-bottom: 0.5rem;
+  margin-bottom: calc(10px * var(--bae-scale));
 }
 
 .bae_objectives,
 .bae_scoring {
-  margin-top: 0.35rem;
-  display: flex;
-  flex-flow: row wrap;
-  gap: 0.35rem;
-  align-items: flex-start;
+  margin-top: 0;
 }
 
 .bae_obj {
   display: inline-flex;
   flex: none;
   cursor: pointer;
-  border: 1px solid #c9d2dc;
-  border-radius: 6px;
+  border: calc(2px * var(--bae-scale)) solid #c9d2dc;
+  border-radius: calc(10px * var(--bae-scale));
   padding: 0;
   overflow: hidden;
   background: #fff;
+  width: calc(745px * var(--bae-scale));
+  height: calc(528px * var(--bae-scale));
 }
 
 .bae_obj:disabled {
@@ -273,8 +330,8 @@
 
 .bae_columns {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.35rem;
+  gap: calc(10px * var(--bae-scale));
+  margin-top: calc(6px * var(--bae-scale));
   align-items: stretch;
 }
 
@@ -282,17 +339,17 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: calc(6px * var(--bae-scale));
   min-width: 0;
 }
 
 .bae_sci_shelf {
-  border-radius: 6px;
+  border-radius: calc(6px * var(--bae-scale));
   position: relative;
 }
 
 .bae_sci_shelf_camp_selected .bae_meeple_img {
-  transform: translate(-50%, calc(-50% - 8px));
+  transform: translate(-50%, calc(-50% - calc(8px * var(--bae-scale))));
 }
 
 .bae_meeple_img {
@@ -309,9 +366,9 @@
   flex: 1;
   min-width: 0;
   background: #fff;
-  border-radius: 6px;
-  padding: 0.35rem;
-  border: 2px solid transparent;
+  border-radius: calc(6px * var(--bae-scale));
+  padding: calc(6px * var(--bae-scale));
+  border: calc(2px * var(--bae-scale)) solid transparent;
   cursor: pointer;
 }
 
@@ -340,12 +397,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.25rem;
+  gap: calc(6px * var(--bae-scale));
+  margin-bottom: calc(6px * var(--bae-scale));
 }
 
 .bae_loc_title {
-  font-size: 0.75rem;
+  font-size: calc(42px * var(--bae-scale));
   font-weight: 600;
 }
 
@@ -357,8 +414,8 @@
 .bae_pile_slot {
   position: absolute;
   box-sizing: border-box;
-  border: 1px dashed rgba(42, 111, 219, 0.12);
-  border-radius: 8px;
+  border: calc(1px * var(--bae-scale)) dashed rgba(42, 111, 219, 0.12);
+  border-radius: calc(8px * var(--bae-scale));
   background: rgba(42, 111, 219, 0.03);
   overflow: hidden;
   pointer-events: none; /* slots themselves are decorative; clicks go to location */
@@ -420,12 +477,12 @@
 }
 
 .bae_camps {
-  margin-top: 0.5rem;
-  padding: 0.35rem;
-  border-radius: 6px;
-  border: 2px dashed #ccc;
+  margin-top: calc(10px * var(--bae-scale));
+  padding: calc(6px * var(--bae-scale));
+  border-radius: calc(6px * var(--bae-scale));
+  border: calc(2px * var(--bae-scale)) dashed #ccc;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: calc(48px * var(--bae-scale));
 }
 
 .bae_camp_selected {
@@ -436,7 +493,7 @@
 .bae_hand {
   display: flex;
   flex-flow: row wrap;
-  gap: 0.35rem;
+  gap: calc(6px * var(--bae-scale));
   align-items: flex-start;
 }
 
@@ -445,25 +502,25 @@
   flex: none;
   align-items: center;
   padding: 0;
-  border-radius: 6px;
-  border: 1px solid #c9d2dc;
+  border-radius: calc(10px * var(--bae-scale));
+  border: calc(2px * var(--bae-scale)) solid #c9d2dc;
   background: #fff;
   cursor: pointer;
   overflow: hidden;
 }
 
 .bae_card_selected {
-  outline: 2px solid #2a6fdb;
+  outline: calc(2px * var(--bae-scale)) solid #2a6fdb;
 }
 
 .bae_card_regroup {
-  outline: 2px solid #c45c00;
+  outline: calc(2px * var(--bae-scale)) solid #c45c00;
 }
 
 .bae_card_placeholder {
   visibility: hidden;
-  width: 76px;
-  aspect-ratio: 480/672;
+  width: calc(528px * var(--bae-scale));
+  aspect-ratio: 0.7087248322;
 }
 
 .bae_card_img,
@@ -475,18 +532,25 @@
 }
 
 .bae_card_img {
-  width: 74px;
+  width: calc(528px * var(--bae-scale));
+  aspect-ratio: 0.7087248322;
 }
 
-.bae_obj_img,
+.bae_obj_img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .bae_score_img {
-  width: 96px;
+  width: calc(528px * var(--bae-scale));
+  aspect-ratio: 0.7087248322;
 }
 
 .bae_score_card {
   display: inline-flex;
-  border: 1px solid #c9d2dc;
-  border-radius: 6px;
+  border: calc(2px * var(--bae-scale)) solid #c9d2dc;
+  border-radius: calc(10px * var(--bae-scale));
   overflow: hidden;
   background: #fff;
 }
@@ -497,18 +561,18 @@
 
 .bae_board_img {
   width: min(100%, 260px);
-  border: 1px solid #c9d2dc;
-  border-radius: 8px;
+  border: calc(1px * var(--bae-scale)) solid #c9d2dc;
+  border-radius: calc(8px * var(--bae-scale));
   background: #fff;
 }
 
 .bae_bonus {
-  font-size: 0.75rem;
+  font-size: calc(42px * var(--bae-scale));
   font-weight: 700;
   color: #0a6b2a;
 }
 
 .bae_hidden_count {
-  font-size: 0.9rem;
+  font-size: calc(50px * var(--bae-scale));
   opacity: 0.85;
 }

@@ -1,6 +1,11 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 export class Game {
+  private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
+  private static readonly BOARD_REFERENCE_HEIGHT_PX = 2600;
+  private static readonly TOP_ROW_REFERENCE_WIDTH_PX = 6124;
+  private static readonly TOP_ROW_REFERENCE_HEIGHT_PX = 1200;
+
   bga!: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
   gamedatas!: BorealisArticExpeditionsGamedatas;
   private root!: HTMLElement;
@@ -69,22 +74,21 @@ export class Game {
   }
 
   private updateBoardScale(): void {
-    // if (!this.root) return;
-    // const designWidth = 3788 + 528 + 12;
-    // const boardEl = document.getElementById('bae_playarea') as HTMLElement | null;
-    // let scale = 980 / designWidth; // fallback matches SCSS default
-    // if (boardEl) {
-    //   const rect = boardEl.getBoundingClientRect();
-    //   if (rect && rect.width > 0) {
-    //     scale = rect.width / designWidth;
-    //   } else {
-    //     const cssW = window.getComputedStyle(boardEl).getPropertyValue('width');
-    //     const parsed = parseFloat(cssW || '0');
-    //     if (parsed > 0) scale = parsed / designWidth;
-    //     scale = Math.min(scale, 0.5); // don't upscale beyond 100%
-    //   }
-    //   boardEl.style.setProperty('--board-scale', String(scale));
-    // }
+    if (!this.root) return;
+
+    const area = this.bga.gameArea.getElement();
+    const areaRect = area.getBoundingClientRect();
+    const rootRect = this.root.getBoundingClientRect();
+
+    const availableWidth = Math.max(1, areaRect.width);
+    const availableHeight = Math.max(1, window.innerHeight - rootRect.top - 8);
+    const scaleByBoardWidth = availableWidth / Game.BOARD_REFERENCE_WIDTH_PX;
+    const scaleByBoardHeight = availableHeight / (Game.BOARD_REFERENCE_HEIGHT_PX + Game.TOP_ROW_REFERENCE_HEIGHT_PX);
+    // const scaleByMaxTargetWidth = 740 / Game.BOARD_REFERENCE_WIDTH_PX;
+    const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
+    const scale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
+
+    this.root.style.setProperty('--bae-scale', String(scale));
   }
 
   /** Main state name (handles nested private_state in some BGA builds). */
@@ -135,7 +139,8 @@ export class Game {
   private renderAll() {
     this.syncGamedatas();
 
-    
+    let html = "";
+
     const d = this.gamedatas.boardState;
     const myId = Number(this.bga.players.getCurrentPlayerId());
     const names: Record<number, string> = {};
@@ -147,25 +152,12 @@ export class Game {
 
     this.handleLastTurnBanner(d.playersEndingGame);
 
-    let html = `<div class="bae_table">`;
-    // Top row: centered table only (pool / objectives / scoring)
+    html += `<div class="bae_table">`;
     html += `<div class="bae_toprow">`;
-    html += `<section class="bae_center"><h3 class="bae_heading">${_("Table")}</h3>`;
-    // Row container for table groups
-    html += `<div class="bae_table_row">`;
-    // Pool group
-    html += `<div class="bae_table_group bae_pool_group"><div class="bae_label">${_("Pool")}</div><div class="bae_pool">`;
-    for (const slot of d.pool) {
-      // assign an ID so we can attach BGA tooltips after render
-      html += `<button id="bae_pool_slot_${slot.slot}" type="button" class="bae_card bae_pool_slot" data-pool-slot="${slot.slot}">${this.cardFaceById(
-        slot.id,
-      )}</button>`;
-    }
-    html += `</div><div class="bae_meta">${_("Deck")}: ${d.deck_count} · ${_("Discard")}: ${d.discard_count}</div></div>`;
-    // Objectives group
-    html += `<div class="bae_table_group bae_objectives_group"><div class="bae_label">${_("Objectives")}</div><div class="bae_objectives">`;
+
+    // Objectives group (left, always 2 columns with centered final row)
+    html += `<div class="bae_top_group bae_top_objectives"><div class="bae_objectives">`;
     d.objectives.forEach((obj, idx) => {
-      const st = obj.active ? _("active") : _("inactive");
       const playerState = obj.players[myId] ?? "unmet";
       let extraClass = "";
       if (playerState === "meets") extraClass = " bae_obj_meets";
@@ -181,13 +173,27 @@ export class Game {
       )}</button>`;
     });
     html += `</div></div>`;
-    // Scoring group
-    html += `<div class="bae_table_group bae_scoring_group"><div class="bae_label">${_("Scoring")}</div><div class="bae_scoring">${d.scoring_cards
+
+    // Pool group (middle): deck slot first, then pool cards
+    html += `<div class="bae_top_group bae_top_pool"><div class="bae_pool">`;
+    html += `<button id="bae_pool_slot_deck" type="button" class="bae_card bae_pool_slot bae_pool_deck" data-pool-slot="-1">`;
+    html += `${this.cardFaceById(9999)}`;
+    html += `<span class="bae_deck_overlay">${_("Deck")}: ${d.deck_count}<br>${_("Discard")}: ${d.discard_count}</span>`;
+    html += `</button>`;
+
+    const sortedPool = [...d.pool].sort((a, b) => a.slot - b.slot);
+    for (const slot of sortedPool) {
+      html += `<button id="bae_pool_slot_${slot.slot}" type="button" class="bae_card bae_pool_slot" data-pool-slot="${slot.slot}">${this.cardFaceById(
+        slot.id,
+      )}</button>`;
+    }
+    html += `</div></div>`;
+
+    // Scoring group (right, 2 columns with centered final row)
+    html += `<div class="bae_top_group bae_top_scoring"><div class="bae_scoring">${d.scoring_cards
       .map((id) => `<span class="bae_score_card">${this.scoringFaceById(id)}</span>`)
       .join("")}</div></div>`;
-    html += `</div>`; // close bae_table_row
-    html += `</section>`;
-    html += `</div>`; // close bae_toprow
+    html += `</div>`;
 
     // Order: current player first, then others in turn order
     const allPids = Object.keys(this.gamedatas.players).map(Number);
@@ -318,6 +324,8 @@ export class Game {
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       this.bga.gameui.addTooltip(id, _('Pool card'), _('Click to take this card'));
     });
+    try { this.bga.gameui.removeTooltip('bae_pool_slot_deck'); } catch (_) {}
+    this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
 
     // Objectives
     (d.objectives || []).forEach((obj, idx) => {
