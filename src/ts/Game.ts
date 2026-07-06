@@ -699,7 +699,11 @@ export class Game {
         if (!obj) return;
         const playerState = obj.players?.[myId] ?? 'unmet';
         if (playerState !== 'meets') return;
-        void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+
+        // if inside the "promptclaimobjective" state, use that action instead:
+        const inGameplay = this.currentStateName().toLowerCase() == 'gameplay';
+        const actionName = inGameplay ? "actClaimObjective" : "actClaimPromptObjective";
+        void this.bga.actions.performAction(actionName, { objective_index: idx });
       });
     });
   }
@@ -721,6 +725,35 @@ export class Game {
     this.bga.statusBar.removeActionButtons();
     if (!this.bga.players.isCurrentPlayerActive()) return;
     const sn = stateName.toLowerCase();
+    if (sn.includes("promptclaimobjective") || sn.includes("prompt_claim_objective")) {
+      const myId = Number(this.bga.players.getCurrentPlayerId());
+      const promptArgs = args as unknown as PromptClaimArgs | null;
+      const pending = promptArgs?.pendingByPlayer?.[myId] ?? [];
+      if (pending.length === 0) return;
+
+      const target = pending[0];
+      const claimLabel = _("Claim objective");
+      const skipLabel = _("Don't claim");
+      this.bga.statusBar.addActionButton(`${claimLabel}: ${target.title}`, () => {
+        void this.bga.actions.performAction("actClaimPromptObjective", {
+          objective_index: target.index,
+        });
+      }, {
+        disabled: false,
+        tooltip: _("Claim this objective now and score 5 VP."),
+      });
+
+      this.bga.statusBar.addActionButton(skipLabel, () => {
+        void this.bga.actions.performAction("actSkipPromptObjective", {
+          objective_index: target.index,
+        });
+      }, {
+        disabled: false,
+        tooltip: _("Do not claim this objective. You will not be prompted to claim later and will not be able to claim if your turn has passed this round. This is added to mimic game rules where you can claim objectives at any time if you realized that you meet the objective requirements after it is claimed."),
+      });
+      return;
+    }
+
     if (sn.includes("openingmulligan")) {
       const replaceCount = this.selectedRegroupIds.size;
       const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(replaceCount));

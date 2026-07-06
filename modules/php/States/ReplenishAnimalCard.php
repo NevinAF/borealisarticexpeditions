@@ -10,6 +10,7 @@ use Bga\GameFramework\States\GameState;
 use Bga\GameFramework\States\PossibleAction;
 use Bga\GameFramework\UserException;
 use Bga\Games\BorealisArticExpeditions\Game;
+use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
 
 class ReplenishAnimalCard extends GameState
 {
@@ -147,6 +148,10 @@ class ReplenishAnimalCard extends GameState
         array $args,
     ) {
         $this->game->claimObjective($activePlayerId, $objective_index);
+
+        if ($this->game->hasPendingObjectivePrompts()) {
+            return PromptClaimObjective::class;
+        }
 
         return null;
     }

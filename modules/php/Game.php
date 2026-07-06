@@ -6,8 +6,10 @@ namespace Bga\Games\BorealisArticExpeditions;
 
 use Bga\Games\BorealisArticExpeditions\States\Gameplay;
 use Bga\Games\BorealisArticExpeditions\States\OpeningMulligan;
+use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
 
 require_once __DIR__ . '/States/OpeningMulligan.php';
+require_once __DIR__ . '/States/PromptClaimObjective.php';
 
 class Game extends \Bga\GameFramework\Table
 {
@@ -36,6 +38,8 @@ class Game extends \Bga\GameFramework\Table
     public const GLOBAL_BOARD_FOR_PLAYERS = 'board_for_players';
 
     public const GLOBAL_LAST_RETURNED = 'last_returned_counts';
+
+    public const GLOBAL_PENDING_OBJECTIVE_PROMPTS = 'pending_objective_prompts';
 
     public function __construct()
     {
@@ -208,6 +212,80 @@ class Game extends \Bga\GameFramework\Table
     public function setLastReturnedCounts(array $m): void
     {
         $this->bga->globals->set(self::GLOBAL_LAST_RETURNED, $m);
+    }
+
+    /**
+     * @return array<int, list<int>>
+     */
+    public function getPendingObjectivePrompts(): array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_PENDING_OBJECTIVE_PROMPTS, []);
+        if (! is_array($v)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($v as $pid => $indices) {
+            $pid = (int) $pid;
+            if (! is_array($indices)) {
+                continue;
+            }
+            $out[$pid] = array_values(array_unique(array_map('intval', $indices)));
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int, list<int>> $pending
+     */
+    public function setPendingObjectivePrompts(array $pending): void
+    {
+        $normalized = [];
+        foreach ($pending as $pid => $indices) {
+            $pid = (int) $pid;
+            $vals = array_values(array_unique(array_map('intval', $indices ?? [])));
+            if (! empty($vals)) {
+                $normalized[$pid] = $vals;
+            }
+        }
+        $this->bga->globals->set(self::GLOBAL_PENDING_OBJECTIVE_PROMPTS, $normalized);
+    }
+
+    public function clearPendingObjectivePrompts(): void
+    {
+        $this->setPendingObjectivePrompts([]);
+    }
+
+    public function addPendingObjectivePrompt(int $playerId, int $objectiveIndex): void
+    {
+        $pending = $this->getPendingObjectivePrompts();
+        $pending[$playerId] = array_values(array_unique(array_merge($pending[$playerId] ?? [], [$objectiveIndex])));
+        $this->setPendingObjectivePrompts($pending);
+    }
+
+    public function removePendingObjectivePrompt(int $playerId, int $objectiveIndex): void
+    {
+        $pending = $this->getPendingObjectivePrompts();
+        $pending[$playerId] = array_values(array_filter(
+            $pending[$playerId] ?? [],
+            fn ($idx) => (int) $idx !== $objectiveIndex
+        ));
+        if (empty($pending[$playerId])) {
+            unset($pending[$playerId]);
+        }
+        $this->setPendingObjectivePrompts($pending);
+    }
+
+    public function hasPendingObjectivePrompts(): bool
+    {
+        foreach ($this->getPendingObjectivePrompts() as $indices) {
+            if (! empty($indices)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -484,6 +562,7 @@ class Game extends \Bga\GameFramework\Table
         $objectives = $this->getObjectivesState();
         $boards = $this->getPublicBoards();
         $flags = $this->getFlags();
+        $pending = $this->getPendingObjectivePrompts();
         $pids = [];
         foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid !== 0) {
@@ -494,6 +573,7 @@ class Game extends \Bga\GameFramework\Table
             if (! $obj['active']) {
                 continue;
             }
+            $anyClaimed = in_array('claimed', array_values($obj['players'] ?? []), true);
             foreach ($pids as $pid) {
                 $status = $obj['players'][$pid] ?? 'unmet';
                 if ($status === 'claimed') {
@@ -501,6 +581,9 @@ class Game extends \Bga\GameFramework\Table
                 }
                 $meets = $this->evalObjectiveMeets((int) $obj['id'], $pid, $boards, $flags);
                 if ($meets) {
+                    if ($status === 'unmet' && $anyClaimed) {
+                        $pending[$pid] = array_values(array_unique(array_merge($pending[$pid] ?? [], [$oi])));
+                    }
                     $objectives[$oi]['players'][$pid] = 'meets';
                 } else {
                     if ($status === 'meets') {
@@ -510,6 +593,7 @@ class Game extends \Bga\GameFramework\Table
             }
         }
         $this->setObjectivesState($objectives);
+        $this->setPendingObjectivePrompts($pending);
     }
 
     /**
@@ -732,12 +816,30 @@ class Game extends \Bga\GameFramework\Table
         $objectivesData = Material::getObjectivesData();
         $objectiveTitle = $objectivesData[$oid]['title'] ?? '';
 
+        $objectives[$objectiveIndex]['players'][$activePlayerId] = 'claimed';
+        $this->bga->playerScore->inc($activePlayerId, 5, null);
+
+        $pending = $this->getPendingObjectivePrompts();
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            $ps = $objectives[$objectiveIndex]['players'][$pid] ?? 'unmet';
+            if ($pid !== $activePlayerId && $ps === 'meets') {
+                $pending[$pid] = array_values(array_unique(array_merge($pending[$pid] ?? [], [$objectiveIndex])));
+            }
+        }
+
+        $this->setObjectivesState($objectives);
+        $this->setPendingObjectivePrompts($pending);
+
         foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,
                 'objectiveClaimed',
-                clienttranslate('${player_name} claimed objective ${objective_title}'),
+                clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
                 [
                     'player_id' => $activePlayerId,
                     'player_name' => $claimerName,
@@ -749,38 +851,76 @@ class Game extends \Bga\GameFramework\Table
             );
         }
 
-        foreach ($this->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) {
-                continue;
-            }
-            $pid = (int) $pid;
-            $ps = $objectives[$objectiveIndex]['players'][$pid] ?? 'unmet';
-            if ($ps === 'meets') {
-                $objectives[$objectiveIndex]['players'][$pid] = 'claimed';
-                $this->bga->playerScore->inc($pid, 5, null);
-            }
+        foreach ($this->getNextPlayerTable() as $pid2 => $_2) {
+            if ($pid2 === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid2,
+                'objectiveScored',
+                clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $claimerName,
+                    'objective_index' => $objectiveIndex,
+                    'objective_id' => $oid,
+                    'objective_title' => $objectiveTitle,
+                    'score' => 5,
+                    'boardState' => $this->getBoardState((int)$pid2),
+                ]
+            );
+        }
 
-            $scorerName = $this->getPlayerNameById($pid);
+    }
 
-            foreach ($this->getNextPlayerTable() as $pid2 => $_2) {
-                if ($pid2 === 0) continue;
+    /**
+     * @throws \Bga\GameFramework\UserException
+     */
+    public function resolveObjectivePrompt(int $playerId, int $objectiveIndex, bool $claim): void
+    {
+        $objectives = $this->getObjectivesState();
+        if (! isset($objectives[$objectiveIndex])) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Invalid objective'));
+        }
+
+        $obj = $objectives[$objectiveIndex];
+        $status = $obj['players'][$playerId] ?? 'unmet';
+        if (! $obj['active'] || $status === 'claimed') {
+            $this->removePendingObjectivePrompt($playerId, $objectiveIndex);
+            return;
+        }
+
+        if ($status !== 'meets') {
+            throw new \Bga\GameFramework\UserException(clienttranslate('You cannot claim this objective yet'));
+        }
+
+        $oid = (int) $obj['id'];
+        $title = Material::getObjectivesData()[$oid]['title'] ?? '';
+        $playerName = $this->getPlayerNameById($playerId);
+
+        if ($claim) {
+            $objectives[$objectiveIndex]['players'][$playerId] = 'claimed';
+            $this->setObjectivesState($objectives);
+            $this->bga->playerScore->inc($playerId, 5, null);
+
+            foreach ($this->getNextPlayerTable() as $pid => $_) {
+                if ($pid === 0) continue;
                 $this->bga->notify->player(
-                    (int)$pid2,
+                    (int)$pid,
                     'objectiveScored',
-                    clienttranslate('${player_name} gained ${score} VP for objective ${objective_title}'),
+                    clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
                     [
-                        'player_id' => $pid,
-                        'player_name' => $scorerName,
+                        'player_id' => $playerId,
+                        'player_name' => $playerName,
                         'objective_index' => $objectiveIndex,
                         'objective_id' => $oid,
-                        'objective_title' => $objectiveTitle,
+                        'objective_title' => $title,
                         'score' => 5,
-                        'boardState' => $this->getBoardState((int)$pid2),
+                        'boardState' => $this->getBoardState((int)$pid),
                     ]
                 );
             }
         }
-        $this->setObjectivesState($objectives);
+
+        $this->removePendingObjectivePrompt($playerId, $objectiveIndex);
 
     }
 
@@ -800,6 +940,7 @@ class Game extends \Bga\GameFramework\Table
             }
         }
         $this->setObjectivesState($objectives);
+        $this->clearPendingObjectivePrompts();
     }
 
     public function playersWithLocationSevenPlusCards(): array

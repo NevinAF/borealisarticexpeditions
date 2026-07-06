@@ -79,3 +79,7 @@ interface ReplenishArgs {
 interface AssignCampArgs {
   locationCount: number;
 }
+
+interface PromptClaimArgs {
+  pendingByPlayer: Record<number, Array<{ index: number; id: number; title: string }>>;
+}

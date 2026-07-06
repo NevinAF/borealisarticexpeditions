@@ -7,6 +7,7 @@ namespace Bga\Games\BorealisArticExpeditions\States;
 use Bga\GameFramework\StateType;
 use Bga\GameFramework\States\GameState;
 use Bga\Games\BorealisArticExpeditions\Game;
+use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
 
 class NextPlayer extends GameState
 {
@@ -25,6 +26,9 @@ class NextPlayer extends GameState
     public function onEnteringState(int $activePlayerId)
     {
         $this->game->giveExtraTime($activePlayerId);
+        if ($this->game->hasPendingObjectivePrompts()) {
+            return PromptClaimObjective::class;
+        }
         $leader = $this->game->getRoundLeaderId();
         $next = $this->game->getPlayerAfter($activePlayerId);
         if ($next === $leader) {

@@ -74,6 +74,21 @@ class AssignCampScientists extends GameState
         return NextPlayer::class;
     }
 
+    #[PossibleAction]
+    public function actClaimObjective(
+        #[IntParam(min: 0, max: 2)] int $objective_index,
+        int $activePlayerId,
+        array $args,
+    ) {
+        $this->game->claimObjective($activePlayerId, $objective_index);
+
+        if ($this->game->hasPendingObjectivePrompts()) {
+            return PromptClaimObjective::class;
+        }
+
+        return null;
+    }
+
     public function zombie(int $playerId)
     {
         return $this->actAssignScientists(0, $playerId, $this->getArgs());
