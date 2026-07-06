@@ -29,12 +29,14 @@ class PromptClaimObjective extends GameState
 
     public function onEnteringState(?int $activePlayerId = null): mixed
     {
+        $returnState = $this->game->getPromptClaimReturnState();
         $players = array_keys($this->getEligiblePendingByPlayer());
         if (empty($players)) {
-            return Gameplay::class;
+            $this->game->clearPromptClaimReturnState();
+            return $returnState;
         }
 
-        $this->game->gamestate->setPlayersMultiactive(array_map('intval', $players), Gameplay::class, true);
+        $this->game->gamestate->setPlayersMultiactive(array_map('intval', $players), $returnState, true);
         return null;
     }
 
@@ -103,6 +105,7 @@ class PromptClaimObjective extends GameState
         int $currentPlayerId,
         array $args,
     ): mixed {
+        $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, true);
 
@@ -111,8 +114,13 @@ class PromptClaimObjective extends GameState
             return null;
         }
 
-        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, Gameplay::class);
-        return $finished ? Gameplay::class : null;
+        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, $returnState);
+        if ($finished) {
+            $this->game->clearPromptClaimReturnState();
+            return $returnState;
+        }
+
+        return null;
     }
 
     #[PossibleAction]
@@ -121,6 +129,7 @@ class PromptClaimObjective extends GameState
         int $currentPlayerId,
         array $args,
     ): mixed {
+        $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, false);
 
@@ -129,15 +138,25 @@ class PromptClaimObjective extends GameState
             return null;
         }
 
-        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, Gameplay::class);
-        return $finished ? Gameplay::class : null;
+        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, $returnState);
+        if ($finished) {
+            $this->game->clearPromptClaimReturnState();
+            return $returnState;
+        }
+
+        return null;
     }
 
     public function zombie(int $playerId)
     {
+        $returnState = $this->game->getPromptClaimReturnState();
         $pending = $this->getEligiblePendingByPlayer()[$playerId] ?? [];
         if (empty($pending)) {
-            $this->game->gamestate->setPlayerNonMultiactive($playerId, Gameplay::class);
+            $finished = $this->game->gamestate->setPlayerNonMultiactive($playerId, $returnState);
+            if ($finished) {
+                $this->game->clearPromptClaimReturnState();
+                return $returnState;
+            }
             return null;
         }
 

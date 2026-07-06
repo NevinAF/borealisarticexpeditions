@@ -673,7 +673,10 @@ class Game {
                 const playerState = obj.players?.[myId] ?? 'unmet';
                 if (playerState !== 'meets')
                     return;
-                void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+                // if inside the "promptclaimobjective" state, use that action instead:
+                const inGameplay = this.currentStateName().toLowerCase() == 'gameplay';
+                const actionName = inGameplay ? "actClaimObjective" : "actClaimPromptObjective";
+                void this.bga.actions.performAction(actionName, { objective_index: idx });
             });
         });
     }

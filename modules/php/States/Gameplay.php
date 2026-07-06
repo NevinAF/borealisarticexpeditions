@@ -169,6 +169,11 @@ class Gameplay extends GameState
                 );
             }
 
+        // Set the last returned count for "Morning Shift" objective.
+        $last = $g->getLastReturnedCounts();
+        $last[$activePlayerId] = $camp;
+        $g->setLastReturnedCounts($last);
+
         if ($camp > 0) {
             return AssignCampScientists::class;
         } else {
@@ -185,7 +190,7 @@ class Gameplay extends GameState
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {
-            return PromptClaimObjective::class;
+            return $this->game->enterPromptClaimObjectiveFrom(Game::PROMPT_RETURN_GAMEPLAY);
         }
 
         return null;

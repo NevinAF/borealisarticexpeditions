@@ -150,7 +150,7 @@ class ReplenishAnimalCard extends GameState
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {
-            return PromptClaimObjective::class;
+            return $this->game->enterPromptClaimObjectiveFrom(Game::PROMPT_RETURN_REPLENISH_ANIMAL);
         }
 
         return null;

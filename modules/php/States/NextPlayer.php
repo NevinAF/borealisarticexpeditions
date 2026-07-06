@@ -27,7 +27,7 @@ class NextPlayer extends GameState
     {
         $this->game->giveExtraTime($activePlayerId);
         if ($this->game->hasPendingObjectivePrompts()) {
-            return PromptClaimObjective::class;
+            return $this->game->enterPromptClaimObjectiveFrom(Game::PROMPT_RETURN_NEXT_PLAYER);
         }
         $leader = $this->game->getRoundLeaderId();
         $next = $this->game->getPlayerAfter($activePlayerId);
