@@ -20,7 +20,7 @@ interface AnimalCardDefinitionClient {
 interface MaterialsClient {
   animal_cards: AnimalCardDefinitionClient[] | Record<number, AnimalCardDefinitionClient>;
   objectives: Record<number, { title: string; description: string; type: number }>;
-  scoring_cards: Record<number, { title: string; description: string; explaination: string }>;
+  scoring_cards: Record<number, { title: string; description: string; explanation: string }>;
   player_boards: Record<number, {
     left_location: number[][];
     mid_location: number[][];

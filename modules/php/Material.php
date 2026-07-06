@@ -365,7 +365,7 @@ final class Material
     public const SCORE_TERRITORIAL_ANIMALS = 9;
 
     /**
-     * @return array<int, array{title: string, description: string, explaination: string}>
+     * @return array<int, array{title: string, description: string, explanation: string}>
      */
     public static function getScoringCardsData(): array
     {
@@ -373,52 +373,52 @@ final class Material
         self::SCORE_INTERSPECIES => [
             "title" => clienttranslate('Interspecies Relationships'),
             "description" => clienttranslate('3 VP for each location with animals of exactly 2 species.'),
-            "explaination" => clienttranslate('If a location contains animals of exactly 2 different species, score 3 VP for that location. Example: if only your middle location has exactly 2 species while the other two have 1 or 3+ species, you score 3 VP total.'),
+            "explanation" => clienttranslate('If a location contains animals of exactly 2 different species, score 3 VP for that location. Example: if only your middle location has exactly 2 species while the other two have 1 or 3+ species, you score 3 VP total.'),
         ],
         self::SCORE_SAFE_RETURN => [
             "title" => clienttranslate('Safe Return'),
             "description" => clienttranslate('3 VP for each scientist in a camp at the end of the game.'),
-            "explaination" => clienttranslate('Count all scientists in both camps at the end of the game and score 3 VP for each. Example: 2 scientists in the left camp and 3 in the right camp score 15 VP.'),
+            "explanation" => clienttranslate('Count all scientists in both camps at the end of the game and score 3 VP for each. Example: 2 scientists in the left camp and 3 in the right camp score 15 VP.'),
         ],
         self::SCORE_COMMON_DESTINATION => [
             "title" => clienttranslate('Common Destination'),
             "description" => clienttranslate('12 VP if all 3 flags are in a horizontal line, or 5 VP if 2 flags are in a horizontal line.'),
-            "explaination" => clienttranslate('Flags are in a horizontal line when they are the same distance from the start on their tracks. Example: if your left and right flags are 3 spaces from the start and your middle flag is 4 spaces from the start, 2 flags are aligned, so you score 5 VP.'),
+            "explanation" => clienttranslate('Flags are in a horizontal line when they are the same distance from the start on their tracks. Example: if your left and right flags are 3 spaces from the start and your middle flag is 4 spaces from the start, 2 flags are aligned, so you score 5 VP.'),
         ],
         self::SCORE_MATING_SEASON => [
             "title" => clienttranslate('Mating Season'),
             "description" => clienttranslate('2 VP for each set of exactly 2 adjacent animals of the same species in a location.'),
-            "explaination" => clienttranslate('Score each pair of adjacent cards of the same species in the same location only when the pair is exactly 2 cards; extra touching cards of that species do not count as that pair. Example: a sequence with two separate matching pairs in one location scores 4 VP there.'),
+            "explanation" => clienttranslate('Score each pair of adjacent cards of the same species in the same location only when the pair is exactly 2 cards; extra touching cards of that species do not count as that pair. Example: a sequence with two separate matching pairs in one location scores 4 VP there.'),
         ],
         self::SCORE_OUTER_LANDS => [
             "title" => clienttranslate('Outer Lands'),
             "description" => clienttranslate('7 VP for each outer location with more animal cards than the middle location.'),
-            "explaination" => clienttranslate('Compare the left and right locations separately against the middle location. Example: if you have 5 cards left, 5 middle, and 6 right, only the right location scores, for 7 VP total.'),
+            "explanation" => clienttranslate('Compare the left and right locations separately against the middle location. Example: if you have 5 cards left, 5 middle, and 6 right, only the right location scores, for 7 VP total.'),
         ],
         self::SCORE_EXPANSIVE_SPECIES => [
             "title" => clienttranslate('Expansive Species'),
             "description" => clienttranslate('5 VP for each horizontal row of 3 animals of the same species.'),
-            "explaination" => clienttranslate('A horizontal row is formed by 3 cards of the same species at the same depth across your left, middle, and right locations. Example: if the bottom card in all 3 locations is the same species and the third card in all 3 locations is also the same species, you score 10 VP.'),
+            "explanation" => clienttranslate('A horizontal row is formed by 3 cards of the same species at the same depth across your left, middle, and right locations. Example: if the bottom card in all 3 locations is the same species and the third card in all 3 locations is also the same species, you score 10 VP.'),
         ],
         self::SCORE_FAREWELL_PARTY => [
             "title" => clienttranslate('Farewell Party'),
             "description" => clienttranslate('2 VP for each scientist in 1 location of your choice at the end of the game.'),
-            "explaination" => clienttranslate('At the end of the game, choose 1 location, not a camp, and score 2 VP for each of your scientists there. Example: if your chosen location has 4 scientists, you score 8 VP.'),
+            "explanation" => clienttranslate('At the end of the game, choose 1 location, not a camp, and score 2 VP for each of your scientists there. Example: if your chosen location has 4 scientists, you score 8 VP.'),
         ],
         self::SCORE_POPULAR_VEHICLE => [
             "title" => clienttranslate('Popular Vehicle'),
             "description" => clienttranslate('2 VP for each card with your most common vehicle type.'),
-            "explaination" => clienttranslate('Determine which vehicle type appears most often among your cards in play and score 2 VP for each card of that type. If there is a tie for most common vehicle, choose only 1 tied vehicle type for scoring. Example: if skis appears on 4 of your cards, you score 8 VP.'),
+            "explanation" => clienttranslate('Determine which vehicle type appears most often among your cards in play and score 2 VP for each card of that type. If there is a tie for most common vehicle, choose only 1 tied vehicle type for scoring. Example: if skis appears on 4 of your cards, you score 8 VP.'),
         ],
         self::SCORE_TERRITORIAL_ANIMALS => [
             "title" => clienttranslate('Territorial Animals'),
             "description" => clienttranslate('6 VP for each location with no adjacent animals of the same species.'),
-            "explaination" => clienttranslate('Check each location independently. A location scores only if no 2 vertically adjacent cards in that location show the same species. Horizontal matches between different locations do not matter. Example: if your left and right locations have no matching adjacent species but your middle location does, you score 12 VP.'),
+            "explanation" => clienttranslate('Check each location independently. A location scores only if no 2 vertically adjacent cards in that location show the same species. Horizontal matches between different locations do not matter. Example: if your left and right locations have no matching adjacent species but your middle location does, you score 12 VP.'),
         ],
         self::SCORE_UNTRODDEN_PATH => [
             "title" => clienttranslate('Untrodden Path'),
             "description" => clienttranslate('2 times the VP value of your least-scoring flag.'),
-            "explaination" => clienttranslate('Look at the VP values of the 3 track spaces your flags occupy, find the lowest one, and double it. If 2 or more flags tie for the lowest value, use that value only once. Example: if your flags are on spaces worth 3, 4, and 5 VP, you score 6 VP.'),
+            "explanation" => clienttranslate('Look at the VP values of the 3 track spaces your flags occupy, find the lowest one, and double it. If 2 or more flags tie for the lowest value, use that value only once. Example: if your flags are on spaces worth 3, 4, and 5 VP, you score 6 VP.'),
         ],
     ];
     }
