@@ -4,7 +4,8 @@ export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
   private static readonly BOARD_REFERENCE_HEIGHT_PX = 2600;
   private static readonly TOP_ROW_REFERENCE_WIDTH_PX = 6124;
-  private static readonly TOP_ROW_REFERENCE_HEIGHT_PX = 1200;
+  private static readonly MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
+  private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120*4;
 
   bga!: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
   gamedatas!: BorealisArticExpeditionsGamedatas;
@@ -13,6 +14,10 @@ export class Game {
   private selectedLocation: number | null = null;
   private campSelected = false;
   private selectedRegroupIds = new Set<number>();
+  private boardScaleTimeoutId: number | null = null;
+  private boardScaleTimeoutAccInterval: number | null = null;
+  private static readonly ZOOM_FACTORS = [0.75, 0.9, 1, 1.1, 1.25];
+  private zoomIndex = 2;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -76,19 +81,81 @@ export class Game {
   private updateBoardScale(): void {
     if (!this.root) return;
 
-    const area = this.bga.gameArea.getElement();
-    const areaRect = area.getBoundingClientRect();
-    const rootRect = this.root.getBoundingClientRect();
+    if (this.boardScaleTimeoutId !== null) {
+      window.clearTimeout(this.boardScaleTimeoutId);
+      this.boardScaleTimeoutId = null;
+    }
 
-    const availableWidth = Math.max(1, areaRect.width);
-    const availableHeight = Math.max(1, window.innerHeight - rootRect.top - 8);
-    const scaleByBoardWidth = availableWidth / Game.BOARD_REFERENCE_WIDTH_PX;
-    const scaleByBoardHeight = availableHeight / (Game.BOARD_REFERENCE_HEIGHT_PX + Game.TOP_ROW_REFERENCE_HEIGHT_PX);
-    // const scaleByMaxTargetWidth = 740 / Game.BOARD_REFERENCE_WIDTH_PX;
-    const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
-    const scale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
-
+    const scale = this.getScale();
     this.root.style.setProperty('--bae-scale', String(scale));
+    this.boardScaleTimeoutAccInterval = 10;
+    this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
+  }
+
+    private getScale(): number {
+      const area = this.bga.gameArea.getElement();
+      const areaRect = area.getBoundingClientRect();
+      const rootRect = this.root.getBoundingClientRect();
+
+      const availableWidth = Math.max(1, areaRect.width);
+      const availableHeight = Math.max(1, window.innerHeight - rootRect.top - 8);
+      const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
+      const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
+      const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
+      const autoScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
+      const zoomFactor = Game.ZOOM_FACTORS[this.zoomIndex] ?? 1;
+      const scale = Math.max(0.01, autoScale * zoomFactor);
+
+      return scale;
+    };
+
+  private verifyBoardScaleTimeout(expectedScale: number): void {
+      this.boardScaleTimeoutId = null;
+      if (!this.root) return;
+
+      const appliedScale = Number.parseFloat(getComputedStyle(this.root).getPropertyValue('--bae-scale'));
+      const currentScale = Number.isFinite(appliedScale) ? appliedScale : 0;
+      const nextScale = this.getScale();
+      if (Math.abs(nextScale - currentScale) > 0.0001 || Math.abs(nextScale - expectedScale) > 0.0001) {
+        this.updateBoardScale();
+      }
+      else {
+        if (this.boardScaleTimeoutAccInterval === null) {
+            this.boardScaleTimeoutAccInterval = 10;
+        }
+
+        this.boardScaleTimeoutAccInterval *= 2;
+        if (this.boardScaleTimeoutAccInterval < 2000) {
+            this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(expectedScale), this.boardScaleTimeoutAccInterval);
+        }
+      }
+    }
+
+  private bindZoomHandlers(): void {
+    const outBtn = this.root.querySelector('[data-zoom="out"]') as HTMLButtonElement | null;
+    const inBtn = this.root.querySelector('[data-zoom="in"]') as HTMLButtonElement | null;
+    const resetBtn = this.root.querySelector('[data-zoom="reset"]') as HTMLButtonElement | null;
+
+    outBtn?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (this.zoomIndex <= 0) return;
+      this.zoomIndex -= 1;
+      this.renderAll();
+    });
+
+    inBtn?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (this.zoomIndex >= Game.ZOOM_FACTORS.length - 1) return;
+      this.zoomIndex += 1;
+      this.renderAll();
+    });
+
+    resetBtn?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (this.zoomIndex === 2) return;
+      this.zoomIndex = 2;
+      this.renderAll();
+    });
   }
 
   /** Main state name (handles nested private_state in some BGA builds). */
@@ -149,8 +216,17 @@ export class Game {
       names[Number(pid)] = p.name;
     }
     const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
+    const canZoomOut = this.zoomIndex > 0;
+    const canZoomIn = this.zoomIndex < Game.ZOOM_FACTORS.length - 1;
+    const canResetZoom = this.zoomIndex !== 2;
 
     this.handleLastTurnBanner(d.playersEndingGame);
+
+    html += `<div class="bae_zoom_controls" role="group" aria-label="${_('Zoom controls')}">`;
+    html += `<button type="button" class="bae_zoom_btn" data-zoom="out" ${canZoomOut ? '' : 'disabled'} aria-label="${_('Zoom out')}" title="${_('Zoom out')}">-</button>`;
+    html += `<button type="button" class="bae_zoom_btn" data-zoom="in" ${canZoomIn ? '' : 'disabled'} aria-label="${_('Zoom in')}" title="${_('Zoom in')}">+</button>`;
+    html += `<button type="button" class="bae_zoom_btn" data-zoom="reset" ${canResetZoom ? '' : 'disabled'} aria-label="${_('Reset zoom')}" title="${_('Reset zoom')}">⟳</button>`;
+    html += `</div>`;
 
     html += `<div class="bae_table">`;
     html += `<div class="bae_toprow">`;
@@ -202,11 +278,16 @@ export class Game {
       ? allPids
       : [myId, ...allPids.slice(currentIdx + 1), ...allPids.slice(0, currentIdx)];
 
+    html += `<div class="bae_playerboards">`;
     for (const pid of orderedPids) {
       const isSelf = pid === myId;
       const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length + 1), 1) ?? 1;
+      const rawPlayerColor = String(this.gamedatas.players[pid]?.color ?? "");
+      const playerColor = rawPlayerColor.length > 0
+        ? (rawPlayerColor.startsWith("#") ? rawPlayerColor : `#${rawPlayerColor}`)
+        : "#1a1a1a";
       // Anchor each player board so scoring animations can target it
-      html += `<section id="bae_playerboard_${pid}" class="bae_playerboard" data-player-id="${pid}"><h3 class="bae_heading">${names[pid] ?? pid}</h3>`;
+      html += `<section id="bae_playerboard_${pid}" class="bae_playerboard" data-player-id="${pid}"><h3 class="bae_heading bae_player_name" style="color:${playerColor}">${names[pid] ?? pid}</h3>`;
 
       // Playerboard inner wrapper holds the left-hand column (hand slots)
       // and the board canvas to its right.
@@ -291,6 +372,7 @@ export class Game {
       html += `</div>`;
       html += `</section>`;
     }
+    html += `</div>`;
 
     html += `</div>`;
     this.root.innerHTML = html;
@@ -300,6 +382,7 @@ export class Game {
     this.registerTooltips();
     this.renderPlayerPanelInfo();
     this.renderHand(myId);
+    this.bindZoomHandlers();
     this.bindTableHandlers(myId);
   }
 
