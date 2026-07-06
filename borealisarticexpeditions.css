@@ -301,6 +301,27 @@ html[data-theme=dark] {
   border-right: 2px dashed rgba(42, 111, 219, 0.28);
   box-sizing: border-box;
   cursor: pointer;
+  z-index: 2;
+}
+.bae_location_zone {
+  /* Selection overlay spans the full visual location, including the top extension. */
+}
+.bae_location_zone::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--bae_board_top_margin));
+  height: calc(100% + var(--bae_board_top_margin));
+  background: rgba(238, 244, 255, 0.38);
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 120ms ease;
 }
 .bae_location_zone .bae_sci_shelf {
   position: absolute;
@@ -457,8 +478,18 @@ html[data-theme=dark] {
 
 .bae_loc_selected {
   border-color: #2a6fdb;
-  background: rgba(238, 244, 255, 0.38);
-  box-shadow: 0 0 0 1px rgba(42, 111, 219, 0.2);
+  background: transparent;
+  box-shadow: none;
+}
+
+.bae_loc_selected::before {
+  border-top: 2px dashed #2a6fdb;
+  border-left: 2px dashed #2a6fdb;
+  border-right: 2px dashed #2a6fdb;
+}
+
+.bae_loc_selected::after {
+  opacity: 1;
 }
 
 .bae_loc_head {

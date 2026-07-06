@@ -158,6 +158,69 @@ export class Game {
     });
   }
 
+  private ownHandCardActionText(): string {
+    if (!this.bga.players.isCurrentPlayerActive()) {
+      return _('You are not the active player.');
+    }
+    if (this.isOpeningMulliganLike() || this.campSelected) {
+      return _('Click to select/deselect for discard');
+    }
+    if (this.isGameplayLike()) {
+      return _('Click to observe animal');
+    }
+    return _('Click to select card');
+  }
+
+  private registerHandTooltips(myId: number): void {
+    if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function') return;
+    const canHtmlTooltip = typeof this.bga.gameui.addTooltipHtml === 'function';
+
+    // Hidden cards in other players' hands.
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const pid = Number(pidStr);
+      if (pid === myId) continue;
+      const hiddenCards = this.root.querySelectorAll(`.bae_player_handcol[data-player-id="${pid}"] .bae_handcard_hidden`);
+      hiddenCards.forEach((el, idx) => {
+        const host = el as HTMLElement;
+        const id = host.id || `bae_hand_hidden_${pid}_${idx}`;
+        if (!host.id) host.id = id;
+        try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+        if (canHtmlTooltip) {
+          const html = this.buildCardTooltipHtml(
+            this.imagePath('AnimalCards', 9999),
+            _('Hidden hand card'),
+            [_('You cannot see cards in other players hands')],
+          );
+          this.bga.gameui.addTooltipHtml(id, html);
+        } else {
+          this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands'), '');
+        }
+      });
+    }
+
+    // Visible cards in your own hand.
+    const actionText = this.ownHandCardActionText();
+    const myCards = this.root.querySelectorAll(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`);
+    myCards.forEach((el) => {
+      const host = el as HTMLElement;
+      const cardId = host.dataset.handCard ?? '';
+      const id = host.id || `bae_hand_${myId}_${cardId}`;
+      if (!host.id) host.id = id;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      if (canHtmlTooltip) {
+        const numericCardId = Number(cardId);
+        const html = this.buildCardTooltipHtml(
+          this.imagePath('AnimalCards', numericCardId),
+          `${_('Animal card')} #${numericCardId}`,
+          [actionText],
+        );
+        this.bga.gameui.addTooltipHtml(id, html);
+      } else {
+        this.bga.gameui.addTooltip(id, _('Your hand card'), actionText);
+      }
+    });
+  }
+
   /** Main state name (handles nested private_state in some BGA builds). */
   private currentStateName(): string {
     const gs = this.gamedatas.gamestate as { name?: string; private_state?: { name?: string } };
@@ -267,7 +330,7 @@ export class Game {
 
     // Scoring group (right, 2 columns with centered final row)
     html += `<div class="bae_top_group bae_top_scoring"><div class="bae_scoring">${d.scoring_cards
-      .map((id) => `<span class="bae_score_card">${this.scoringFaceById(id)}</span>`)
+      .map((id, idx) => `<span id="bae_score_${idx}" class="bae_score_card" data-score-idx="${idx}">${this.scoringFaceById(id)}</span>`)
       .join("")}</div></div>`;
     html += `</div>`;
 
@@ -301,7 +364,7 @@ export class Game {
         const cnt = Number(handInfo);
         for (let hi = 0; hi < 4; hi++) {
           if (hi < cnt) {
-            html += `<div class="bae_card bae_handcard_hidden">${this.cardFaceById(9999)}</div>`;
+            html += `<div id="bae_hand_hidden_${pid}_${hi}" class="bae_card bae_handcard_hidden">${this.cardFaceById(9999)}</div>`;
           } else {
             html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
           }
@@ -313,7 +376,7 @@ export class Game {
         } else {
           const cnt = handInfo.length;
           for (let hi = 0; hi < 4; hi++) {
-            if (hi < cnt) html += `<div class="bae_card">${this.cardFaceById(9999)}</div>`;
+            if (hi < cnt) html += `<div id="bae_hand_hidden_${pid}_${hi}" class="bae_card bae_handcard_hidden">${this.cardFaceById(9999)}</div>`;
             else html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
           }
         }
@@ -382,6 +445,7 @@ export class Game {
     this.registerTooltips();
     this.renderPlayerPanelInfo();
     this.renderHand(myId);
+    this.registerHandTooltips(myId);
     this.bindZoomHandlers();
     this.bindTableHandlers(myId);
   }
@@ -400,12 +464,22 @@ export class Game {
     if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function') return;
 
     const d = this.gamedatas.boardState;
+    const canHtmlTooltip = typeof this.bga.gameui.addTooltipHtml === 'function';
 
     // Pool slots
     (d.pool || []).forEach((slot) => {
       const id = `bae_pool_slot_${slot.slot}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltip(id, _('Pool card'), _('Click to take this card'));
+      if (canHtmlTooltip) {
+        const html = this.buildCardTooltipHtml(
+          this.imagePath('AnimalCards', slot.id),
+          _('Pool card'),
+          [_('Click to take this card')],
+        );
+        this.bga.gameui.addTooltipHtml(id, html);
+      } else {
+        this.bga.gameui.addTooltip(id, _('Pool card'), _('Click to take this card'));
+      }
     });
     try { this.bga.gameui.removeTooltip('bae_pool_slot_deck'); } catch (_) {}
     this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
@@ -417,7 +491,44 @@ export class Game {
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
       const help = `${_('Objective')}: ${objectiveMat?.title ?? obj.id}<br>${objectiveMat?.description ?? ''}`;
       const action = obj.active ? _('Click to claim this objective') : '';
-      this.bga.gameui.addTooltip(id, help, action);
+      if (canHtmlTooltip) {
+        const html = this.buildCardTooltipHtml(
+          this.imagePath('ObjectiveCards', obj.id),
+          objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
+          [objectiveMat?.description ?? '', action],
+        );
+        this.bga.gameui.addTooltipHtml(id, html);
+      } else {
+        this.bga.gameui.addTooltip(id, help, action);
+      }
+    });
+
+    // Scoring cards
+    (d.scoring_cards || []).forEach((scoringId, idx) => {
+      const id = `bae_score_${idx}`;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+
+      const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
+      const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
+      const description = scoringMat?.description ?? '';
+      const explanation = scoringMat?.explanation ?? '';
+      if (canHtmlTooltip) {
+        const html = this.buildCardTooltipHtml(
+          this.imagePath('ScoringCards', scoringId),
+          title,
+          [
+            description ? `${_('Description')}: ${description}` : '',
+            explanation ? `${_('Explanation')}: ${explanation}` : '',
+          ],
+        );
+        this.bga.gameui.addTooltipHtml(id, html);
+      } else {
+        this.bga.gameui.addTooltip(
+          id,
+          `${title}<br>${_('Description')}: ${description}<br>${_('Explanation')}: ${explanation}`,
+          '',
+        );
+      }
     });
 
     // Camps and scientist shelves: build per-location summaries using
@@ -590,6 +701,32 @@ export class Game {
     return `<img class="${className}" src="${src}" alt="${safeAlt}" draggable="false"${attrs}/>`;
   }
 
+  private escapeHtml(value: string): string {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private buildCardTooltipHtml(imageUrl: string, title: string, details: string[]): string {
+    const safeTitle = this.escapeHtml(title);
+    const detailHtml = details
+      .filter((line) => line && line.trim().length > 0)
+      .map((line) => `<div>${this.escapeHtml(line)}</div>`)
+      .join('');
+    return `
+      <div style="display:flex;gap:12px;align-items:flex-start;max-width:560px;">
+        <img src="${imageUrl}" alt="${safeTitle}" style="width:220px;height:auto;display:block;border-radius:6px;"/>
+        <div style="font-size:13px;line-height:1.35;">
+          <div style="font-weight:700;margin-bottom:6px;">${safeTitle}</div>
+          ${detailHtml}
+        </div>
+      </div>
+    `;
+  }
+
   private cardFaceById(cardId: number): string {
     return this.imageTag("AnimalCards", cardId, "bae_card_img", `${_("Animal card")} #${cardId}`);
   }
@@ -625,7 +762,7 @@ export class Game {
       // Show card backs for hidden cards up to 4 slots
       const cnt = Number(h);
       for (let i = 0; i < 4; i++) {
-        if (i < cnt) html += `<div class="bae_card">${this.cardFaceById(9999)}</div>`;
+        if (i < cnt) html += `<div id="bae_hand_hidden_${myId}_${i}" class="bae_card bae_handcard_hidden">${this.cardFaceById(9999)}</div>`;
         else html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
       }
     } else if (Array.isArray(h)) {
@@ -634,7 +771,7 @@ export class Game {
         const id = Number(c.id);
         const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
         const selRg = (this.campSelected || this.isOpeningMulliganLike()) && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
-        html += `<button type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}</button>`;
+        html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}</button>`;
       }
       for (let i = h.length; i < HAND_RESERVE; i++) {
         html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
