@@ -958,8 +958,8 @@ class Game {
                 if (playerState !== 'meets')
                     return;
                 // if inside the "promptclaimobjective" state, use that action instead:
-                const inGameplay = this.currentStateName().toLowerCase() == 'gameplay';
-                const actionName = inGameplay ? "actClaimObjective" : "actClaimPromptObjective";
+                const inClaim = this.isOpeningMulliganLike();
+                const actionName = inClaim ? "actClaimPromptObjective" : "actClaimObjective";
                 void this.bga.actions.performAction(actionName, { objective_index: idx });
             });
         });
