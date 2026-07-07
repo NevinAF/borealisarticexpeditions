@@ -3,6 +3,7 @@ class Game {
     constructor(bga) {
         this.selectedCardId = null;
         this.selectedLocation = null;
+        this.selectedPoolSlot = null;
         this.campSelected = false;
         this.selectedRegroupIds = new Set();
         this.boardScaleTimeoutId = null;
@@ -21,6 +22,14 @@ class Game {
         // Keep --board-scale up to date when the window resizes
         window.addEventListener('resize', () => this.updateBoardScale());
         this.renderAll();
+        // Re-fit once custom fonts are fully ready to avoid first-interaction text jumps.
+        if (document.fonts && typeof document.fonts.ready?.then === 'function') {
+            void document.fonts.ready.then(() => {
+                if (!this.root)
+                    return;
+                this.fitCardOverlayText();
+            });
+        }
     }
     renderPlayerPanelInfo() {
         const d = this.gamedatas.boardState;
@@ -188,6 +197,7 @@ class Game {
         myCards.forEach((el) => {
             const host = el;
             const cardId = host.dataset.handCard ?? '';
+            const numericCardId = Number(cardId);
             const id = host.id || `bae_hand_${myId}_${cardId}`;
             if (!host.id)
                 host.id = id;
@@ -196,7 +206,6 @@ class Game {
             }
             catch (_) { }
             if (canHtmlTooltip) {
-                const numericCardId = Number(cardId);
                 const html = this.buildCardTooltipSpriteHtml('animal', numericCardId, `${_('Animal card')} #${numericCardId}`, [actionText]);
                 this.bga.gameui.addTooltipHtml(id, html);
             }
@@ -231,6 +240,7 @@ class Game {
     enterRegroupMode() {
         this.selectedCardId = null;
         this.selectedLocation = null;
+        this.selectedPoolSlot = null;
         this.campSelected = true;
         this.selectedRegroupIds.clear();
         this.renderAll();
@@ -239,10 +249,22 @@ class Game {
     clearSelection() {
         this.selectedCardId = null;
         this.selectedLocation = null;
+        this.selectedPoolSlot = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
+    }
+    confirmObserveIfReady(cardId, location) {
+        if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
+            return false;
+        if (cardId == null || location == null)
+            return false;
+        void this.bga.actions.performAction("actObserveAnimal", {
+            card_id: cardId,
+            location,
+        });
+        return true;
     }
     renderAll() {
         this.syncGamedatas();
@@ -258,6 +280,10 @@ class Game {
         const canZoomOut = this.zoomIndex > 0;
         const canZoomIn = this.zoomIndex < Game.ZOOM_FACTORS.length - 1;
         const canResetZoom = this.zoomIndex !== 2;
+        const canConfirmObserve = this.isGameplayLike() && this.selectedCardId != null && this.selectedLocation != null;
+        const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
+        const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
+        const confirmObserveBlurb = _('Confirm?');
         this.handleLastTurnBanner(d.playersEndingGame);
         html += `<div class="bae_zoom_controls" role="group" aria-label="${_('Zoom controls')}">`;
         html += `<button type="button" class="bae_zoom_btn" data-zoom="out" ${canZoomOut ? '' : 'disabled'} aria-label="${_('Zoom out')}" title="${_('Zoom out')}">-</button>`;
@@ -287,13 +313,18 @@ class Game {
         html += `</div></div>`;
         // Pool group (middle): deck slot first, then pool cards
         html += `<div class="bae_top_group bae_top_pool"><div class="bae_pool">`;
-        html += `<button id="bae_pool_slot_deck" type="button" class="bae_card bae_pool_slot bae_pool_deck" data-pool-slot="-1">`;
+        const deckConfirmClass = canConfirmTake && this.selectedPoolSlot === -1 ? ' bae_card_selected' : '';
+        html += `<button id="bae_pool_slot_deck" type="button" class="bae_card bae_pool_slot bae_pool_deck${deckConfirmClass}" data-pool-slot="-1">`;
         html += `${this.cardFaceById(9999)}`;
+        if (canConfirmTake && this.selectedPoolSlot === -1) {
+            html += `<span class="bae_confirm_blurb">${confirmObserveBlurb}</span>`;
+        }
         html += `<span class="bae_deck_overlay">${_("Deck")}: ${d.deck_count}<br>${_("Discard")}: ${d.discard_count}</span>`;
         html += `</button>`;
         const sortedPool = [...d.pool].sort((a, b) => a.slot - b.slot);
         for (const slot of sortedPool) {
-            html += `<button id="bae_pool_slot_${slot.slot}" type="button" class="bae_card bae_pool_slot" data-pool-slot="${slot.slot}">${this.cardFaceById(slot.id)}</button>`;
+            const slotConfirmClass = canConfirmTake && this.selectedPoolSlot === slot.slot ? ' bae_card_selected' : '';
+            html += `<button id="bae_pool_slot_${slot.slot}" type="button" class="bae_card bae_pool_slot${slotConfirmClass}" data-pool-slot="${slot.slot}">${this.cardFaceById(slot.id)}${canConfirmTake && this.selectedPoolSlot === slot.slot ? `<span class="bae_confirm_blurb">${confirmObserveBlurb}</span>` : ''}</button>`;
         }
         html += `</div></div>`;
         // Scoring group (right, 2 columns with centered final row)
@@ -384,6 +415,9 @@ class Game {
                 html += `</div>`;
                 html += this.renderTrackColumn(pid, track, loc, d.flags[pid]?.[loc] ?? 0);
                 html += `<div id="bae_sci_shelf_loc_${pid}_${loc}" class="bae_sci_shelf" data-sci-shelf="${loc}">${this.renderScientistDots(pid, d.scientists[pid], loc)}</div>`;
+                if (isSelf && this.selectedLocation === loc && (canConfirmObserve || canConfirmAssign)) {
+                    html += `<span class="bae_confirm_blurb bae_location_confirm">${confirmObserveBlurb}</span>`;
+                }
                 html += `</div>`;
             }
             html += `</div>`;
@@ -888,7 +922,10 @@ class Game {
                 const id = Number(c.id);
                 const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
                 const selRg = (this.campSelected || this.isOpeningMulliganLike()) && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
-                html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}</button>`;
+                const confirmBlurb = this.isGameplayLike() && this.selectedCardId === id && this.selectedLocation != null
+                    ? `<span class="bae_confirm_blurb">${this.escapeHtml(_('Confirm?'))}</span>`
+                    : '';
+                html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}${confirmBlurb}</button>`;
             }
             for (let i = h.length; i < HAND_RESERVE; i++) {
                 html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
@@ -920,7 +957,12 @@ class Game {
                         this.selectedRegroupIds.add(id);
                 }
                 else if (this.isGameplayLike()) {
-                    this.selectedCardId = this.selectedCardId === id ? null : id;
+                    if (this.selectedCardId === id) {
+                        if (this.confirmObserveIfReady(id, this.selectedLocation))
+                            return;
+                        return;
+                    }
+                    this.selectedCardId = id;
                 }
                 else {
                     return;
@@ -948,7 +990,12 @@ class Game {
                     return;
                 const loc = Number(el.dataset.loc);
                 if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
-                    void this.bga.actions.performAction("actAssignScientists", { location: loc });
+                    if (this.selectedLocation === loc) {
+                        void this.bga.actions.performAction("actAssignScientists", { location: loc });
+                        return;
+                    }
+                    this.selectedLocation = loc;
+                    this.renderAll();
                     return;
                 }
                 if (this.isGameplayLike() && this.bga.players.isCurrentPlayerActive()) {
@@ -963,7 +1010,12 @@ class Game {
                         this.onUpdateActionButtons(this.currentStateName(), null);
                     }
                     else {
-                        this.selectedLocation = this.selectedLocation === loc ? null : loc;
+                        if (this.selectedLocation === loc) {
+                            if (this.confirmObserveIfReady(this.selectedCardId, loc))
+                                return;
+                            return;
+                        }
+                        this.selectedLocation = loc;
                         this.renderAll();
                         // Update action row when selecting/deselecting a location
                         this.onUpdateActionButtons(this.currentStateName(), null);
@@ -990,7 +1042,12 @@ class Game {
                 if (pid !== myId)
                     return;
                 if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
-                    void this.bga.actions.performAction('actAssignScientists', { location: loc });
+                    if (this.selectedLocation === loc) {
+                        void this.bga.actions.performAction('actAssignScientists', { location: loc });
+                        return;
+                    }
+                    this.selectedLocation = loc;
+                    this.renderAll();
                     return;
                 }
                 if (this.isGameplayLike() && this.bga.players.isCurrentPlayerActive()) {
@@ -1003,7 +1060,12 @@ class Game {
                         this.onUpdateActionButtons(this.currentStateName(), null);
                     }
                     else {
-                        this.selectedLocation = this.selectedLocation === loc ? null : loc;
+                        if (this.selectedLocation === loc) {
+                            if (this.confirmObserveIfReady(this.selectedCardId, loc))
+                                return;
+                            return;
+                        }
+                        this.selectedLocation = loc;
                         this.renderAll();
                         this.onUpdateActionButtons(this.currentStateName(), null);
                     }
@@ -1019,13 +1081,10 @@ class Game {
                     return;
                 if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
                     return;
-                // Toggle camp selection when clicking the camp again
-                if (this.campSelected) {
-                    this.clearSelection();
-                }
-                else {
-                    this.enterRegroupMode();
-                }
+                // Camp selection is idempotent: clicking camp again does nothing.
+                if (this.campSelected)
+                    return;
+                this.enterRegroupMode();
             }, true);
         });
         this.root.querySelectorAll("[data-pool-slot]").forEach((el) => {
@@ -1035,7 +1094,12 @@ class Game {
                 if (!this.isReplenishLike())
                     return;
                 const slot = Number(el.dataset.poolSlot);
-                void this.bga.actions.performAction("actTakeAnimal", { pool_slot: slot });
+                if (this.selectedPoolSlot === slot) {
+                    void this.bga.actions.performAction("actTakeAnimal", { pool_slot: slot });
+                    return;
+                }
+                this.selectedPoolSlot = slot;
+                this.renderAll();
             });
         });
         this.root.querySelectorAll("[data-obj-idx]").forEach((el) => {
@@ -1060,6 +1124,7 @@ class Game {
     onEnteringState(stateName, _args) {
         this.selectedCardId = null;
         this.selectedLocation = null;
+        this.selectedPoolSlot = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         const n = stateName.toLowerCase();
