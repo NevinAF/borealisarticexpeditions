@@ -852,3 +852,65 @@ html[data-theme=dark] {
   font-size: calc(50px * var(--bae-scale));
   opacity: 0.85;
 }
+
+.bae_panel_info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1;
+  width: 100%;
+}
+
+.bae_panel_grid {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bae_panel_section {
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, auto));
+  row-gap: 2px;
+}
+
+.bae_panel_item {
+  display: inline-grid;
+  grid-template-columns: 7px minmax(14px, auto);
+  align-items: center;
+  column-gap: 4px;
+  min-height: 14px;
+}
+
+.bae_panel_item_empty {
+  opacity: 0;
+}
+
+.bae_panel_icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.bae_panel_value {
+  text-align: right;
+  font-weight: 600;
+  min-width: 1ch;
+}
+
+.bae_panel_sep {
+  opacity: 0.7;
+  align-self: center;
+  font-weight: 700;
+}
+
+.bae_panel_first_player {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}

@@ -60,9 +60,38 @@ export class Game {
   private renderPlayerPanelInfo(): void {
     const d = this.gamedatas.boardState;
     const firstPlayerId = Number((this.gamedatas.playerOrder ?? [])[0] ?? 0);
-    // const leftLabel = this.gamedatas.materials.location_names?.[0] ?? _("Left");
-    // const middleLabel = this.gamedatas.materials.location_names?.[1] ?? _("Middle");
-    // const rightLabel = this.gamedatas.materials.location_names?.[2] ?? _("Right");
+    const baseUrl = this.bga.images.getImgUrl();
+    const animalIcon = `${baseUrl}Tokens/animal_obj.webp`;
+    const scientistIcon = `${baseUrl}Tokens/meeple_obj.webp`;
+    const trackIcon = `${baseUrl}Tokens/track_obj.webp`;
+    const firstPlayerToken = `${baseUrl}Tokens/FirstPlayerToken.webp`;
+
+    const scientistCountAt = (pid: number, location: number): number => {
+      const sci = d.scientists?.[pid];
+      if (!sci) return 0;
+      let count = 0;
+      for (let col = 0; col < 3; col++) {
+        const poses = sci[col] ?? [];
+        count += poses.filter((p) => p === location).length;
+      }
+      return count;
+    };
+
+    const locationPanelHtml = (animals: number, scientists: number, flagDepth: number): string => {
+      return [
+        `<span class="bae_panel_item"><img class="bae_panel_icon" src="${animalIcon}" alt="" draggable="false"/><span class="bae_panel_value">${animals}</span></span>`,
+        `<span class="bae_panel_item"><img class="bae_panel_icon" src="${scientistIcon}" alt="" draggable="false"/><span class="bae_panel_value">${scientists}</span></span>`,
+        `<span class="bae_panel_item"><img class="bae_panel_icon" src="${trackIcon}" alt="" draggable="false"/><span class="bae_panel_value">${flagDepth}</span></span>`,
+      ].join('');
+    };
+
+    const campPanelHtml = (scientists: number): string => {
+      return [
+        `<span class="bae_panel_item bae_panel_item_empty"></span>`,
+        `<span class="bae_panel_item"><img class="bae_panel_icon" src="${scientistIcon}" alt="" draggable="false"/><span class="bae_panel_value">${scientists}</span></span>`,
+        `<span class="bae_panel_item bae_panel_item_empty"></span>`,
+      ].join('');
+    };
 
     for (const pidStr of Object.keys(this.gamedatas.players)) {
       const pid = Number(pidStr);
@@ -75,14 +104,38 @@ export class Game {
         host.appendChild(infoEl);
       }
 
-      const leftCount = d.boards[pid]?.[0]?.length ?? 0;
-      const middleCount = d.boards[pid]?.[1]?.length ?? 0;
-      const rightCount = d.boards[pid]?.[2]?.length ?? 0;
-      const firstPlayerIcon = pid === firstPlayerId
-        ? '  {first player}'
+      const loc0Animals = d.boards[pid]?.[0]?.length ?? 0;
+      const loc1Animals = d.boards[pid]?.[1]?.length ?? 0;
+      const loc2Animals = d.boards[pid]?.[2]?.length ?? 0;
+      const loc0Scientists = scientistCountAt(pid, 0);
+      const loc1Scientists = scientistCountAt(pid, 1);
+      const loc2Scientists = scientistCountAt(pid, 2);
+      const campLeftScientists = scientistCountAt(pid, 3);
+      const campRightScientists = scientistCountAt(pid, 4);
+      const loc0Flag = d.flags?.[pid]?.[0] ?? 0;
+      const loc1Flag = d.flags?.[pid]?.[1] ?? 0;
+      const loc2Flag = d.flags?.[pid]?.[2] ?? 0;
+
+      const sections = [
+        campPanelHtml(campLeftScientists),
+        locationPanelHtml(loc0Animals, loc0Scientists, loc0Flag),
+        locationPanelHtml(loc1Animals, loc1Scientists, loc1Flag),
+        locationPanelHtml(loc2Animals, loc2Scientists, loc2Flag),
+        campPanelHtml(campRightScientists),
+      ];
+
+      const body = sections
+        .map((section, idx) => {
+          const sep = idx < sections.length - 1 ? `<span class="bae_panel_sep">&middot;</span>` : '';
+          return `<span class="bae_panel_section">${section}</span>${sep}`;
+        })
+        .join('');
+
+      const firstPlayerHtml = pid === firstPlayerId
+        ? `<img class="bae_panel_first_player" src="${firstPlayerToken}" alt="${this.escapeHtml(_('First player'))}" draggable="false" title="${this.escapeHtml(_('First player'))}"/>`
         : '';
 
-      infoEl.innerHTML = `<span class="bae_panel_animals">${_('Observed')}: ${leftCount} · ${middleCount} · ${rightCount}</span>${firstPlayerIcon}`;
+      infoEl.innerHTML = `<span class="bae_panel_grid">${body}</span>${firstPlayerHtml}`;
     }
   }
 
@@ -538,7 +591,7 @@ export class Game {
   private handleLastTurnBanner(playersEndingGame: number[]) {
     this.bga.gameArea.removeLastTurnBanner();
     if (playersEndingGame && playersEndingGame.length > 0) {
-        const names = playersEndingGame.map((pid) => this.bga.players.getFormattedPlayerName(pid, { replaceByYou: true })).join(", ");
+        const names = playersEndingGame.map((pid) => this.bga.players.getFormattedPlayerName(pid)).join(", ");
         const message = _('${player_names} triggered the end of game by observing 7 animals at a location. This is the final round!');
         this.bga.gameArea.addLastTurnBanner(message, { player_names: names });
     }
@@ -570,12 +623,12 @@ export class Game {
       const id = `bae_obj_${idx}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-      const claimedPid = Object.entries(obj.players ?? {}).find(([, state]) => state === 'claimed')?.[0];
-      const claimedByName = claimedPid
-        ? (this.gamedatas.players[Number(claimedPid)]?.name ?? `${_('Player')} ${claimedPid}`)
+      const claimedPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'claimed').map(([pid]) => pid);
+      const claimedByName = claimedPids.length > 0
+        ? claimedPids.map((pid) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`).join(', ')
         : '';
-      const objectiveDetail = claimedPid
-        ? `${_('Claimed by')}: ${claimedByName}`
+      const objectiveDetail = claimedPids.length > 0
+        ? `${_('Claimed by: ')}${claimedByName}`
         : _('Unclaimed');
       const action = obj.active ? _('Click to claim this objective') : '';
         const html = this.buildCardTooltipSpriteHtml(
