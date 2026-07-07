@@ -31,6 +31,7 @@ export class Game {
   private static readonly ZOOM_STEP = 0.1;
   private static readonly ZOOM_MIN = 0.4;
   private zoomFactor = 1;
+  private isShowingLastTurnBanner = false;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -589,11 +590,17 @@ export class Game {
   }
 
   private handleLastTurnBanner(playersEndingGame: number[]) {
-    this.bga.gameArea.removeLastTurnBanner();
-    if (playersEndingGame && playersEndingGame.length > 0) {
+    const shouldShow = playersEndingGame && playersEndingGame.length > 0;
+    if (shouldShow && !this.isShowingLastTurnBanner) {
         const names = playersEndingGame.map((pid) => this.bga.players.getFormattedPlayerName(pid)).join(", ");
         const message = _('${player_names} triggered the end of game by observing 7 animals at a location. This is the final round!');
+        this.isShowingLastTurnBanner = true;
         this.bga.gameArea.addLastTurnBanner(message, { player_names: names });
+    }
+    else if (!shouldShow && this.isShowingLastTurnBanner)
+    {
+        this.isShowingLastTurnBanner = false;
+        this.bga.gameArea.removeLastTurnBanner();
     }
   }
 
