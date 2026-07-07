@@ -28,8 +28,9 @@ export class Game {
   private selectedRegroupIds = new Set<number>();
   private boardScaleTimeoutId: number | null = null;
   private boardScaleTimeoutAccInterval: number | null = null;
-  private static readonly ZOOM_FACTORS = [0.75, 0.9, 1, 1.1, 1.25];
-  private zoomIndex = 2;
+  private static readonly ZOOM_STEP = 0.1;
+  private static readonly ZOOM_MIN = 0.4;
+  private zoomFactor = 1;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -124,7 +125,7 @@ export class Game {
     this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
   }
 
-    private getScale(): number {
+    private getScaleForZoomFactor(zoomFactor: number): number {
       const area = this.bga.gameArea.getElement();
       const areaRect = area.getBoundingClientRect();
     //   const rootRect = this.root.getBoundingClientRect();
@@ -135,11 +136,41 @@ export class Game {
       const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
       const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
       const autoScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
-      const zoomFactor = Game.ZOOM_FACTORS[this.zoomIndex] ?? 1;
-      const scale = Math.max(0.01, autoScale * zoomFactor);
+      const boundedZoom = Math.max(Game.ZOOM_MIN, zoomFactor);
+      const zoomedScale = Math.max(0.01, autoScale * boundedZoom);
+
+      // Clamp zoom by width-based limits so top row and board width never overflow.
+      const widthClampScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByTopRowWidth));
+      const scale = Math.min(zoomedScale, widthClampScale);
 
       return scale;
     };
+
+    private getScale(): number {
+      return this.getScaleForZoomFactor(this.zoomFactor);
+    }
+
+    private canZoomInAtCurrentViewport(): boolean {
+      const current = this.getScaleForZoomFactor(this.zoomFactor);
+      const nextZoom = this.zoomFactor + Game.ZOOM_STEP;
+      const next = this.getScaleForZoomFactor(nextZoom);
+      return next - current > 0.0001;
+    }
+
+    private nextZoomFactorDownWithVisibleChange(): number | null {
+      const currentScale = this.getScaleForZoomFactor(this.zoomFactor);
+      let nextZoom = this.zoomFactor;
+      while (nextZoom > Game.ZOOM_MIN + 0.0001) {
+        nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
+        const nextScale = this.getScaleForZoomFactor(nextZoom);
+        if (currentScale - nextScale > 0.0001) return nextZoom;
+      }
+      return null;
+    }
+
+    private canZoomOutAtCurrentViewport(): boolean {
+      return this.nextZoomFactorDownWithVisibleChange() != null;
+    }
 
   private verifyBoardScaleTimeout(expectedScale: number): void {
       this.boardScaleTimeoutId = null;
@@ -170,22 +201,23 @@ export class Game {
 
     outBtn?.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (this.zoomIndex <= 0) return;
-      this.zoomIndex -= 1;
+      const nextZoom = this.nextZoomFactorDownWithVisibleChange();
+      if (nextZoom == null) return;
+      this.zoomFactor = nextZoom;
       this.renderAll();
     });
 
     inBtn?.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (this.zoomIndex >= Game.ZOOM_FACTORS.length - 1) return;
-      this.zoomIndex += 1;
+      if (!this.canZoomInAtCurrentViewport()) return;
+      this.zoomFactor = Number((this.zoomFactor + Game.ZOOM_STEP).toFixed(3));
       this.renderAll();
     });
 
     resetBtn?.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (this.zoomIndex === 2) return;
-      this.zoomIndex = 2;
+      if (Math.abs(this.zoomFactor - 1) <= 0.0001) return;
+      this.zoomFactor = 1;
       this.renderAll();
     });
   }
@@ -325,9 +357,9 @@ export class Game {
       names[Number(pid)] = p.name;
     }
     const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
-    const canZoomOut = this.zoomIndex > 0;
-    const canZoomIn = this.zoomIndex < Game.ZOOM_FACTORS.length - 1;
-    const canResetZoom = this.zoomIndex !== 2;
+    const canZoomOut = this.canZoomOutAtCurrentViewport();
+    const canZoomIn = this.canZoomInAtCurrentViewport();
+    const canResetZoom = Math.abs(this.zoomFactor - 1) > 0.0001;
     const canConfirmObserve = this.isGameplayLike() && this.selectedCardId != null && this.selectedLocation != null;
     const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
     const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
@@ -835,7 +867,8 @@ export class Game {
     const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
     const currentScale = Number.parseFloat(scaleRaw);
     const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
-    const tooltipScale = Math.max(0.01, baseScale * 2);
+    const tooltipScale = Math.max(0.3, baseScale * 2);
+    console.log(`buildCardTooltipSpriteHtml: baseScale=${baseScale}, tooltipScale=${tooltipScale}`);
     const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
     const baseUrl = this.bga.images.getImgUrl();
     const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;

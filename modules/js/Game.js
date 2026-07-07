@@ -8,7 +8,7 @@ class Game {
         this.selectedRegroupIds = new Set();
         this.boardScaleTimeoutId = null;
         this.boardScaleTimeoutAccInterval = null;
-        this.zoomIndex = 2;
+        this.zoomFactor = 1;
         this.bga = bga;
     }
     setup(gamedatas) {
@@ -90,7 +90,7 @@ class Game {
         this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
         this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
     }
-    getScale() {
+    getScaleForZoomFactor(zoomFactor) {
         const area = this.bga.gameArea.getElement();
         const areaRect = area.getBoundingClientRect();
         //   const rootRect = this.root.getBoundingClientRect();
@@ -100,11 +100,37 @@ class Game {
         const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
         const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
         const autoScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
-        const zoomFactor = Game.ZOOM_FACTORS[this.zoomIndex] ?? 1;
-        const scale = Math.max(0.01, autoScale * zoomFactor);
+        const boundedZoom = Math.max(Game.ZOOM_MIN, zoomFactor);
+        const zoomedScale = Math.max(0.01, autoScale * boundedZoom);
+        // Clamp zoom by width-based limits so top row and board width never overflow.
+        const widthClampScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByTopRowWidth));
+        const scale = Math.min(zoomedScale, widthClampScale);
         return scale;
     }
     ;
+    getScale() {
+        return this.getScaleForZoomFactor(this.zoomFactor);
+    }
+    canZoomInAtCurrentViewport() {
+        const current = this.getScaleForZoomFactor(this.zoomFactor);
+        const nextZoom = this.zoomFactor + Game.ZOOM_STEP;
+        const next = this.getScaleForZoomFactor(nextZoom);
+        return next - current > 0.0001;
+    }
+    nextZoomFactorDownWithVisibleChange() {
+        const currentScale = this.getScaleForZoomFactor(this.zoomFactor);
+        let nextZoom = this.zoomFactor;
+        while (nextZoom > Game.ZOOM_MIN + 0.0001) {
+            nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
+            const nextScale = this.getScaleForZoomFactor(nextZoom);
+            if (currentScale - nextScale > 0.0001)
+                return nextZoom;
+        }
+        return null;
+    }
+    canZoomOutAtCurrentViewport() {
+        return this.nextZoomFactorDownWithVisibleChange() != null;
+    }
     verifyBoardScaleTimeout(expectedScale) {
         this.boardScaleTimeoutId = null;
         if (!this.root)
@@ -131,23 +157,24 @@ class Game {
         const resetBtn = this.root.querySelector('[data-zoom="reset"]');
         outBtn?.addEventListener('click', (ev) => {
             ev.preventDefault();
-            if (this.zoomIndex <= 0)
+            const nextZoom = this.nextZoomFactorDownWithVisibleChange();
+            if (nextZoom == null)
                 return;
-            this.zoomIndex -= 1;
+            this.zoomFactor = nextZoom;
             this.renderAll();
         });
         inBtn?.addEventListener('click', (ev) => {
             ev.preventDefault();
-            if (this.zoomIndex >= Game.ZOOM_FACTORS.length - 1)
+            if (!this.canZoomInAtCurrentViewport())
                 return;
-            this.zoomIndex += 1;
+            this.zoomFactor = Number((this.zoomFactor + Game.ZOOM_STEP).toFixed(3));
             this.renderAll();
         });
         resetBtn?.addEventListener('click', (ev) => {
             ev.preventDefault();
-            if (this.zoomIndex === 2)
+            if (Math.abs(this.zoomFactor - 1) <= 0.0001)
                 return;
-            this.zoomIndex = 2;
+            this.zoomFactor = 1;
             this.renderAll();
         });
     }
@@ -277,9 +304,9 @@ class Game {
             names[Number(pid)] = p.name;
         }
         const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
-        const canZoomOut = this.zoomIndex > 0;
-        const canZoomIn = this.zoomIndex < Game.ZOOM_FACTORS.length - 1;
-        const canResetZoom = this.zoomIndex !== 2;
+        const canZoomOut = this.canZoomOutAtCurrentViewport();
+        const canZoomIn = this.canZoomInAtCurrentViewport();
+        const canResetZoom = Math.abs(this.zoomFactor - 1) > 0.0001;
         const canConfirmObserve = this.isGameplayLike() && this.selectedCardId != null && this.selectedLocation != null;
         const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
         const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
@@ -757,7 +784,8 @@ class Game {
         const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
         const currentScale = Number.parseFloat(scaleRaw);
         const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
-        const tooltipScale = Math.max(0.01, baseScale * 2);
+        const tooltipScale = Math.max(0.3, baseScale * 2);
+        console.log(`buildCardTooltipSpriteHtml: baseScale=${baseScale}, tooltipScale=${tooltipScale}`);
         const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
         const baseUrl = this.bga.images.getImgUrl();
         const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
@@ -1368,6 +1396,7 @@ Game.OBJECTIVE_SPRITE_LAST_INDEX = 12;
 Game.SCORING_SPRITE_COLUMNS = 4;
 Game.SCORING_SPRITE_ROWS = 3;
 Game.SCORING_SPRITE_LAST_INDEX = 10;
-Game.ZOOM_FACTORS = [0.75, 0.9, 1, 1.1, 1.25];
+Game.ZOOM_STEP = 0.1;
+Game.ZOOM_MIN = 0.4;
 
 export { Game };
