@@ -51,7 +51,7 @@ class Game {
             prefix: "notif_",
             handlers: [this, this.bga],
             onStart: (notifName, msg, args) => {
-                console.log("Notification started:", notifName, msg, args);
+                // console.log("Notification started:", notifName, msg, args);
             }
         });
     }
@@ -77,9 +77,9 @@ class Game {
         const tier = scale >= 0.85 ? 'full' : scale >= 0.55 ? 'half' : 'quarter';
         const base = this.bga.images.getImgUrl();
         this.root.dataset.spriteTier = tier;
-        this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.png")`);
-        this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.png")`);
-        this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.png")`);
+        this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
+        this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
+        this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
     }
     getScale() {
         const area = this.bga.gameArea.getElement();
@@ -523,7 +523,7 @@ class Game {
                 this.bga.gameui.addTooltip(shelfId, shelfSummary, '');
             }
         }
-        console.log(d, this.gamedatas.materials);
+        // console.log(d, this.gamedatas.materials);
         // Track positions (space tooltips)
         const trackVps = this.gamedatas.materials.track_space_vp;
         const vehicleNames = this.gamedatas.materials.vehicle_names;
@@ -557,7 +557,7 @@ class Game {
             const left = 50 + jitterLeft;
             const top = 50 + jitterTop;
             const flagImg = i === safeDepth
-                ? `<img class="bae_track_flag_only" src="${baseUrl}Tokens/FlagToken.png" alt="${_("Flag")}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%" draggable="false"/>`
+                ? `<img class="bae_track_flag_only" src="${baseUrl}Tokens/FlagToken.webp" alt="${_("Flag")}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%" draggable="false"/>`
                 : '';
             html += `<div id="bae_track_${player_id}_${location}_${i}" class="bae_track_position">${flagImg}</div>`;
         }
@@ -597,7 +597,7 @@ class Game {
         const out = [];
         for (let i = 0; i < n; i++) {
             const col = meeples[i];
-            const src = `${baseUrl}Tokens/${meepleFiles[col]}.png`;
+            const src = `${baseUrl}Tokens/${meepleFiles[col]}.webp`;
             const c = i % cols;
             const r = Math.floor(i / cols);
             const baseLeft = (c + 1) / (cols + 1) * 100;
@@ -643,7 +643,7 @@ class Game {
     imagePath(folder, id) {
         const value = Number(id);
         const safeId = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 9999;
-        return `${this.bga.images.getImgUrl()}${folder}/${String(safeId).padStart(4, "0")}.png`;
+        return `${this.bga.images.getImgUrl()}${folder}/${String(safeId).padStart(4, "0")}.webp`;
     }
     imageTag(folder, id, className, alt, extraAttrs = "") {
         const src = this.imagePath(folder, id);
@@ -716,7 +716,7 @@ class Game {
     spriteSheetUrl(type) {
         const tier = this.root?.dataset.spriteTier ?? 'full';
         const { sheetPrefix } = this.spriteMeta(type);
-        return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.png`;
+        return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.webp`;
     }
     escapeHtml(value) {
         return String(value)
@@ -1082,7 +1082,7 @@ class Game {
                 void this.bga.actions.performAction("actTakeAnimal", { pool_slot: -1 });
             });
             const can = args && args.canMulligan;
-            console.log("Can mulligan?", can, args);
+            //   console.log("Can mulligan?", can, args);
             this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
                 void this.bga.actions.performAction("actMulliganPool", {});
             }, {

@@ -1,0 +1,963 @@
+{
+    "plug-in-batch-convert": [
+        {
+            "settings": [
+                {
+                    "settings": [
+                        {
+                            "name": "file_extension",
+                            "default_value": "png",
+                            "display_name": "File extension",
+                            "adjust_value": true,
+                            "auto_update_gui_to_setting": false,
+                            "gui_type": null,
+                            "value": "webp",
+                            "type": "file_extension"
+                        },
+                        {
+                            "name": "output_directory",
+                            "default_value": "file:///C:/Users/nevin/Pictures",
+                            "display_name": "Output folder",
+                            "value": "file:///C:/Users/nevin/Documents/borealisarticexpeditions/resources/output",
+                            "type": "directory"
+                        },
+                        {
+                            "name": "name_pattern",
+                            "default_value": "[image name]",
+                            "display_name": "Image filename pattern",
+                            "description": "Image filename pattern (empty string = image name)",
+                            "gui_type": null,
+                            "value": "[image name]",
+                            "type": "name_pattern"
+                        },
+                        {
+                            "name": "overwrite_mode",
+                            "default_value": "rename_new",
+                            "items": [
+                                [
+                                    "rename_new",
+                                    "Rename new file"
+                                ],
+                                [
+                                    "rename_existing",
+                                    "Rename existing file"
+                                ],
+                                [
+                                    "skip",
+                                    "Skip this file"
+                                ],
+                                [
+                                    "replace",
+                                    "Replace existing file"
+                                ]
+                            ],
+                            "display_name": "How to handle conflicting files (non-interactive run mode only)",
+                            "gui_type": null,
+                            "value": "rename_new",
+                            "type": "choice"
+                        },
+                        {
+                            "name": "continue_on_error",
+                            "default_value": false,
+                            "display_name": "Continue on Error",
+                            "description": "Continue processing on error",
+                            "gui_type": "check_menu_item",
+                            "value": true,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "plugin_version",
+                            "default_value": "1.2.1",
+                            "pdb_type": null,
+                            "gui_type": null,
+                            "value": "1.2.1",
+                            "type": "string"
+                        },
+                        {
+                            "settings": [
+                                {
+                                    "name": "file_format_import_options",
+                                    "import_or_export": "import",
+                                    "gui_type": "file_format_options",
+                                    "display_name": "File format options",
+                                    "gui_type_kwargs": {
+                                        "placeholder_label": "No recognized image formats in added files"
+                                    },
+                                    "pdb_type": null,
+                                    "value": {
+                                        "_expanded": {
+                                            "png": true
+                                        },
+                                        "_active": [
+                                            "png",
+                                            "webp"
+                                        ],
+                                        "png": [],
+                                        "webp": []
+                                    },
+                                    "type": "file_format_options"
+                                }
+                            ],
+                            "name": "import",
+                            "setting_attributes": {
+                                "pdb_type": null
+                            }
+                        },
+                        {
+                            "settings": [
+                                {
+                                    "name": "file_format_mode",
+                                    "default_value": "use_explicit_values",
+                                    "items": [
+                                        [
+                                            "use_native_plugin_values",
+                                            "Interactively"
+                                        ],
+                                        [
+                                            "use_explicit_values",
+                                            "Use options below"
+                                        ]
+                                    ],
+                                    "display_name": "How to adjust file format options:",
+                                    "description": "Native dialogs usually allow you to adjust more options such as image metadata, while adjusting options in place is more convenient as no extra dialog is displayed before the export.",
+                                    "gui_type": "radio_button_box",
+                                    "pdb_type": null,
+                                    "value": "use_explicit_values",
+                                    "type": "choice"
+                                },
+                                {
+                                    "name": "file_format_export_options",
+                                    "import_or_export": "export",
+                                    "gui_type": "file_format_options",
+                                    "display_name": "File format options",
+                                    "pdb_type": null,
+                                    "value": {
+                                        "_active": [
+                                            "webp"
+                                        ],
+                                        "png": [
+                                            {
+                                                "name": "interlaced",
+                                                "display_name": "Interlacing (Adam7)",
+                                                "description": "Use Adam7 interlacing",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "compression",
+                                                "display_name": "Compression level",
+                                                "description": "Deflate Compression factor (0..9)",
+                                                "pdb_type": "gint",
+                                                "default_value": 9,
+                                                "min_value": 0,
+                                                "max_value": 9,
+                                                "value": 9,
+                                                "type": "int"
+                                            },
+                                            {
+                                                "name": "bkgd",
+                                                "display_name": "Save background color",
+                                                "description": "Write bKGD chunk (PNG metadata)",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "offs",
+                                                "display_name": "Save layer offset",
+                                                "description": "Write oFFs chunk (PNG metadata)",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "phys",
+                                                "display_name": "Save resolution",
+                                                "description": "Write pHYs chunk (PNG metadata)",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "time",
+                                                "display_name": "Save creation time",
+                                                "description": "Write tIME chunk (PNG metadata)",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "save-transparent",
+                                                "display_name": "Save color values from transparent pixels",
+                                                "description": "Preserve color of completely transparent pixels",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "optimize-palette",
+                                                "display_name": "Optimize for smallest possible palette size",
+                                                "description": "When checked, save as 1, 2, 4, or 8-bit depending on number of colors used. When unchecked, always save as 8-bit",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "format",
+                                                "display_name": "Pixel format",
+                                                "description": "PNG export format",
+                                                "default_value": "auto",
+                                                "items": [
+                                                    [
+                                                        "auto",
+                                                        "Automatic",
+                                                        0,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "rgb8",
+                                                        "8 bpc RGB",
+                                                        1,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "gray8",
+                                                        "8 bpc GRAY",
+                                                        2,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "rgba8",
+                                                        "8 bpc RGBA",
+                                                        3,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "graya8",
+                                                        "8 bpc GRAYA",
+                                                        4,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "rgb16",
+                                                        "16 bpc RGB",
+                                                        5,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "gray16",
+                                                        "16 bpc GRAY",
+                                                        6,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "rgba16",
+                                                        "16 bpc RGBA",
+                                                        7,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "graya16",
+                                                        "16 bpc GRAYA",
+                                                        8,
+                                                        ""
+                                                    ]
+                                                ],
+                                                "value": "auto",
+                                                "type": "choice"
+                                            },
+                                            {
+                                                "name": "include-exif",
+                                                "display_name": "Save Exif",
+                                                "description": "Save Exif (Exchangeable image file format) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-iptc",
+                                                "display_name": "Save IPTC",
+                                                "description": "Save IPTC (International Press Telecommunications Council) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-xmp",
+                                                "display_name": "Save XMP",
+                                                "description": "Save XMP (Extensible Metadata Platform) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-color-profile",
+                                                "display_name": "Save color profile",
+                                                "description": "Save the ICC color profile as metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-thumbnail",
+                                                "display_name": "Save thumbnail",
+                                                "description": "Save a smaller representation of the image as metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-comment",
+                                                "display_name": "Save comment",
+                                                "description": "Save a comment as metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            }
+                                        ],
+                                        "_expanded": {},
+                                        "webp": [
+                                            {
+                                                "name": "preset",
+                                                "display_name": "Source type",
+                                                "description": "WebP encoder preset",
+                                                "default_value": "default",
+                                                "items": [
+                                                    [
+                                                        "default",
+                                                        "Default",
+                                                        0,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "picture",
+                                                        "Picture",
+                                                        1,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "photo",
+                                                        "Photo",
+                                                        2,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "drawing",
+                                                        "Drawing",
+                                                        3,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "icon",
+                                                        "Icon",
+                                                        4,
+                                                        ""
+                                                    ],
+                                                    [
+                                                        "text",
+                                                        "Text",
+                                                        5,
+                                                        ""
+                                                    ]
+                                                ],
+                                                "value": "photo",
+                                                "type": "choice"
+                                            },
+                                            {
+                                                "name": "lossless",
+                                                "display_name": "Lossless",
+                                                "description": "Use lossless encoding",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "quality",
+                                                "display_name": "Image quality",
+                                                "description": "Quality of the image",
+                                                "pdb_type": "gdouble",
+                                                "default_value": 90.0,
+                                                "min_value": 0.0,
+                                                "max_value": 100.0,
+                                                "value": 85.0,
+                                                "type": "double"
+                                            },
+                                            {
+                                                "name": "alpha-quality",
+                                                "display_name": "Alpha quality",
+                                                "description": "Quality of the image's alpha channel",
+                                                "pdb_type": "gdouble",
+                                                "default_value": 100.0,
+                                                "min_value": 0.0,
+                                                "max_value": 100.0,
+                                                "value": 95.0,
+                                                "type": "double"
+                                            },
+                                            {
+                                                "name": "use-sharp-yuv",
+                                                "display_name": "Use Sharp YUV",
+                                                "description": "Use sharper (but slower) RGB\u2192YUV conversion",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "animation-loop",
+                                                "display_name": "Loop forever",
+                                                "description": "Loop animation infinitely",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "minimize-size",
+                                                "display_name": "Minimize output size (slower)",
+                                                "description": "Minimize output file size",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "keyframe-distance",
+                                                "display_name": "Max distance between key-frames",
+                                                "description": "Maximum distance between keyframes",
+                                                "pdb_type": "gint",
+                                                "default_value": 50,
+                                                "min_value": 0,
+                                                "max_value": 2147483647,
+                                                "value": 50,
+                                                "type": "int"
+                                            },
+                                            {
+                                                "name": "default-delay",
+                                                "display_name": "Default delay between frames",
+                                                "description": "Default delay (in milliseconds) to use when timestamps for frames are not available or forced.",
+                                                "pdb_type": "gint",
+                                                "default_value": 200,
+                                                "min_value": 0,
+                                                "max_value": 2147483647,
+                                                "value": 200,
+                                                "type": "int"
+                                            },
+                                            {
+                                                "name": "force-delay",
+                                                "display_name": "Use default delay for all frames",
+                                                "description": "Force default delay on all frames",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "animation",
+                                                "display_name": "Save animation",
+                                                "description": "Use layers for animation",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-exif",
+                                                "display_name": "Save Exif",
+                                                "description": "Save Exif (Exchangeable image file format) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-iptc",
+                                                "display_name": "Save IPTC",
+                                                "description": "Save IPTC (International Press Telecommunications Council) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-xmp",
+                                                "display_name": "Save XMP",
+                                                "description": "Save XMP (Extensible Metadata Platform) metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-color-profile",
+                                                "display_name": "Save color profile",
+                                                "description": "Save the ICC color profile as metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": false,
+                                                "gui_type": "check_button",
+                                                "value": false,
+                                                "type": "bool"
+                                            },
+                                            {
+                                                "name": "include-thumbnail",
+                                                "display_name": "Save thumbnail",
+                                                "description": "Save a smaller representation of the image as metadata",
+                                                "pdb_type": "gboolean",
+                                                "default_value": true,
+                                                "gui_type": "check_button",
+                                                "value": true,
+                                                "type": "bool"
+                                            }
+                                        ]
+                                    },
+                                    "type": "file_format_options"
+                                },
+                                {
+                                    "name": "overwrite_mode",
+                                    "default_value": "ask",
+                                    "items": [
+                                        [
+                                            "ask",
+                                            "Ask"
+                                        ],
+                                        [
+                                            "rename_new",
+                                            "Rename new file"
+                                        ],
+                                        [
+                                            "rename_existing",
+                                            "Rename existing file"
+                                        ],
+                                        [
+                                            "skip",
+                                            "Skip this file"
+                                        ],
+                                        [
+                                            "replace",
+                                            "Replace existing file"
+                                        ]
+                                    ],
+                                    "display_name": "If a file already exists:",
+                                    "pdb_type": null,
+                                    "value": "replace",
+                                    "type": "choice"
+                                },
+                                {
+                                    "name": "export_mode",
+                                    "default_value": "each_item",
+                                    "items": [
+                                        [
+                                            "each_item",
+                                            "For each image"
+                                        ],
+                                        [
+                                            "each_top_level_item_or_folder",
+                                            "For each top-level image or folder"
+                                        ],
+                                        [
+                                            "single_image",
+                                            "As a single image"
+                                        ]
+                                    ],
+                                    "display_name": "Perform export:",
+                                    "pdb_type": null,
+                                    "value": "each_item",
+                                    "type": "choice"
+                                },
+                                {
+                                    "name": "single_image_name_pattern",
+                                    "default_value": "Untitled",
+                                    "display_name": "Image filename pattern",
+                                    "gui_type": "name_pattern_entry",
+                                    "pdb_type": null,
+                                    "value": "Untitled",
+                                    "type": "name_pattern"
+                                },
+                                {
+                                    "name": "use_file_extension_in_item_name",
+                                    "default_value": false,
+                                    "display_name": "Use original file extension",
+                                    "pdb_type": null,
+                                    "value": false,
+                                    "type": "bool"
+                                },
+                                {
+                                    "name": "convert_file_extension_to_lowercase",
+                                    "default_value": false,
+                                    "display_name": "Convert file extension to lowercase",
+                                    "pdb_type": null,
+                                    "value": false,
+                                    "type": "bool"
+                                },
+                                {
+                                    "name": "use_original_modification_date",
+                                    "default_value": false,
+                                    "display_name": "Use original modification date",
+                                    "pdb_type": null,
+                                    "value": false,
+                                    "type": "bool"
+                                },
+                                {
+                                    "name": "rotate_flip_image_based_on_exif_metadata",
+                                    "default_value": true,
+                                    "display_name": "Rotate or flip image based on Exif metadata",
+                                    "pdb_type": null,
+                                    "value": true,
+                                    "type": "bool"
+                                },
+                                {
+                                    "name": "merge_visible_layers_and_rasterize",
+                                    "default_value": true,
+                                    "display_name": "Merge visible layers and rasterize",
+                                    "pdb_type": null,
+                                    "value": true,
+                                    "type": "bool"
+                                }
+                            ],
+                            "name": "export",
+                            "setting_attributes": {
+                                "pdb_type": null
+                            }
+                        },
+                        {
+                            "settings": [],
+                            "name": "actions",
+                            "setting_attributes": {
+                                "pdb_type": null
+                            }
+                        },
+                        {
+                            "settings": [],
+                            "name": "conditions",
+                            "setting_attributes": {
+                                "pdb_type": null
+                            }
+                        }
+                    ],
+                    "name": "main"
+                },
+                {
+                    "settings": [
+                        {
+                            "name": "recent_output_dirpaths",
+                            "default_value": [],
+                            "gui_type": null,
+                            "value": [
+                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\resources\\output",
+                                "C:\\Users\\nevin\\Downloads\\gemReflection6\\out2"
+                            ],
+                            "type": "list"
+                        },
+                        {
+                            "name": "show_original_item_names",
+                            "default_value": false,
+                            "display_name": "Show Original Names",
+                            "gui_type": "check_menu_item",
+                            "value": false,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "name_preview_sensitive",
+                            "default_value": true,
+                            "gui_type": null,
+                            "value": true,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "image_preview_sensitive",
+                            "default_value": true,
+                            "gui_type": null,
+                            "value": true,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "image_preview_automatic_update",
+                            "default_value": true,
+                            "gui_type": null,
+                            "value": false,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "image_preview_automatic_update_if_below_maximum_duration",
+                            "default_value": true,
+                            "gui_type": null,
+                            "value": false,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "selected_items",
+                            "value": [
+                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png"
+                            ],
+                            "type": "image_file_tree_items"
+                        },
+                        {
+                            "name": "name_preview_items_collapsed_state",
+                            "value": [
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites",
+                                    "folder"
+                                ]
+                            ],
+                            "type": "image_file_tree_items"
+                        },
+                        {
+                            "name": "image_preview_displayed_items",
+                            "value": [
+                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png"
+                            ],
+                            "type": "image_file_tree_items"
+                        },
+                        {
+                            "settings": [
+                                {
+                                    "name": "paned_position",
+                                    "default_value": 230,
+                                    "gui_type": null,
+                                    "value": 230,
+                                    "type": "int"
+                                },
+                                {
+                                    "name": "dialog_position",
+                                    "default_value": [],
+                                    "value": [
+                                        4015,
+                                        244
+                                    ],
+                                    "type": "tuple"
+                                },
+                                {
+                                    "name": "dialog_size",
+                                    "default_value": [
+                                        800,
+                                        450
+                                    ],
+                                    "value": [
+                                        800,
+                                        450
+                                    ],
+                                    "type": "tuple"
+                                },
+                                {
+                                    "name": "categories_collapsed_state",
+                                    "default_value": {},
+                                    "value": {
+                                        "filters": true,
+                                        "plug_ins": true,
+                                        "gimp_procedures": false,
+                                        "other": false
+                                    },
+                                    "type": "dict"
+                                }
+                            ],
+                            "name": "action_browser"
+                        },
+                        {
+                            "name": "inputs_interactive",
+                            "display_name": "Input files and folders",
+                            "pdb_type": null,
+                            "gui_type": null,
+                            "value": [
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img",
+                                    null
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0001.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0002.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0003.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0004.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\README",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.webp",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\FirstPlayerToken.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\FlagToken.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\PinkMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\TealMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                ],
+                                [
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\YellowMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                ]
+                            ],
+                            "type": "list"
+                        },
+                        {
+                            "name": "keep_inputs",
+                            "default_value": true,
+                            "display_name": "Keep Input Images",
+                            "gui_type": "check_menu_item",
+                            "value": true,
+                            "type": "bool"
+                        },
+                        {
+                            "name": "auto_close",
+                            "default_value": false,
+                            "display_name": "Close when Done",
+                            "gui_type": "check_menu_item",
+                            "value": false,
+                            "type": "bool"
+                        },
+                        {
+                            "settings": [
+                                {
+                                    "name": "dialog_position",
+                                    "default_value": [],
+                                    "value": [
+                                        2463,
+                                        282
+                                    ],
+                                    "type": "tuple"
+                                },
+                                {
+                                    "name": "dialog_size",
+                                    "default_value": [
+                                        715,
+                                        640
+                                    ],
+                                    "value": [
+                                        715,
+                                        640
+                                    ],
+                                    "type": "tuple"
+                                },
+                                {
+                                    "name": "paned_outside_previews_position",
+                                    "default_value": 350,
+                                    "gui_type": null,
+                                    "value": 350,
+                                    "type": "int"
+                                },
+                                {
+                                    "name": "paned_between_previews_position",
+                                    "default_value": 300,
+                                    "gui_type": null,
+                                    "value": 300,
+                                    "type": "int"
+                                }
+                            ],
+                            "name": "size"
+                        }
+                    ],
+                    "name": "gui"
+                }
+            ],
+            "name": "all_settings"
+        }
+    ]
+}

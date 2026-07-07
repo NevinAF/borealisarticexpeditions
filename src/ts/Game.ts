@@ -79,7 +79,7 @@ export class Game {
       prefix: "notif_",
       handlers: [this, this.bga],
       onStart: (notifName, msg, args) => {
-        console.log("Notification started:", notifName, msg, args);
+        // console.log("Notification started:", notifName, msg, args);
       }});
   }
 
@@ -108,9 +108,9 @@ export class Game {
     const tier = scale >= 0.85 ? 'full' : scale >= 0.55 ? 'half' : 'quarter';
     const base = this.bga.images.getImgUrl();
     this.root.dataset.spriteTier = tier;
-    this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.png")`);
-    this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.png")`);
-    this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.png")`);
+    this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
+    this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
+    this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
   }
 
     private getScale(): number {
@@ -593,7 +593,7 @@ export class Game {
       }
     }
 
-    console.log(d, this.gamedatas.materials);
+    // console.log(d, this.gamedatas.materials);
 
     // Track positions (space tooltips)
     const trackVps = this.gamedatas.materials.track_space_vp;
@@ -627,7 +627,7 @@ export class Game {
       const top = 50 + jitterTop;
 
       const flagImg = i === safeDepth
-        ? `<img class="bae_track_flag_only" src="${baseUrl}Tokens/FlagToken.png" alt="${_("Flag")}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%" draggable="false"/>`
+        ? `<img class="bae_track_flag_only" src="${baseUrl}Tokens/FlagToken.webp" alt="${_("Flag")}" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%" draggable="false"/>`
         : '';
       html += `<div id="bae_track_${player_id}_${location}_${i}" class="bae_track_position">${flagImg}</div>`;
     }
@@ -665,7 +665,7 @@ export class Game {
     const out: string[] = [];
     for (let i = 0; i < n; i++) {
       const col = meeples[i];
-      const src = `${baseUrl}Tokens/${meepleFiles[col]}.png`;
+      const src = `${baseUrl}Tokens/${meepleFiles[col]}.webp`;
       const c = i % cols;
       const r = Math.floor(i / cols);
       const baseLeft = (c + 1) / (cols + 1) * 100;
@@ -713,7 +713,7 @@ export class Game {
   private imagePath(folder: string, id: number): string {
     const value = Number(id);
     const safeId = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 9999;
-    return `${this.bga.images.getImgUrl()}${folder}/${String(safeId).padStart(4, "0")}.png`;
+    return `${this.bga.images.getImgUrl()}${folder}/${String(safeId).padStart(4, "0")}.webp`;
   }
 
   private imageTag(folder: string, id: number, className: string, alt: string, extraAttrs = ""): string {
@@ -790,7 +790,7 @@ export class Game {
   private spriteSheetUrl(type: 'animal' | 'objective' | 'scoring'): string {
     const tier = this.root?.dataset.spriteTier ?? 'full';
     const { sheetPrefix } = this.spriteMeta(type);
-    return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.png`;
+    return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.webp`;
   }
 
   private escapeHtml(value: string): string {
@@ -1167,7 +1167,7 @@ export class Game {
         void this.bga.actions.performAction("actTakeAnimal", { pool_slot: -1 });
       });
       const can = args && (args as unknown as ReplenishArgs).canMulligan;
-      console.log("Can mulligan?", can, args);
+    //   console.log("Can mulligan?", can, args);
         this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
           void this.bga.actions.performAction("actMulliganPool", {});
         }, {
