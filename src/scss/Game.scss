@@ -1,5 +1,13 @@
 @use "sass:math";
 
+@font-face {
+  font-family: "BaeCardSerif";
+  src: url("img/font.otf") format("opentype");
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
+
 // Function that converts a pixel length or point to a percentage based on the reference size of the board (3788x2600)
 @function px-to-percent-in-width($value) {
   @return math.div($value, 3788) * 100%;
@@ -40,6 +48,39 @@ $meeple_pink_width: 243;
 $card_width: 528;
 $card_height: 745;
 $location_card_shift_y: 170; // The offset between stacked animal cards in a location, in reference pixels.
+
+// Overlay text bounds in card-reference pixels.
+// Objective cards are landscape: 745x528.
+$objective_ref_w: $card_height;
+$objective_ref_h: $card_width;
+$objective_type_x: 166;
+$objective_type_y: 379;
+$objective_type_w: 413;
+$objective_type_h: 98;
+$objective_title_x: 90;
+$objective_title_y: 62;
+$objective_title_w: 565;
+$objective_title_h: 60;
+$objective_desc_x: 90;
+$objective_desc_y: 162;
+$objective_desc_w: 565;
+$objective_desc_h: 200;
+
+// Scoring cards are portrait: 528x745.
+$scoring_ref_w: $card_width;
+$scoring_ref_h: $card_height;
+$scoring_type_x: 100;
+$scoring_type_y: 610;
+$scoring_type_w: 322;
+$scoring_type_h: 105;
+$scoring_title_x: 30;
+$scoring_title_y: 33;
+$scoring_title_w: 468;
+$scoring_title_h: 110;
+$scoring_desc_x: 30;
+$scoring_desc_y: 350;
+$scoring_desc_w: 468;
+$scoring_desc_h: 252;
 
 // Shared spacing, radius, and border tokens in reference pixels.
 $space_1: 6;
@@ -683,6 +724,7 @@ html[data-theme="dark"] {
 .bae_card {
   display: inline-flex;
   flex: none;
+  position: relative;
   align-items: center;
   padding: 0;
   border: none;
@@ -693,11 +735,30 @@ html[data-theme="dark"] {
 }
 
 .bae_card_selected {
-  outline: #{$border}px solid #2a6fdb;
+  border-radius: scaled(30);
+  box-shadow: inset 0 0 0 #{$border}px #2a6fdb;
 }
 
 .bae_card_regroup {
-  outline: #{$border}px solid #c45c00;
+  border-radius: scaled(30);
+  box-shadow: inset 0 0 0 #{$border}px #c45c00;
+}
+
+.bae_card_selected::after,
+.bae_card_regroup::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: scaled(30);
+  pointer-events: none;
+}
+
+.bae_card_selected::after {
+  background: rgba(42, 111, 219, 0.18);
+}
+
+.bae_card_regroup::after {
+  background: rgba(196, 92, 0, 0.18);
 }
 
 .bae_card_placeholder {
@@ -711,6 +772,130 @@ html[data-theme="dark"] {
 .bae_score_img,
 .bae_board_img {
   display: block;
+}
+
+.bae_overlay_card {
+  position: relative;
+  overflow: hidden;
+}
+
+.bae_overlay_sprite {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position: var(--sprite-x, 0%) var(--sprite-y, 0%);
+}
+
+.bae_card_text_layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bae_fit_text {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.15;
+  color: #111;
+  font-family: "BaeCardSerif", serif;
+}
+
+.bae_fit_text_inner {
+  width: 100%;
+  max-height: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.bae_obj_type_bounds,
+.bae_obj_title_bounds,
+.bae_score_type_bounds,
+.bae_score_title_bounds {
+  color: #7d2813;
+}
+
+.bae_obj_type_bounds,
+.bae_obj_title_bounds {
+  color: #2c3f72;
+}
+
+.bae_obj_desc_bounds,
+.bae_score_desc_bounds {
+  color: #55352b;
+}
+
+.bae_obj_title_bounds .bae_fit_text_inner,
+.bae_score_title_bounds .bae_fit_text_inner {
+  font-style: italic;
+  font-weight: 700;
+}
+
+.bae_obj_type_bounds .bae_fit_text_inner,
+.bae_score_type_bounds .bae_fit_text_inner {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.bae_obj_type_bounds {
+  left: math.div($objective_type_x, $objective_ref_w) * 100%;
+  top: math.div($objective_type_y, $objective_ref_h) * 100%;
+  width: math.div($objective_type_w, $objective_ref_w) * 100%;
+  height: math.div($objective_type_h, $objective_ref_h) * 100%;
+}
+
+.bae_obj_title_bounds {
+  left: math.div($objective_title_x, $objective_ref_w) * 100%;
+  top: math.div($objective_title_y, $objective_ref_h) * 100%;
+  width: math.div($objective_title_w, $objective_ref_w) * 100%;
+  height: math.div($objective_title_h, $objective_ref_h) * 100%;
+}
+
+.bae_obj_desc_bounds {
+  left: math.div($objective_desc_x, $objective_ref_w) * 100%;
+  top: math.div($objective_desc_y, $objective_ref_h) * 100%;
+  width: math.div($objective_desc_w, $objective_ref_w) * 100%;
+  height: math.div($objective_desc_h, $objective_ref_h) * 100%;
+}
+
+.bae_score_type_bounds {
+  left: math.div($scoring_type_x, $scoring_ref_w) * 100%;
+  top: math.div($scoring_type_y, $scoring_ref_h) * 100%;
+  width: math.div($scoring_type_w, $scoring_ref_w) * 100%;
+  height: math.div($scoring_type_h, $scoring_ref_h) * 100%;
+}
+
+.bae_score_title_bounds {
+  left: math.div($scoring_title_x, $scoring_ref_w) * 100%;
+  top: math.div($scoring_title_y, $scoring_ref_h) * 100%;
+  width: math.div($scoring_title_w, $scoring_ref_w) * 100%;
+  height: math.div($scoring_title_h, $scoring_ref_h) * 100%;
+}
+
+.bae_score_desc_bounds {
+  left: math.div($scoring_desc_x, $scoring_ref_w) * 100%;
+  top: math.div($scoring_desc_y, $scoring_ref_h) * 100%;
+  width: math.div($scoring_desc_w, $scoring_ref_w) * 100%;
+  height: math.div($scoring_desc_h, $scoring_ref_h) * 100%;
+}
+
+.bae_text_with_icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+}
+
+.bae_vp_inline {
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  transform: translateY(0.15em);
 }
 
 .bae_card_img,

@@ -3,6 +3,8 @@ const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
   private static readonly BOARD_REFERENCE_HEIGHT_PX = 2600;
+  private static readonly CARD_REFERENCE_WIDTH_PX = 528;
+  private static readonly CARD_REFERENCE_HEIGHT_PX = 745;
   private static readonly TOP_ROW_REFERENCE_WIDTH_PX = 6124;
   private static readonly MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
   private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 8 + 400;
@@ -98,6 +100,7 @@ export class Game {
     const scale = this.getScale();
     this.root.style.setProperty('--bae-scale', String(scale));
     this.updateSpriteSheetUrls(scale);
+    this.fitCardOverlayText();
     this.boardScaleTimeoutAccInterval = 10;
     this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
   }
@@ -105,9 +108,8 @@ export class Game {
   private updateSpriteSheetUrls(scale: number): void {
     if (!this.root) return;
 
-    const tier = scale >= 0.85 ? 'full' : scale >= 0.55 ? 'half' : 'quarter';
+    const tier = scale >= 0.55 ? 'full' : scale >= 0.25 ? 'half' : 'quarter';
     const base = this.bga.images.getImgUrl();
-    this.root.dataset.spriteTier = tier;
     this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
     this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
     this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
@@ -116,7 +118,7 @@ export class Game {
     private getScale(): number {
       const area = this.bga.gameArea.getElement();
       const areaRect = area.getBoundingClientRect();
-      const rootRect = this.root.getBoundingClientRect();
+    //   const rootRect = this.root.getBoundingClientRect();
 
       const availableWidth = Math.max(1, areaRect.width);
       const availableHeight = Math.max(1, window.innerHeight);
@@ -483,13 +485,11 @@ export class Game {
     if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function') return;
 
     const d = this.gamedatas.boardState;
-    const canHtmlTooltip = typeof this.bga.gameui.addTooltipHtml === 'function';
 
     // Pool slots
     (d.pool || []).forEach((slot) => {
       const id = `bae_pool_slot_${slot.slot}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      if (canHtmlTooltip) {
         const html = this.buildCardTooltipSpriteHtml(
           'animal',
           slot.id,
@@ -497,9 +497,6 @@ export class Game {
           [_('Click to take this card')],
         );
         this.bga.gameui.addTooltipHtml(id, html);
-      } else {
-        this.bga.gameui.addTooltip(id, _('Pool card'), _('Click to take this card'));
-      }
     });
     try { this.bga.gameui.removeTooltip('bae_pool_slot_deck'); } catch (_) {}
     this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
@@ -509,19 +506,21 @@ export class Game {
       const id = `bae_obj_${idx}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-      const help = `${_('Objective')}: ${objectiveMat?.title ?? obj.id}<br>${objectiveMat?.description ?? ''}`;
+      const claimedPid = Object.entries(obj.players ?? {}).find(([, state]) => state === 'claimed')?.[0];
+      const claimedByName = claimedPid
+        ? (this.gamedatas.players[Number(claimedPid)]?.name ?? `${_('Player')} ${claimedPid}`)
+        : '';
+      const objectiveDetail = claimedPid
+        ? `${_('Claimed by')}: ${claimedByName}`
+        : _('Unclaimed');
       const action = obj.active ? _('Click to claim this objective') : '';
-      if (canHtmlTooltip) {
         const html = this.buildCardTooltipSpriteHtml(
           'objective',
           obj.id,
           objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-          [objectiveMat?.description ?? '', action],
+          [objectiveDetail, action],
         );
         this.bga.gameui.addTooltipHtml(id, html);
-      } else {
-        this.bga.gameui.addTooltip(id, help, action);
-      }
     });
 
     // Scoring cards
@@ -531,26 +530,14 @@ export class Game {
 
       const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
       const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
-      const description = scoringMat?.description ?? '';
       const explanation = scoringMat?.explanation ?? '';
-      if (canHtmlTooltip) {
         const html = this.buildCardTooltipSpriteHtml(
           'scoring',
           scoringId,
           title,
-          [
-            description ? `${_('Description')}: ${description}` : '',
-            explanation ? `${_('Explanation')}: ${explanation}` : '',
-          ],
+          [explanation ? `${_('Explanation')}: ${explanation}` : ''],
         );
         this.bga.gameui.addTooltipHtml(id, html);
-      } else {
-        this.bga.gameui.addTooltip(
-          id,
-          `${title}<br>${_('Description')}: ${description}<br>${_('Explanation')}: ${explanation}`,
-          '',
-        );
-      }
     });
 
     // Camps and scientist shelves: build per-location summaries using
@@ -730,7 +717,7 @@ export class Game {
     return Math.max(0, Math.min(lastIndex - 1, safeId));
   }
 
-  private spriteFaceById(type: 'animal' | 'objective' | 'scoring', id: number, className: string, alt: string): string {
+  private spriteStyleById(type: 'animal' | 'objective' | 'scoring', id: number): { spriteClass: string; x: string; y: string } {
     let columns = 1;
     let rows = 1;
     let lastIndex = 0;
@@ -758,17 +745,26 @@ export class Game {
     const row = Math.floor(index / columns);
     const x = columns > 1 ? (col / (columns - 1)) * 100 : 0;
     const y = rows > 1 ? (row / (rows - 1)) * 100 : 0;
-    const safeAlt = alt.replace(/"/g, "&quot;");
-    return `<div class="${className} ${spriteClass}" role="img" aria-label="${safeAlt}" style="--sprite-x:${x.toFixed(4)}%;--sprite-y:${y.toFixed(4)}%;"></div>`;
+
+    return {
+      spriteClass,
+      x: `${x.toFixed(4)}%`,
+      y: `${y.toFixed(4)}%`,
+    };
   }
 
-  private spriteMeta(type: 'animal' | 'objective' | 'scoring'): { columns: number; rows: number; lastIndex: number; sheetPrefix: string } {
+  private spriteFaceById(type: 'animal' | 'objective' | 'scoring', id: number, className: string, alt: string): string {
+    const sprite = this.spriteStyleById(type, id);
+    const safeAlt = alt.replace(/"/g, "&quot;");
+    return `<div class="${className} ${sprite.spriteClass}" role="img" aria-label="${safeAlt}" style="--sprite-x:${sprite.x};--sprite-y:${sprite.y};"></div>`;
+  }
+
+  private spriteMeta(type: 'animal' | 'objective' | 'scoring'): { columns: number; rows: number; lastIndex: number; } {
     if (type === 'animal') {
       return {
         columns: Game.ANIMAL_SPRITE_COLUMNS,
         rows: Game.ANIMAL_SPRITE_ROWS,
         lastIndex: Game.ANIMAL_SPRITE_LAST_INDEX,
-        sheetPrefix: 'AnimalCards',
       };
     }
     if (type === 'objective') {
@@ -776,21 +772,13 @@ export class Game {
         columns: Game.OBJECTIVE_SPRITE_COLUMNS,
         rows: Game.OBJECTIVE_SPRITE_ROWS,
         lastIndex: Game.OBJECTIVE_SPRITE_LAST_INDEX,
-        sheetPrefix: 'ObjectiveCards',
       };
     }
     return {
       columns: Game.SCORING_SPRITE_COLUMNS,
       rows: Game.SCORING_SPRITE_ROWS,
       lastIndex: Game.SCORING_SPRITE_LAST_INDEX,
-      sheetPrefix: 'ScoringCards',
     };
-  }
-
-  private spriteSheetUrl(type: 'animal' | 'objective' | 'scoring'): string {
-    const tier = this.root?.dataset.spriteTier ?? 'full';
-    const { sheetPrefix } = this.spriteMeta(type);
-    return `${this.bga.images.getImgUrl()}Sprites/${sheetPrefix}_sheet_${tier}.webp`;
   }
 
   private escapeHtml(value: string): string {
@@ -811,23 +799,72 @@ export class Game {
     const y = rows > 1 ? (row / (rows - 1)) * 100 : 0;
 
     const safeTitle = this.escapeHtml(title);
+
+    const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
+    const currentScale = Number.parseFloat(scaleRaw);
+    const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
+    const tooltipScale = Math.max(0.01, baseScale * 2);
+    const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
+    const baseUrl = this.bga.images.getImgUrl();
+    const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
+    const objectiveSpriteUrl = `${baseUrl}Sprites/ObjectiveCards_sheet_${tier}.webp`;
+    const scoringSpriteUrl = `${baseUrl}Sprites/ScoringCards_sheet_${tier}.webp`;
+    const vpIcon = `${baseUrl}Tokens/VP.svg`;
+    const vpInline = `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+
     const detailHtml = details
       .filter((line) => line && line.trim().length > 0)
-      .map((line) => `<div>${this.escapeHtml(line)}</div>`)
+      .map((line) => {
+        const escapedLine = this.escapeHtml(line);
+        const withIcons = escapedLine.replace(/\{VP\}/g, vpInline);
+        return `<div>${withIcons}</div>`;
+      })
       .join('');
 
-    const backgroundImageUrl = this.spriteSheetUrl(type);
     const bgSizeX = (columns * 100).toFixed(4);
     const bgSizeY = (rows * 100).toFixed(4);
-    const aspectRatio = type === 'objective' ? '745 / 528' : '240 / 345';
+    const width = (type === 'objective' ? 745 : 528) * tooltipScale;
+    const aspectRatio = type === 'objective' ? '745 / 528' : '528 / 745';
+    const typeFontPx = (56 * tooltipScale).toFixed(2);
+    const descFontPx = (44 * tooltipScale).toFixed(2);
+    const detailFontPx = 13;
+
+    let cardHtml;
+    if (type === 'objective') {
+      cardHtml = this.objectiveFaceById(id)
+        .replace(
+          '<div class="bae_obj_img bae_overlay_card"',
+          `<div class="bae_obj_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
+        )
+        .replace('class="bae_fit_text bae_obj_type_bounds"', `class="bae_fit_text bae_obj_type_bounds" style="font-size:${typeFontPx}px;"`)
+        .replace('class="bae_fit_text bae_obj_title_bounds"', `class="bae_fit_text bae_obj_title_bounds" style="font-size:${typeFontPx}px;"`)
+        .replace('class="bae_fit_text bae_obj_desc_bounds"', `class="bae_fit_text bae_obj_desc_bounds" style="font-size:${descFontPx}px;"`);
+    } else if (type === 'scoring') {
+      cardHtml = this.scoringFaceById(id)
+        .replace(
+          '<div class="bae_score_img bae_overlay_card"',
+          `<div class="bae_score_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
+        )
+        .replace('class="bae_fit_text bae_score_type_bounds"', `class="bae_fit_text bae_score_type_bounds" style="font-size:${typeFontPx}px;"`)
+        .replace('class="bae_fit_text bae_score_title_bounds"', `class="bae_fit_text bae_score_title_bounds" style="font-size:${typeFontPx}px;"`)
+        .replace('class="bae_fit_text bae_score_desc_bounds"', `class="bae_fit_text bae_score_desc_bounds" style="font-size:${descFontPx}px;"`);
+    }
+    else if (type === 'animal') {
+      cardHtml = this.cardFaceById(id)
+        .replace(
+          '<div class="bae_card_img bae_overlay_card"',
+          `<div class="bae_card_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
+        );
+    }
+
+    const detailsBlock = detailHtml.length > 0
+      ? `<div style="width:${width}px;font-size:${detailFontPx}px;line-height:1.35;">${detailHtml}</div>`
+      : '';
 
     return `
-      <div style="display:flex;gap:12px;align-items:flex-start;max-width:560px;">
-        <div role="img" aria-label="${safeTitle}" style="width:220px;aspect-ratio:${aspectRatio};display:block;border-radius:6px;background-image:url('${backgroundImageUrl}');background-repeat:no-repeat;background-size:${bgSizeX}% ${bgSizeY}%;background-position:${x.toFixed(4)}% ${y.toFixed(4)}%;"></div>
-        <div style="font-size:13px;line-height:1.35;">
-          <div style="font-weight:700;margin-bottom:6px;">${safeTitle}</div>
-          ${detailHtml}
-        </div>
+      <div style="width:${width}px;max-width:${width}px;display:flex;flex-direction:column;align-items:stretch;gap:8px;font-family:'BaeCardSerif', serif;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
+        <div style="width:${width}px;aspect-ratio:${aspectRatio};display:block;border-radius:6px;overflow:hidden;">${cardHtml}</div>
+        ${detailsBlock}
       </div>
     `;
   }
@@ -837,11 +874,87 @@ export class Game {
   }
 
   private objectiveFaceById(objectiveId: number): string {
-    return this.spriteFaceById('objective', objectiveId, 'bae_obj_img', `${_("Objective")} #${objectiveId}`);
+    const mat = this.gamedatas.materials.objectives?.[objectiveId];
+    const title = this.escapeHtml(mat?.title ?? `${_("Objective")} #${objectiveId}`);
+    const description = this.escapeHtml(mat?.description ?? '');
+    const typeLabel = this.escapeHtml(_("Objective"));
+    const sprite = this.spriteStyleById('objective', objectiveId);
+
+    return `
+      <div class="bae_obj_img bae_overlay_card" aria-label="${title}">
+        <div class="bae_overlay_sprite ${sprite.spriteClass}" style="--sprite-x:${sprite.x};--sprite-y:${sprite.y};"></div>
+        <div class="bae_card_text_layer bae_objective_text_layer" aria-hidden="true">
+          <div class="bae_fit_text bae_obj_type_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${typeLabel}</div></div>
+          <div class="bae_fit_text bae_obj_title_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${title}</div></div>
+          <div class="bae_fit_text bae_obj_desc_bounds" data-fit-max="44"><div class="bae_fit_text_inner">${description}</div></div>
+        </div>
+      </div>
+    `;
   }
 
   private scoringFaceById(scoringId: number): string {
-    return this.spriteFaceById('scoring', scoringId, 'bae_score_img', `${_("Scoring card")} #${scoringId}`);
+    const mat = this.gamedatas.materials.scoring_cards?.[scoringId];
+    const title = this.escapeHtml(mat?.title ?? `${_("Scoring card")} #${scoringId}`);
+    const descriptionRaw = mat?.description && mat.description.trim().length > 0
+      ? mat.description
+      : (mat?.explanation ?? '');
+    const description = this.escapeHtml(descriptionRaw);
+    const typeLabel = this.escapeHtml(_("Scoring"));
+    const sprite = this.spriteStyleById('scoring', scoringId);
+
+    const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
+    const vpInline = `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+    const descriptionWithVp = description.replace(/\{VP\}/g, vpInline);
+
+    return `
+      <div class="bae_score_img bae_overlay_card" aria-label="${title}">
+        <div class="bae_overlay_sprite ${sprite.spriteClass}" style="--sprite-x:${sprite.x};--sprite-y:${sprite.y};"></div>
+        <div class="bae_card_text_layer bae_scoring_text_layer" aria-hidden="true">
+          <div class="bae_fit_text bae_score_type_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${typeLabel}</div></div>
+          <div class="bae_fit_text bae_score_title_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${title}</div></div>
+          <div class="bae_fit_text bae_score_desc_bounds" data-fit-max="44"><div class="bae_fit_text_inner">${descriptionWithVp}</div></div>
+        </div>
+      </div>
+    `;
+  }
+
+  private fitCardOverlayText(): void {
+    if (!this.root) return;
+
+    const scaleRaw = getComputedStyle(this.root).getPropertyValue('--bae-scale');
+    const boardScale = Math.max(0.01, Number.parseFloat(scaleRaw) || 1);
+    const boxes = this.root.querySelectorAll<HTMLElement>('.bae_fit_text');
+    boxes.forEach((box) => {
+      const inner = box.querySelector('.bae_fit_text_inner') as HTMLElement | null;
+      if (!inner) return;
+
+      const text = inner.textContent?.trim() ?? '';
+      if (text.length === 0) {
+        inner.style.fontSize = '';
+        return;
+      }
+
+      const maxAttr = Number.parseFloat(box.dataset.fitMax ?? '');
+      const scaledCap = Number.isFinite(maxAttr) ? maxAttr * boardScale : Number.POSITIVE_INFINITY;
+      const maxSize = Math.max(8, Math.min(box.clientHeight, box.clientWidth, scaledCap));
+      let low = 6;
+      let high = maxSize;
+      let best = low;
+
+      for (let i = 0; i < 10; i++) {
+        const mid = (low + high) / 2;
+        inner.style.fontSize = `${mid}px`;
+        const fits = inner.scrollWidth <= box.clientWidth + 0.5 && inner.scrollHeight <= box.clientHeight + 0.5;
+        if (fits) {
+          best = mid;
+          low = mid;
+        } else {
+          high = mid;
+        }
+      }
+
+      inner.style.fontSize = `${best}px`;
+    });
   }
 
   private playerBoardFaceById(boardId: number): string {
