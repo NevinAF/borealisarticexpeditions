@@ -499,24 +499,58 @@ html[data-theme="dark"] {
   background: transparent;
   width: scaled($card_height);
   height: scaled($card_width);
+  position: relative;
 }
 
 .bae_obj:disabled {
   opacity: 0.55;
+  filter: grayscale(0.35);
 }
 
 /* Objective highlight states */
-.bae_obj_meets {
+.bae_obj_meets:not(:disabled) {
   box-shadow: none;
 }
 
-.bae_obj_claimed_by_you {
-  box-shadow: none;
+/* Claimed this round while the objective remains active for the round. */
+.bae_obj_claimed_by_you:not(:disabled),
+.bae_obj_claimed_round:not(:disabled) {
+  position: relative;
 }
 
-.bae_obj_claimed_round {
-  box-shadow: none;
-  opacity: 0.95;
+.bae_obj_claimed_by_you:not(:disabled)::after,
+.bae_obj_claimed_round:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: scaled(45);
+  pointer-events: none;
+  z-index: 1;
+  border: #{$border}px solid #9a7b1a;
+  background: rgba(201, 162, 39, 0.2);
+  box-shadow: inset 0 0 scaled(10) rgba(201, 162, 39, 0.18);
+}
+
+.bae_obj_claimed_by_you:not(:disabled)::after {
+  border-color: #7a5f10;
+  background: rgba(201, 162, 39, 0.28);
+}
+
+.bae_obj_prompt_target:not(:disabled) {
+  border-radius: scaled(45);
+}
+
+.bae_obj_prompt_target:not(:disabled)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: scaled(45);
+  pointer-events: none;
+  z-index: 1;
+  border: #{$border}px solid #2a6fdb;
+  background: rgba(42, 111, 219, 0.25);
 }
 
 .bae_columns {
@@ -767,7 +801,9 @@ html[data-theme="dark"] {
 .bae_card:hover > .bae_confirm_blurb,
 .bae_card:focus-visible > .bae_confirm_blurb,
 .bae_location_zone:hover > .bae_confirm_blurb,
-.bae_location_zone:focus-within > .bae_confirm_blurb {
+.bae_location_zone:focus-within > .bae_confirm_blurb,
+.bae_obj:hover > .bae_confirm_blurb,
+.bae_obj:focus-visible > .bae_confirm_blurb {
   opacity: 1;
   visibility: visible;
 }

@@ -6,6 +6,10 @@ class Game {
         this.selectedPoolSlot = null;
         this.campSelected = false;
         this.selectedRegroupIds = new Set();
+        this.cachedActionArgs = null;
+        this.cachedUndoCanUndo = false;
+        this.cachedUndoType = null;
+        this.cachedCanMulligan = undefined;
         this.boardScaleTimeoutId = null;
         this.boardScaleTimeoutAccInterval = null;
         this.zoomFactor = 1;
@@ -313,6 +317,20 @@ class Game {
         const n = this.currentStateName().toLowerCase();
         return n === "openingmulligan" || n.includes("openingmulligan") || n.includes("opening_mulligan");
     }
+    isPromptClaimObjectiveLike() {
+        const n = this.currentStateName().toLowerCase();
+        return n.includes("promptclaimobjective") || n.includes("prompt_claim_objective");
+    }
+    getPromptedObjectiveIndex() {
+        if (!this.isPromptClaimObjectiveLike() || !this.bga.players.isCurrentPlayerActive())
+            return null;
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        const promptArgs = this.cachedActionArgs;
+        const pending = promptArgs?.pendingByPlayer?.[myId] ?? [];
+        if (pending.length === 0)
+            return null;
+        return pending[0].index;
+    }
     enterRegroupMode() {
         this.selectedCardId = null;
         this.selectedLocation = null;
@@ -330,6 +348,19 @@ class Game {
         this.selectedRegroupIds.clear();
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
+    }
+    /** BGA calls onUpdateActionButtons before onEnteringState; cache args from either source for client-side refreshes. */
+    cacheStateActionArgs(args) {
+        if (args == null)
+            return;
+        this.cachedActionArgs = args;
+        if ("canUndo" in args) {
+            this.cachedUndoCanUndo = Boolean(args.canUndo);
+            this.cachedUndoType = args.undoType ?? null;
+        }
+        if ("canMulligan" in args) {
+            this.cachedCanMulligan = Boolean(args.canMulligan);
+        }
     }
     addUndoActionButton(canUndo, undoType) {
         if (!canUndo || !undoType)
@@ -380,6 +411,7 @@ class Game {
         const canConfirmObserve = this.isGameplayLike() && this.selectedCardId != null && this.selectedLocation != null;
         const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
         const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
+        const promptedObjectiveIdx = this.getPromptedObjectiveIndex();
         const confirmObserveBlurb = _('Confirm?');
         this.handleLastTurnBanner(d.playersEndingGame);
         html += `<div class="bae_zoom_controls" role="group" aria-label="${_('Zoom controls')}">`;
@@ -403,9 +435,14 @@ class Game {
             const anyClaimed = obj.active && Object.values(obj.players).some((s) => s === "claimed");
             if (anyClaimed && playerState !== "claimed")
                 extraClass += " bae_obj_claimed_round";
+            if (promptedObjectiveIdx === idx)
+                extraClass += " bae_obj_prompt_target";
             const disabledAttr = obj.active ? "" : "disabled";
+            const promptConfirmBlurb = promptedObjectiveIdx === idx
+                ? `<span class="bae_confirm_blurb">${this.escapeHtml(confirmObserveBlurb)}</span>`
+                : "";
             // give each objective an ID so we can attach the BGA tooltip API instead of title attributes
-            html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(obj.id)}</button>`;
+            html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(obj.id)}${promptConfirmBlurb}</button>`;
         });
         html += `</div></div>`;
         // Pool group (middle): deck slot first, then pool cards
@@ -1099,6 +1136,7 @@ class Game {
                     }
                     this.selectedLocation = loc;
                     this.renderAll();
+                    this.onUpdateActionButtons(this.currentStateName(), null);
                     return;
                 }
                 if (this.isGameplayLike() && this.bga.players.isCurrentPlayerActive()) {
@@ -1151,6 +1189,7 @@ class Game {
                     }
                     this.selectedLocation = loc;
                     this.renderAll();
+                    this.onUpdateActionButtons(this.currentStateName(), null);
                     return;
                 }
                 if (this.isGameplayLike() && this.bga.players.isCurrentPlayerActive()) {
@@ -1203,6 +1242,7 @@ class Game {
                 }
                 this.selectedPoolSlot = slot;
                 this.renderAll();
+                this.onUpdateActionButtons(this.currentStateName(), null);
             });
         });
         this.root.querySelectorAll("[data-obj-idx]").forEach((el) => {
@@ -1217,33 +1257,45 @@ class Game {
                 const playerState = obj.players?.[myId] ?? 'unmet';
                 if (playerState !== 'meets')
                     return;
-                // if inside the "promptclaimobjective" state, use that action instead:
-                const inClaim = this.isOpeningMulliganLike();
-                const actionName = inClaim ? "actClaimPromptObjective" : "actClaimObjective";
-                void this.bga.actions.performAction(actionName, { objective_index: idx });
+                if (this.isPromptClaimObjectiveLike()) {
+                    const promptedIdx = this.getPromptedObjectiveIndex();
+                    if (promptedIdx == null || idx !== promptedIdx)
+                        return;
+                    void this.bga.actions.performAction("actClaimPromptObjective", { objective_index: idx });
+                    return;
+                }
+                void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
             });
         });
     }
-    onEnteringState(stateName, _args) {
+    onEnteringState(stateName, entryArgs) {
+        this.cacheStateActionArgs(entryArgs.args);
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         const n = stateName.toLowerCase();
-        if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign") || n.includes("openingmulligan")) {
+        if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign") || n.includes("openingmulligan") || n.includes("promptclaim") || n.includes("prompt_claim")) {
             this.renderAll();
         }
     }
-    onLeavingState(_stateName) { }
+    onLeavingState(_stateName) {
+        this.cachedActionArgs = null;
+        this.cachedUndoCanUndo = false;
+        this.cachedUndoType = null;
+        this.cachedCanMulligan = undefined;
+    }
     onUpdateActionButtons(stateName, args) {
+        this.cacheStateActionArgs(args);
+        const effectiveArgs = args ?? this.cachedActionArgs;
         this.bga.statusBar.removeActionButtons();
         if (!this.bga.players.isCurrentPlayerActive())
             return;
         const sn = stateName.toLowerCase();
         if (sn.includes("promptclaimobjective") || sn.includes("prompt_claim_objective")) {
             const myId = Number(this.bga.players.getCurrentPlayerId());
-            const promptArgs = args;
+            const promptArgs = effectiveArgs;
             const pending = promptArgs?.pendingByPlayer?.[myId] ?? [];
             if (pending.length === 0)
                 return;
@@ -1268,6 +1320,7 @@ class Game {
             });
             const undoInfo = promptArgs?.undoByPlayer?.[myId];
             this.addUndoActionButton(undoInfo?.canUndo, undoInfo?.undoType ?? null);
+            this.renderAll();
             return;
         }
         if (sn.includes("openingmulligan")) {
@@ -1341,11 +1394,22 @@ class Game {
             });
         }
         if (sn.includes("replenish")) {
+            const replenishArgs = effectiveArgs;
+            const poolCardSelected = this.selectedPoolSlot != null && this.selectedPoolSlot >= 0;
+            this.bga.statusBar.addActionButton(_("Draw Card"), () => {
+                if (!poolCardSelected || this.selectedPoolSlot == null)
+                    return;
+                void this.bga.actions.performAction("actTakeAnimal", { pool_slot: this.selectedPoolSlot });
+            }, {
+                disabled: !poolCardSelected,
+                tooltip: poolCardSelected
+                    ? _("Take the selected card from the pool.")
+                    : _("Select a card from the pool to draw."),
+            });
             this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
                 void this.bga.actions.performAction("actTakeAnimal", { pool_slot: -1 });
             });
-            const replenishArgs = args;
-            const can = replenishArgs?.canMulligan;
+            const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
             //   console.log("Can mulligan?", can, args);
             this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
                 void this.bga.actions.performAction("actMulliganPool", {});
@@ -1353,11 +1417,22 @@ class Game {
                 disabled: !can,
                 tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan once per turn, only if you have at least 1 VP."),
             });
-            this.addUndoActionButton(replenishArgs?.canUndo, replenishArgs?.undoType ?? null);
+            this.addUndoActionButton(replenishArgs?.canUndo ?? this.cachedUndoCanUndo, replenishArgs?.undoType ?? this.cachedUndoType);
         }
         if (sn.includes("assigncamp") || sn.includes("assign_camp")) {
-            const assignArgs = args;
-            this.addUndoActionButton(assignArgs?.canUndo, assignArgs?.undoType ?? null);
+            const assignArgs = effectiveArgs;
+            const locationSelected = this.selectedLocation != null;
+            this.bga.statusBar.addActionButton(_("Assign Scientists"), () => {
+                if (!locationSelected || this.selectedLocation == null)
+                    return;
+                void this.bga.actions.performAction("actAssignScientists", { location: this.selectedLocation });
+            }, {
+                disabled: !locationSelected,
+                tooltip: locationSelected
+                    ? _("Assign all your scientists to the selected location.")
+                    : _("Select a location to assign your scientists."),
+            });
+            this.addUndoActionButton(assignArgs?.canUndo ?? this.cachedUndoCanUndo, assignArgs?.undoType ?? this.cachedUndoType);
         }
     }
     async notif_observeAnimal(_args) {
