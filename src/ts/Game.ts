@@ -54,14 +54,6 @@ export class Game {
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
     this.renderAll();
-
-    // Re-fit once custom fonts are fully ready to avoid first-interaction text jumps.
-    if (document.fonts && typeof document.fonts.ready?.then === 'function') {
-      void document.fonts.ready.then(() => {
-        if (!this.root) return;
-        this.fitCardOverlayText();
-      });
-    }
   }
 
   private renderPlayerPanelInfo(): void {
@@ -170,7 +162,6 @@ export class Game {
     const scale = this.getScale();
     this.root.style.setProperty('--bae-scale', String(scale));
     this.updateSpriteSheetUrls(scale);
-    this.fitCardOverlayText();
     this.updateOpeningIntroOverlay();
     this.boardScaleTimeoutAccInterval = 10;
     this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
@@ -693,10 +684,40 @@ export class Game {
     el.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
   }
 
+  private applyTooltipScaleToCardFace(
+    type: 'objective' | 'scoring',
+    id: number,
+    tooltipScale: number,
+  ): string {
+    const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
+    const baseUrl = this.bga.images.getImgUrl();
+    const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
+    const objectiveSpriteUrl = `${baseUrl}Sprites/ObjectiveCards_sheet_${tier}.webp`;
+    const scoringSpriteUrl = `${baseUrl}Sprites/ScoringCards_sheet_${tier}.webp`;
+    const spriteStyle = `width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');`;
+
+    if (type === 'objective') {
+      return this.objectiveFaceById(id)
+        .replace(
+          '<div class="bae_obj_img bae_overlay_card"',
+          `<div class="bae_obj_img bae_overlay_card" style="${spriteStyle}"`,
+        );
+    }
+
+    return this.scoringFaceById(id)
+      .replace(
+        '<div class="bae_score_img bae_overlay_card"',
+        `<div class="bae_score_img bae_overlay_card" style="${spriteStyle}"`,
+      );
+  }
+
   private updateOpeningIntroOverlay(): void {
+    this.root?.querySelector('.bae_top_objectives')?.classList.remove('bae_opening_intro_highlight');
+    this.root?.querySelector('.bae_top_scoring')?.classList.remove('bae_opening_intro_highlight');
+    this.openingIntroEl?.remove();
+    this.openingIntroEl = null;
+
     if (!this.root || this.bga.players.isCurrentPlayerSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
-      this.openingIntroEl?.remove();
-      this.openingIntroEl = null;
       return;
     }
 
@@ -710,6 +731,9 @@ export class Game {
       ? _('Objective cards can be claimed at any time during your turns by clicking on the corresponding objective. You will not be prompted to claim an objective unless someone else has already claimed it.')
       : _('Scoring cards will automatically be scored for all players at the end of the game.');
 
+    const highlightTarget = this.root.querySelector(isObjectives ? '.bae_top_objectives' : '.bae_top_scoring');
+    highlightTarget?.classList.add('bae_opening_intro_highlight');
+
     this.openingIntroEl?.remove();
     const overlay = document.createElement('div');
     overlay.className = 'bae_opening_intro';
@@ -720,11 +744,11 @@ export class Game {
       <div class="bae_opening_intro_panel">
         <div class="bae_opening_intro_cards ${cardsClass}">${cardsHtml}</div>
         <p class="bae_opening_intro_caption">${this.escapeHtml(caption)}</p>
-        <button type="button" class="bae_opening_intro_confirm">${this.escapeHtml(_('Confirm'))}</button>
+        <button type="button" class="action-button bgabutton bgabutton_blue">${this.escapeHtml(_('Confirm'))}</button>
       </div>
     `;
-    this.applySlideshowScaleStyles(overlay);
-    overlay.querySelector('.bae_opening_intro_confirm')?.addEventListener('click', () => {
+    this.applySlideshowScaleStyles(overlay.querySelector('.bae_opening_intro_panel') as HTMLElement);
+    overlay.querySelector('.bgabutton')?.addEventListener('click', () => {
       if (this.openingIntroPage === 'objectives') {
         this.openingIntroPage = 'scoring';
       } else {
@@ -735,7 +759,6 @@ export class Game {
     });
     this.root.appendChild(overlay);
     this.openingIntroEl = overlay;
-    this.fitCardOverlayText(overlay);
   }
 
   private handleLastTurnBanner(playersEndingGame: number[]) {
@@ -1077,7 +1100,6 @@ export class Game {
     const currentScale = Number.parseFloat(scaleRaw);
     const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
     const tooltipScale = Math.max(0.3, baseScale * 2);
-    console.log(`buildCardTooltipSpriteHtml: baseScale=${baseScale}, tooltipScale=${tooltipScale}`);
     const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
     const baseUrl = this.bga.images.getImgUrl();
     const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
@@ -1099,29 +1121,13 @@ export class Game {
     const bgSizeY = (rows * 100).toFixed(4);
     const width = (type === 'objective' ? 745 : 528) * tooltipScale;
     const aspectRatio = type === 'objective' ? '745 / 528' : '528 / 745';
-    const typeFontPx = (56 * tooltipScale).toFixed(2);
-    const descFontPx = (44 * tooltipScale).toFixed(2);
     const detailFontPx = 13;
 
     let cardHtml;
     if (type === 'objective') {
-      cardHtml = this.objectiveFaceById(id)
-        .replace(
-          '<div class="bae_obj_img bae_overlay_card"',
-          `<div class="bae_obj_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
-        )
-        .replace('class="bae_fit_text bae_obj_type_bounds"', `class="bae_fit_text bae_obj_type_bounds" style="font-size:${typeFontPx}px;"`)
-        .replace('class="bae_fit_text bae_obj_title_bounds"', `class="bae_fit_text bae_obj_title_bounds" style="font-size:${typeFontPx}px;"`)
-        .replace('class="bae_fit_text bae_obj_desc_bounds"', `class="bae_fit_text bae_obj_desc_bounds" style="font-size:${descFontPx}px;"`);
+      cardHtml = this.applyTooltipScaleToCardFace('objective', id, tooltipScale);
     } else if (type === 'scoring') {
-      cardHtml = this.scoringFaceById(id)
-        .replace(
-          '<div class="bae_score_img bae_overlay_card"',
-          `<div class="bae_score_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
-        )
-        .replace('class="bae_fit_text bae_score_type_bounds"', `class="bae_fit_text bae_score_type_bounds" style="font-size:${typeFontPx}px;"`)
-        .replace('class="bae_fit_text bae_score_title_bounds"', `class="bae_fit_text bae_score_title_bounds" style="font-size:${typeFontPx}px;"`)
-        .replace('class="bae_fit_text bae_score_desc_bounds"', `class="bae_fit_text bae_score_desc_bounds" style="font-size:${descFontPx}px;"`);
+      cardHtml = this.applyTooltipScaleToCardFace('scoring', id, tooltipScale);
     }
     else if (type === 'animal') {
       cardHtml = this.cardFaceById(id)
@@ -1158,9 +1164,9 @@ export class Game {
       <div class="bae_obj_img bae_overlay_card" aria-label="${title}">
         <div class="bae_overlay_sprite ${sprite.spriteClass}" style="--sprite-x:${sprite.x};--sprite-y:${sprite.y};"></div>
         <div class="bae_card_text_layer bae_objective_text_layer" aria-hidden="true">
-          <div class="bae_fit_text bae_obj_type_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${typeLabel}</div></div>
-          <div class="bae_fit_text bae_obj_title_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${title}</div></div>
-          <div class="bae_fit_text bae_obj_desc_bounds" data-fit-max="44"><div class="bae_fit_text_inner">${description}</div></div>
+          <div class="bae_fit_text bae_obj_type_bounds"><div class="bae_fit_text_inner">${typeLabel}</div></div>
+          <div class="bae_fit_text bae_obj_title_bounds"><div class="bae_fit_text_inner">${title}</div></div>
+          <div class="bae_fit_text bae_obj_desc_bounds"><div class="bae_fit_text_inner">${description}</div></div>
         </div>
       </div>
     `;
@@ -1184,9 +1190,9 @@ export class Game {
       <div class="bae_score_img bae_overlay_card" aria-label="${title}">
         <div class="bae_overlay_sprite ${sprite.spriteClass}" style="--sprite-x:${sprite.x};--sprite-y:${sprite.y};"></div>
         <div class="bae_card_text_layer bae_scoring_text_layer" aria-hidden="true">
-          <div class="bae_fit_text bae_score_type_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${typeLabel}</div></div>
-          <div class="bae_fit_text bae_score_title_bounds" data-fit-max="56"><div class="bae_fit_text_inner">${title}</div></div>
-          <div class="bae_fit_text bae_score_desc_bounds" data-fit-max="44"><div class="bae_fit_text_inner">${descriptionWithVp}</div></div>
+          <div class="bae_fit_text bae_score_type_bounds"><div class="bae_fit_text_inner">${typeLabel}</div></div>
+          <div class="bae_fit_text bae_score_title_bounds"><div class="bae_fit_text_inner">${title}</div></div>
+          <div class="bae_fit_text bae_score_desc_bounds"><div class="bae_fit_text_inner">${descriptionWithVp}</div></div>
         </div>
       </div>
     `;
@@ -1529,6 +1535,10 @@ export class Game {
     }
 
     if (sn.includes("openingmulligan")) {
+      if (this.openingIntroPage != null) {
+        return; // Don't show action buttons while the intro is being displayed
+      }
+
       const replaceCount = this.selectedRegroupIds.size;
       const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(replaceCount));
       this.bga.statusBar.addActionButton(replaceLabel, () => {

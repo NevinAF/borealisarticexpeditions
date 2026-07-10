@@ -19,7 +19,7 @@ html[data-theme=dark] {
   background-attachment: fixed;
 }
 
-#bae_playarea button {
+#bae_playarea button:not(.bgabutton) {
   width: auto;
   border: none;
   border-radius: 0;
@@ -719,6 +719,7 @@ html[data-theme=dark] {
   justify-content: center;
   text-align: center;
   line-height: 1.15;
+  font-size: calc(44px * var(--bae-scale));
   color: #111;
   font-family: "BaeCardSerif", serif;
 }
@@ -753,12 +754,14 @@ html[data-theme=dark] {
 .bae_score_title_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 700;
+  font-size: calc(56px * var(--bae-scale));
 }
 
 .bae_obj_type_bounds .bae_fit_text_inner,
 .bae_score_type_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 500;
+  font-size: calc(56px * var(--bae-scale));
 }
 
 .bae_obj_type_bounds {
@@ -869,6 +872,14 @@ html[data-theme=dark] {
   box-shadow: none;
 }
 
+.bae_top_group.bae_opening_intro_highlight {
+  position: relative;
+  border-radius: calc(16px * var(--bae-scale));
+  box-shadow: 0 0 0 2px #2a6fdb, inset 0 0 calc(24px * var(--bae-scale)) rgba(42, 111, 219, 0.22);
+  background: rgba(42, 111, 219, 0.1);
+  z-index: 41;
+}
+
 .bae_opening_intro {
   position: absolute;
   inset: 0;
@@ -876,13 +887,13 @@ html[data-theme=dark] {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: calc(30px * var(--bae-scale)) calc(20px * var(--bae-scale)) calc(20px * var(--bae-scale));
-  background: rgba(223, 234, 245, 0.94);
+  padding: calc(1240px * var(--bae-scale)) calc(20px * var(--bae-scale)) calc(20px * var(--bae-scale));
+  background: linear-gradient(to bottom, rgba(223, 234, 245, 0.5) calc(600px * var(--bae-scale)), rgba(223, 234, 245, 0.94) calc(1240px * var(--bae-scale)));
   pointer-events: auto;
 }
 
 html[data-theme=dark] .bae_opening_intro {
-  background: rgba(26, 36, 49, 0.94);
+  background: linear-gradient(to bottom, rgba(26, 36, 49, 0.5) calc(600px * var(--bae-scale)), rgba(26, 36, 49, 0.94) calc(1240px * var(--bae-scale)));
 }
 
 .bae_opening_intro_panel {
@@ -918,24 +929,6 @@ html[data-theme=dark] .bae_opening_intro {
   font-size: calc(46px * var(--bae-scale));
   line-height: 1.4;
   font-weight: 600;
-}
-
-.bae_opening_intro_confirm {
-  min-width: calc(320px * var(--bae-scale));
-  padding: calc(12px * var(--bae-scale)) calc(28px * var(--bae-scale));
-  border: 1px solid rgba(16, 36, 58, 0.42);
-  border-radius: calc(12px * var(--bae-scale));
-  background: rgba(248, 252, 255, 0.95);
-  color: #0e2944;
-  font-size: calc(44px * var(--bae-scale));
-  font-weight: 700;
-  cursor: pointer;
-}
-
-html[data-theme=dark] .bae_opening_intro_confirm {
-  background: rgba(35, 48, 67, 0.95);
-  color: #e8f1fb;
-  border-color: rgba(232, 241, 251, 0.28);
 }
 
 .bae_board_img_wrap {

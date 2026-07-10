@@ -121,7 +121,7 @@ html[data-theme="dark"] {
   background-attachment: fixed;
 }
 
-#bae_playarea button {
+#bae_playarea button:not(.bgabutton) {
   width: auto;
   border: none;
   border-radius: 0;
@@ -841,6 +841,7 @@ html[data-theme="dark"] {
   justify-content: center;
   text-align: center;
   line-height: 1.15;
+  font-size: scaled(44);
   color: #111;
   font-family: "BaeCardSerif", serif;
 }
@@ -875,12 +876,14 @@ html[data-theme="dark"] {
 .bae_score_title_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 700;
+  font-size: scaled(56);
 }
 
 .bae_obj_type_bounds .bae_fit_text_inner,
 .bae_score_type_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 500;
+  font-size: scaled(56);
 }
 
 .bae_obj_type_bounds {
@@ -991,6 +994,16 @@ html[data-theme="dark"] {
   box-shadow: none;
 }
 
+.bae_top_group.bae_opening_intro_highlight {
+  position: relative;
+  border-radius: scaled(16);
+  box-shadow:
+    0 0 0 #{$border}px #2a6fdb,
+    inset 0 0 scaled(24) rgba(42, 111, 219, 0.22);
+  background: rgba(42, 111, 219, 0.1);
+  z-index: 41;
+}
+
 .bae_opening_intro {
   position: absolute;
   inset: 0;
@@ -998,13 +1011,21 @@ html[data-theme="dark"] {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: scaled($space_6) scaled($space_4) scaled($space_4);
-  background: rgba(223, 234, 245, 0.94);
+  padding: scaled(1240) scaled($space_4) scaled($space_4);
+  background: linear-gradient(
+    to bottom, 
+    rgba(223, 234, 245, 0.50) scaled(600), 
+    rgba(223, 234, 245, 0.94) scaled(1240)
+  );
   pointer-events: auto;
 }
 
 html[data-theme="dark"] .bae_opening_intro {
-  background: rgba(26, 36, 49, 0.94);
+  background: linear-gradient(
+    to bottom, 
+    rgba(26, 36, 49, 0.50) scaled(600), 
+    rgba(26, 36, 49, 0.94) scaled(1240)
+  );
 }
 
 .bae_opening_intro_panel {
@@ -1040,24 +1061,6 @@ html[data-theme="dark"] .bae_opening_intro {
   font-size: scaled(46);
   line-height: 1.4;
   font-weight: 600;
-}
-
-.bae_opening_intro_confirm {
-  min-width: scaled(320);
-  padding: scaled(12) scaled(28);
-  border: 1px solid rgba(16, 36, 58, 0.42);
-  border-radius: scaled(12);
-  background: rgba(248, 252, 255, 0.95);
-  color: #0e2944;
-  font-size: scaled(44);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-html[data-theme="dark"] .bae_opening_intro_confirm {
-  background: rgba(35, 48, 67, 0.95);
-  color: #e8f1fb;
-  border-color: rgba(232, 241, 251, 0.28);
 }
 
 .bae_board_img_wrap {
