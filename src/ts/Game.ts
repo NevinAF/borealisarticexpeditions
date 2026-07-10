@@ -386,6 +386,31 @@ export class Game {
     return pending[0].index;
   }
 
+  private countScientistsInCamps(playerId: number): number {
+    const sci = this.gamedatas.boardState.scientists?.[playerId];
+    if (!sci) return 0;
+    let count = 0;
+    for (let col = 0; col < 3; col++) {
+      for (const pos of sci[col] ?? []) {
+        if (pos === 3 || pos === 4) count++;
+      }
+    }
+    return count;
+  }
+
+  private async confirmRegroupDiscard(cardIds: number[]): Promise<void> {
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    if (this.countScientistsInCamps(myId) === 0) {
+      const confirmed = await this.bga.dialogs.confirmation(
+        _("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"),
+      );
+      if (!confirmed) return;
+    }
+    await this.bga.actions.performAction("actRegroup", {
+      card_ids_json: JSON.stringify(cardIds),
+    });
+  }
+
   private enterRegroupMode(): void {
     this.selectedCardId = null;
     this.selectedLocation = null;
@@ -1462,9 +1487,7 @@ export class Game {
         const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
         this.bga.statusBar.addActionButton(replaceLabel, () => {
           const ids = Array.from(this.selectedRegroupIds);
-          void this.bga.actions.performAction("actRegroup", {
-            card_ids_json: JSON.stringify(ids),
-          });
+          void this.confirmRegroupDiscard(ids);
         }, {
           disabled: false,
           tooltip: _("Discard as many animal cards as you want from your hand (this can be 0 cards), draw that many cards from the deck. After confirming, you will take all your scientists from both camps and put them all in a single location of your choice. You are awarded as many VP as scientists moved from the camps."),
