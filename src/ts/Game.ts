@@ -36,6 +36,8 @@ export class Game {
   private static readonly ZOOM_MIN = 0.4;
   private zoomFactor = 1;
   private isShowingLastTurnBanner = false;
+  private openingIntroPage: "objectives" | "scoring" | null = "objectives";
+  private openingIntroEl: HTMLElement | null = null;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -169,6 +171,7 @@ export class Game {
     this.root.style.setProperty('--bae-scale', String(scale));
     this.updateSpriteSheetUrls(scale);
     this.fitCardOverlayText();
+    this.updateOpeningIntroOverlay();
     this.boardScaleTimeoutAccInterval = 10;
     this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
   }
@@ -670,6 +673,69 @@ export class Game {
     this.registerHandTooltips(myId);
     this.bindZoomHandlers();
     this.bindTableHandlers(myId);
+    this.updateOpeningIntroOverlay();
+  }
+
+  private getTooltipScale(): number {
+    const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
+    const currentScale = Number.parseFloat(scaleRaw);
+    const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
+    return Math.max(0.3, baseScale * 2);
+  }
+
+  private applySlideshowScaleStyles(el: HTMLElement): void {
+    const slideshowScale = this.getTooltipScale();
+    const tier = slideshowScale >= 0.55 ? 'full' : slideshowScale >= 0.25 ? 'half' : 'quarter';
+    const base = this.bga.images.getImgUrl();
+    el.style.setProperty('--bae-scale', String(slideshowScale));
+    el.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
+    el.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
+    el.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
+  }
+
+  private updateOpeningIntroOverlay(): void {
+    if (!this.root || this.bga.players.isCurrentPlayerSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
+      this.openingIntroEl?.remove();
+      this.openingIntroEl = null;
+      return;
+    }
+
+    const d = this.gamedatas.boardState;
+    const isObjectives = this.openingIntroPage === 'objectives';
+    const cardsClass = isObjectives ? 'bae_objectives' : 'bae_scoring';
+    const cardsHtml = isObjectives
+      ? d.objectives.map((obj) => `<div class="bae_opening_intro_obj">${this.objectiveFaceById(obj.id)}</div>`).join('')
+      : d.scoring_cards.map((id) => `<span class="bae_score_card">${this.scoringFaceById(id)}</span>`).join('');
+    const caption = isObjectives
+      ? _('Objective cards can be claimed at any time during your turns by clicking on the corresponding objective. You will not be prompted to claim an objective unless someone else has already claimed it.')
+      : _('Scoring cards will automatically be scored for all players at the end of the game.');
+
+    this.openingIntroEl?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'bae_opening_intro';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', isObjectives ? _('Objectives') : _('Scoring cards'));
+    overlay.innerHTML = `
+      <div class="bae_opening_intro_panel">
+        <div class="bae_opening_intro_cards ${cardsClass}">${cardsHtml}</div>
+        <p class="bae_opening_intro_caption">${this.escapeHtml(caption)}</p>
+        <button type="button" class="bae_opening_intro_confirm">${this.escapeHtml(_('Confirm'))}</button>
+      </div>
+    `;
+    this.applySlideshowScaleStyles(overlay);
+    overlay.querySelector('.bae_opening_intro_confirm')?.addEventListener('click', () => {
+      if (this.openingIntroPage === 'objectives') {
+        this.openingIntroPage = 'scoring';
+      } else {
+        this.openingIntroPage = null;
+      }
+      this.updateOpeningIntroOverlay();
+      this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
+    });
+    this.root.appendChild(overlay);
+    this.openingIntroEl = overlay;
+    this.fitCardOverlayText(overlay);
   }
 
   private handleLastTurnBanner(playersEndingGame: number[]) {
@@ -1126,12 +1192,13 @@ export class Game {
     `;
   }
 
-  private fitCardOverlayText(): void {
-    if (!this.root) return;
+  private fitCardOverlayText(container?: HTMLElement): void {
+    const scope = container ?? this.root;
+    if (!scope) return;
 
-    const scaleRaw = getComputedStyle(this.root).getPropertyValue('--bae-scale');
+    const scaleRaw = getComputedStyle(scope).getPropertyValue('--bae-scale');
     const boardScale = Math.max(0.01, Number.parseFloat(scaleRaw) || 1);
-    const boxes = this.root.querySelectorAll<HTMLElement>('.bae_fit_text');
+    const boxes = scope.querySelectorAll<HTMLElement>('.bae_fit_text');
     boxes.forEach((box) => {
       const inner = box.querySelector('.bae_fit_text_inner') as HTMLElement | null;
       if (!inner) return;
@@ -1409,11 +1476,16 @@ export class Game {
     }
   }
 
-  onLeavingState(_stateName: string) {
+  onLeavingState(stateName: string) {
     this.cachedActionArgs = null;
     this.cachedUndoCanUndo = false;
     this.cachedUndoType = null;
     this.cachedCanMulligan = undefined;
+    if (stateName.toLowerCase().includes('openingmulligan')) {
+      this.openingIntroPage = null;
+      this.openingIntroEl?.remove();
+      this.openingIntroEl = null;
+    }
   }
 
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null) {

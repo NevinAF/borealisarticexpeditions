@@ -991,6 +991,75 @@ html[data-theme="dark"] {
   box-shadow: none;
 }
 
+.bae_opening_intro {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: scaled($space_6) scaled($space_4) scaled($space_4);
+  background: rgba(223, 234, 245, 0.94);
+  pointer-events: auto;
+}
+
+html[data-theme="dark"] .bae_opening_intro {
+  background: rgba(26, 36, 49, 0.94);
+}
+
+.bae_opening_intro_panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: scaled($space_6);
+  width: 100%;
+  max-width: 100%;
+}
+
+.bae_opening_intro_cards {
+  width: 100%;
+  justify-content: center;
+}
+
+.bae_opening_intro_obj {
+  display: inline-flex;
+  flex: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  width: scaled($card_height);
+  height: scaled($card_width);
+}
+
+.bae_opening_intro_caption {
+  margin: 0;
+  max-width: scaled(3000);
+  text-align: center;
+  font-size: scaled(46);
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.bae_opening_intro_confirm {
+  min-width: scaled(320);
+  padding: scaled(12) scaled(28);
+  border: 1px solid rgba(16, 36, 58, 0.42);
+  border-radius: scaled(12);
+  background: rgba(248, 252, 255, 0.95);
+  color: #0e2944;
+  font-size: scaled(44);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+html[data-theme="dark"] .bae_opening_intro_confirm {
+  background: rgba(35, 48, 67, 0.95);
+  color: #e8f1fb;
+  border-color: rgba(232, 241, 251, 0.28);
+}
+
 .bae_board_img_wrap {
   display: none;
 }
