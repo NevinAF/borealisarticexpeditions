@@ -47,6 +47,8 @@ class Gameplay extends GameState
         array $args,
     ) {
         $g = $this->game;
+        $undoSnapshot = $g->captureUndoSnapshot();
+        $pendingBefore = $g->getPendingObjectivePrompts();
         $hands = $g->getHands();
         $playerHand = $hands[$activePlayerId] ?? [];
         $handIndex = array_search($card_id, $playerHand, true);
@@ -107,6 +109,15 @@ class Gameplay extends GameState
             );
         }
 
+        $pendingAfter = $g->getPendingObjectivePrompts();
+        $newPending = array_diff($pendingAfter[$activePlayerId] ?? [], $pendingBefore[$activePlayerId] ?? []);
+        $g->setUndoSnapshot($undoSnapshot, [
+            'type' => 'observe',
+            'player_id' => $activePlayerId,
+            'observe_triggered_prompt' => ! empty($newPending),
+        ]);
+        $g->setReplenishUndoBlocked(false);
+
         return ReplenishAnimalCard::class;
     }
 
@@ -128,6 +139,7 @@ class Gameplay extends GameState
         if (count($ids) !== count(array_unique($ids))) {
             throw new UserException(clienttranslate('Duplicate cards in regroup selection'));
         }
+        $undoSnapshot = count($ids) === 0 ? $g->captureUndoSnapshot() : null;
         $hands = $g->getHands();
         $playerHand = $hands[$activePlayerId] ?? [];
         foreach ($ids as $cid) {
@@ -174,6 +186,14 @@ class Gameplay extends GameState
         $last[$activePlayerId] = $camp;
         $g->setLastReturnedCounts($last);
 
+        if ($undoSnapshot !== null && $camp > 0) {
+            $g->setUndoSnapshot($undoSnapshot, [
+                'type' => 'regroup',
+                'player_id' => $activePlayerId,
+                'observe_triggered_prompt' => false,
+            ]);
+        }
+
         if ($camp > 0) {
             return AssignCampScientists::class;
         } else {
@@ -187,6 +207,7 @@ class Gameplay extends GameState
         int $activePlayerId,
         array $args,
     ) {
+        $this->game->clearUndoSnapshot();
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {

@@ -11,6 +11,7 @@ use Bga\GameFramework\States\PossibleAction;
 use Bga\GameFramework\UserException;
 use Bga\Games\BorealisArticExpeditions\Game;
 use Bga\Games\BorealisArticExpeditions\Material;
+use Bga\Games\BorealisArticExpeditions\States\ReplenishAnimalCard;
 
 class PromptClaimObjective extends GameState
 {
@@ -33,6 +34,10 @@ class PromptClaimObjective extends GameState
         $players = array_keys($this->getEligiblePendingByPlayer());
         if (empty($players)) {
             $this->game->clearPromptClaimReturnState();
+            if ($returnState === ReplenishAnimalCard::class) {
+                $this->game->setReplenishUndoBlocked(true);
+            }
+
             return $returnState;
         }
 
@@ -57,8 +62,14 @@ class PromptClaimObjective extends GameState
             }
         }
 
+        $undoByPlayer = [];
+        foreach (array_keys($eligible) as $pid) {
+            $undoByPlayer[$pid] = $this->game->getUndoInfoForPlayer((int) $pid, 'promptClaim');
+        }
+
         return [
             'pendingByPlayer' => $pendingByPlayer,
+            'undoByPlayer' => $undoByPlayer,
         ];
     }
 
@@ -107,6 +118,7 @@ class PromptClaimObjective extends GameState
     ): mixed {
         $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
+        $this->game->clearUndoSnapshot();
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, true);
 
         $remaining = $this->getEligiblePendingByPlayer()[$currentPlayerId] ?? [];
@@ -114,13 +126,7 @@ class PromptClaimObjective extends GameState
             return null;
         }
 
-        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, $returnState);
-        if ($finished) {
-            $this->game->clearPromptClaimReturnState();
-            return $returnState;
-        }
-
-        return null;
+        return $this->finishPromptReturn($returnState, $currentPlayerId);
     }
 
     #[PossibleAction]
@@ -131,6 +137,7 @@ class PromptClaimObjective extends GameState
     ): mixed {
         $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
+        $this->game->clearUndoSnapshot();
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, false);
 
         $remaining = $this->getEligiblePendingByPlayer()[$currentPlayerId] ?? [];
@@ -138,9 +145,27 @@ class PromptClaimObjective extends GameState
             return null;
         }
 
-        $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, $returnState);
+        return $this->finishPromptReturn($returnState, $currentPlayerId);
+    }
+
+    #[PossibleAction]
+    public function actUndo(int $currentPlayerId, array $args): mixed
+    {
+        return $this->game->performUndo($currentPlayerId, 'promptClaim');
+    }
+
+    /**
+     * @param class-string $returnState
+     */
+    private function finishPromptReturn(string $returnState, int $playerId): mixed
+    {
+        $finished = $this->game->gamestate->setPlayerNonMultiactive($playerId, $returnState);
         if ($finished) {
             $this->game->clearPromptClaimReturnState();
+            if ($returnState === ReplenishAnimalCard::class) {
+                $this->game->setReplenishUndoBlocked(true);
+            }
+
             return $returnState;
         }
 
@@ -152,12 +177,7 @@ class PromptClaimObjective extends GameState
         $returnState = $this->game->getPromptClaimReturnState();
         $pending = $this->getEligiblePendingByPlayer()[$playerId] ?? [];
         if (empty($pending)) {
-            $finished = $this->game->gamestate->setPlayerNonMultiactive($playerId, $returnState);
-            if ($finished) {
-                $this->game->clearPromptClaimReturnState();
-                return $returnState;
-            }
-            return null;
+            return $this->finishPromptReturn($returnState, $playerId);
         }
 
         return $this->actSkipPromptObjective((int) $pending[0], $playerId, $this->getArgs());

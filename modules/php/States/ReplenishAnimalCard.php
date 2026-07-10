@@ -36,7 +36,7 @@ class ReplenishAnimalCard extends GameState
         return [
             'pool' => $this->game->getPoolCards(),
             'canMulligan' => $canMulligan,
-        ];
+        ] + $this->game->getUndoInfoForPlayer($pid, 'replenish');
     }
 
     /**
@@ -94,6 +94,7 @@ class ReplenishAnimalCard extends GameState
             }
         }
         $g->updateObjectiveConditions();
+        $g->clearUndoSnapshot();
 
         return NextPlayer::class;
     }
@@ -123,6 +124,7 @@ class ReplenishAnimalCard extends GameState
         }
         $mull[$pid] = true;
         $g->setMulliganUsed($mull);
+        $g->clearUndoSnapshot();
 
         foreach ($g->getNextPlayerTable() as $otherPid => $_) {
             if ($otherPid === 0) continue;
@@ -154,6 +156,12 @@ class ReplenishAnimalCard extends GameState
         }
 
         return null;
+    }
+
+    #[PossibleAction]
+    public function actUndo(int $activePlayerId, array $args)
+    {
+        return $this->game->performUndo($activePlayerId, 'replenish');
     }
 
     public function zombie(int $playerId)

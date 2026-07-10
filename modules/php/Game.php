@@ -46,6 +46,10 @@ class Game extends \Bga\GameFramework\Table
 
     public const GLOBAL_PROMPT_CLAIM_RETURN_STATE = 'prompt_claim_return_state';
 
+    public const GLOBAL_UNDO_SNAPSHOT = 'undo_snapshot';
+
+    public const GLOBAL_REPLENISH_UNDO_BLOCKED = 'replenish_undo_blocked';
+
     public const PROMPT_RETURN_ASSIGN_CAMP = 'assignCamp';
     public const PROMPT_RETURN_GAMEPLAY = 'gameplay';
     public const PROMPT_RETURN_REPLENISH_ANIMAL = 'replenishAnimal';
@@ -352,6 +356,169 @@ class Game extends \Bga\GameFramework\Table
         }
 
         return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function captureUndoSnapshot(): array
+    {
+        $scores = [];
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            $scores[$pid] = $this->bga->playerScore->get($pid);
+        }
+
+        return [
+            'scientists' => $this->getScientists(),
+            'flags' => $this->getFlags(),
+            'hands' => $this->getHands(),
+            'boards' => $this->getBoards(),
+            'objectives' => $this->getObjectivesState(),
+            'pending_objective_prompts' => $this->getPendingObjectivePrompts(),
+            'last_returned_counts' => $this->getLastReturnedCounts(),
+            'player_scores' => $scores,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @param array<string, mixed> $meta
+     */
+    public function setUndoSnapshot(array $snapshot, array $meta): void
+    {
+        $this->bga->globals->set(self::GLOBAL_UNDO_SNAPSHOT, array_merge($meta, ['snapshot' => $snapshot]));
+    }
+
+    public function clearUndoSnapshot(): void
+    {
+        $this->bga->globals->set(self::GLOBAL_UNDO_SNAPSHOT, null);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getUndoSnapshot(): ?array
+    {
+        $v = $this->bga->globals->get(self::GLOBAL_UNDO_SNAPSHOT, null);
+
+        return is_array($v) ? $v : null;
+    }
+
+    public function setReplenishUndoBlocked(bool $blocked): void
+    {
+        $this->bga->globals->set(self::GLOBAL_REPLENISH_UNDO_BLOCKED, $blocked);
+    }
+
+    public function isReplenishUndoBlocked(): bool
+    {
+        return (bool) $this->bga->globals->get(self::GLOBAL_REPLENISH_UNDO_BLOCKED, false);
+    }
+
+    /**
+     * @return array{canUndo: bool, undoType: ?string}
+     */
+    public function getUndoInfoForPlayer(int $playerId, string $context): array
+    {
+        $undo = $this->getUndoSnapshot();
+        if ($undo === null || (int) ($undo['player_id'] ?? 0) !== $playerId) {
+            return ['canUndo' => false, 'undoType' => null];
+        }
+
+        if (! $this->isUndoAllowedInContext($undo, $context)) {
+            return ['canUndo' => false, 'undoType' => null];
+        }
+
+        $type = (string) ($undo['type'] ?? '');
+
+        return [
+            'canUndo' => $type === 'observe' || $type === 'regroup',
+            'undoType' => $type === 'observe' || $type === 'regroup' ? $type : null,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $undo
+     */
+    private function isUndoAllowedInContext(array $undo, string $context): bool
+    {
+        $type = (string) ($undo['type'] ?? '');
+        if ($type === 'observe') {
+            if ($context === 'replenish') {
+                return ! $this->isReplenishUndoBlocked();
+            }
+            if ($context === 'promptClaim') {
+                return ! empty($undo['observe_triggered_prompt']);
+            }
+
+            return false;
+        }
+        if ($type === 'regroup') {
+            return $context === 'assignCamp';
+        }
+
+        return false;
+    }
+
+    /**
+     * @return class-string
+     */
+    public function performUndo(int $playerId, string $context): string
+    {
+        $undo = $this->getUndoSnapshot();
+        if ($undo === null) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Nothing to undo'));
+        }
+        if ((int) ($undo['player_id'] ?? 0) !== $playerId) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('You cannot undo this action'));
+        }
+        if (! $this->isUndoAllowedInContext($undo, $context)) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Undo is not available right now'));
+        }
+
+        $snap = $undo['snapshot'] ?? null;
+        if (! is_array($snap)) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Undo data is missing'));
+        }
+
+        $this->setScientists($snap['scientists'] ?? []);
+        $this->setFlags($snap['flags'] ?? []);
+        $this->setHands($snap['hands'] ?? []);
+        $this->setBoards($snap['boards'] ?? []);
+        $this->setObjectivesState($snap['objectives'] ?? []);
+        $this->setPendingObjectivePrompts($snap['pending_objective_prompts'] ?? []);
+        $this->setLastReturnedCounts($snap['last_returned_counts'] ?? []);
+
+        foreach ($snap['player_scores'] ?? [] as $pid => $score) {
+            $this->bga->playerScore->set((int) $pid, (int) $score, null);
+        }
+
+        $undoType = (string) ($undo['type'] ?? '');
+        $this->clearUndoSnapshot();
+        $this->setReplenishUndoBlocked(false);
+
+        $playerName = $this->getPlayerNameById($playerId);
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $this->bga->notify->player(
+                (int) $pid,
+                'actionUndone',
+                clienttranslate('${player_name} undid their ${undo_type} action'),
+                [
+                    'player_id' => $playerId,
+                    'player_name' => $playerName,
+                    'undo_type' => $undoType,
+                    'boardState' => $this->getBoardState((int) $pid),
+                ]
+            );
+        }
+
+        return Gameplay::class;
     }
 
     /**

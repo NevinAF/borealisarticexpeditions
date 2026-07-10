@@ -74,12 +74,17 @@ interface GameplayArgs {
 interface ReplenishArgs {
   pool: PoolSlotClient[];
   canMulligan: boolean;
+  canUndo?: boolean;
+  undoType?: "observe" | "regroup" | null;
 }
 
 interface AssignCampArgs {
   locationCount: number;
+  canUndo?: boolean;
+  undoType?: "observe" | "regroup" | null;
 }
 
 interface PromptClaimArgs {
   pendingByPlayer: Record<number, Array<{ index: number; id: number; title: string }>>;
+  undoByPlayer?: Record<number, { canUndo: boolean; undoType: "observe" | "regroup" | null }>;
 }

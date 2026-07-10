@@ -388,6 +388,28 @@ export class Game {
     this.onUpdateActionButtons(this.currentStateName(), null);
   }
 
+  private addUndoActionButton(canUndo: boolean | undefined, undoType: "observe" | "regroup" | null | undefined): void {
+    if (!canUndo || !undoType) return;
+    const label = undoType === "observe" ? _("Undo: Observe") : _("Undo: Regroup");
+    const tooltip = undoType === "observe"
+      ? _("Undo observing an animal and return to choosing your main action. Only available before drawing a replacement card.")
+      : _("Undo regrouping and return to choosing your main action. Only available when no cards were discarded.");
+    this.bga.statusBar.addActionButton(label, () => {
+      void this.bga.actions.performAction("actUndo", {});
+    }, {
+      disabled: false,
+      tooltip,
+    });
+  }
+
+  private syncScoresFromBoardState(boardState: BoardState): void {
+    const vps = boardState.vps ?? {};
+    for (const [pid, score] of Object.entries(vps)) {
+      const ctr = this.bga.playerPanels.getScoreCounter(Number(pid));
+      ctr.setValue(Number((score as { score?: number }).score ?? score));
+    }
+  }
+
   private confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
     if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
@@ -1350,6 +1372,9 @@ export class Game {
         disabled: false,
         tooltip: _("Do not claim this objective. You will not be prompted to claim later and will not be able to claim if your turn has passed this round. This is added to mimic game rules where you can claim objectives at any time if you realized that you meet the objective requirements after it is claimed."),
       });
+
+      const undoInfo = promptArgs?.undoByPlayer?.[myId];
+      this.addUndoActionButton(undoInfo?.canUndo, undoInfo?.undoType ?? null);
       return;
     }
 
@@ -1432,7 +1457,8 @@ export class Game {
       this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
         void this.bga.actions.performAction("actTakeAnimal", { pool_slot: -1 });
       });
-      const can = args && (args as unknown as ReplenishArgs).canMulligan;
+      const replenishArgs = args as unknown as ReplenishArgs | null;
+      const can = replenishArgs?.canMulligan;
     //   console.log("Can mulligan?", can, args);
         this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
           void this.bga.actions.performAction("actMulliganPool", {});
@@ -1440,6 +1466,11 @@ export class Game {
             disabled: !can,
             tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan once per turn, only if you have at least 1 VP."),
         });
+      this.addUndoActionButton(replenishArgs?.canUndo, replenishArgs?.undoType ?? null);
+    }
+    if (sn.includes("assigncamp") || sn.includes("assign_camp")) {
+      const assignArgs = args as unknown as AssignCampArgs | null;
+      this.addUndoActionButton(assignArgs?.canUndo, assignArgs?.undoType ?? null);
     }
   }
 
@@ -1470,6 +1501,13 @@ export class Game {
         this.gamedatas.boardState = _args.boardState;
     }
     this.renderAll();
+  }
+  async notif_actionUndone(_args: any) {
+    if (_args.boardState) {
+      this.gamedatas.boardState = _args.boardState;
+    }
+    this.renderAll();
+    this.syncScoresFromBoardState(this.gamedatas.boardState);
   }
   async notif_regroup(_args: any) {
     // animate VP from camps (if any) for the acting player

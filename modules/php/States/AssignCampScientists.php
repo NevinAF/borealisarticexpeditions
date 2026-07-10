@@ -30,7 +30,8 @@ class AssignCampScientists extends GameState
 
     public function getArgs(): array
     {
-        return ['locationCount' => Material::LOCATION_COUNT];
+        return ['locationCount' => Material::LOCATION_COUNT]
+            + $this->game->getUndoInfoForPlayer((int) $this->game->getActivePlayerId(), 'assignCamp');
     }
 
     /**
@@ -43,6 +44,7 @@ class AssignCampScientists extends GameState
         array $args,
     ) {
         $g = $this->game;
+        $g->clearUndoSnapshot();
 
         $sci = BoardModel::moveAllCampScientistsToLocation($g->getScientists(), $activePlayerId, $location);
         $g->setScientists($sci);
@@ -72,6 +74,7 @@ class AssignCampScientists extends GameState
         int $activePlayerId,
         array $args,
     ) {
+        $this->game->clearUndoSnapshot();
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {
@@ -79,6 +82,12 @@ class AssignCampScientists extends GameState
         }
 
         return null;
+    }
+
+    #[PossibleAction]
+    public function actUndo(int $activePlayerId, array $args)
+    {
+        return $this->game->performUndo($activePlayerId, 'assignCamp');
     }
 
     public function zombie(int $playerId)
