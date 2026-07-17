@@ -1052,6 +1052,7 @@ class Game extends \Bga\GameFramework\Table
         $objectives[$objectiveIndex]['players'][$activePlayerId] = 'claimed';
         $this->bga->playerScore->inc($activePlayerId, 5, null);
 
+        $this->removePendingObjectivePrompt($activePlayerId, $objectiveIndex);
         $pending = $this->getPendingObjectivePrompts();
         foreach ($this->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) {

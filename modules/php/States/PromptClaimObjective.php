@@ -33,6 +33,7 @@ class PromptClaimObjective extends GameState
         $returnState = $this->game->getPromptClaimReturnState();
         $players = array_keys($this->getEligiblePendingByPlayer());
         if (empty($players)) {
+            $this->game->clearPendingObjectivePrompts();
             $this->game->clearPromptClaimReturnState();
             if ($returnState === ReplenishAnimalCard::class) {
                 $this->game->setReplenishUndoBlocked(true);
