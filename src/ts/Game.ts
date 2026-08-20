@@ -1,5 +1,8 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
+import { AnimalDefLite } from './optional/Legality';
+import { OptionalUi } from './optional/OptionalUi';
+
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
   private static readonly BOARD_REFERENCE_HEIGHT_PX = 2600;
@@ -20,13 +23,13 @@ export class Game {
 
   bga!: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
   gamedatas!: BorealisArticExpeditionsGamedatas;
-  private root!: HTMLElement;
-  private selectedCardId: number | null = null;
-  private selectedLocation: number | null = null;
-  private selectedPoolSlot: number | null = null;
-  private campSelected = false;
-  private selectedRegroupIds = new Set<number>();
-  private cachedActionArgs: Record<string, unknown> | null = null;
+  root!: HTMLElement;
+  selectedCardId: number | null = null;
+  selectedLocation: number | null = null;
+  selectedPoolSlot: number | null = null;
+  campSelected = false;
+  selectedRegroupIds = new Set<number>();
+  cachedActionArgs: Record<string, unknown> | null = null;
   private cachedUndoCanUndo = false;
   private cachedUndoType: "observe" | "regroup" | null = null;
   private cachedCanMulligan: boolean | undefined = undefined;
@@ -38,6 +41,7 @@ export class Game {
   private isShowingLastTurnBanner = false;
   private openingIntroPage: "objectives" | "scoring" | null = "objectives";
   private openingIntroEl: HTMLElement | null = null;
+  private optionalUi: OptionalUi | null = null;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -51,6 +55,8 @@ export class Game {
     this.root.id = "bae_playarea";
     this.root.className = "bae";
     area.appendChild(this.root);
+    // OPTIONAL: client-only UX helpers (help, legality, DnD, previews, sound)
+    this.optionalUi = new OptionalUi(this);
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
     this.renderAll();
@@ -325,12 +331,19 @@ export class Game {
       const id = host.id || `bae_hand_${myId}_${cardId}`;
       if (!host.id) host.id = id;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      const def = this.animalDef(numericCardId);
+      const species = this.gamedatas.materials.species_names?.[def?.species ?? 0] ?? '';
+      const vehicle = this.gamedatas.materials.vehicle_names?.[def?.vehicle ?? 0] ?? '';
+      const sci = this.gamedatas.materials.scientist_names ?? [];
+      const effect = def
+        ? `${_('Moves')} ${sci[def.left_move] ?? def.left_move} ${_('left')} · ${sci[def.right_move] ?? def.right_move} ${_('right')}. ${_('Vehicle')}: ${vehicle}. ${_('Bonus VP')}: ${def.bonus_vp}.`
+        : '';
       if (canHtmlTooltip) {
         const html = this.buildCardTooltipSpriteHtml(
           'animal',
           numericCardId,
-          `${_('Animal card')} #${numericCardId}`,
-          [actionText],
+          `${species || _('Animal card')} #${numericCardId}`,
+          [effect, actionText],
         );
         this.bga.gameui.addTooltipHtml(id, html);
       } else {
@@ -340,33 +353,33 @@ export class Game {
   }
 
   /** Main state name (handles nested private_state in some BGA builds). */
-  private currentStateName(): string {
+  currentStateName(): string {
     const gs = this.gamedatas.gamestate as { name?: string; private_state?: { name?: string } };
     if (gs.private_state?.name) return String(gs.private_state.name);
     return gs.name ? String(gs.name) : "";
   }
 
-  private isGameplayLike(): boolean {
+  isGameplayLike(): boolean {
     const n = this.currentStateName().toLowerCase();
     return n === "gameplay" || n.includes("gameplay");
   }
 
-  private isReplenishLike(): boolean {
+  isReplenishLike(): boolean {
     const n = this.currentStateName().toLowerCase();
     return n === "replenishanimal" || n.includes("replenish");
   }
 
-  private isAssignCampLike(): boolean {
+  isAssignCampLike(): boolean {
     const n = this.currentStateName().toLowerCase();
     return n === "assigncamp" || n.includes("assigncamp") || n.includes("assign_camp");
   }
 
-  private isOpeningMulliganLike(): boolean {
+  isOpeningMulliganLike(): boolean {
     const n = this.currentStateName().toLowerCase();
     return n === "openingmulligan" || n.includes("openingmulligan") || n.includes("opening_mulligan");
   }
 
-  private isPromptClaimObjectiveLike(): boolean {
+  isPromptClaimObjectiveLike(): boolean {
     const n = this.currentStateName().toLowerCase();
     return n.includes("promptclaimobjective") || n.includes("prompt_claim_objective");
   }
@@ -392,20 +405,33 @@ export class Game {
     return count;
   }
 
+  animalDef(cardId: number): AnimalDefLite | undefined {
+    const raw = this.gamedatas.materials.animal_cards;
+    if (Array.isArray(raw)) return raw[cardId] as AnimalDefLite | undefined;
+    return (raw as Record<number, AnimalDefLite> | undefined)?.[cardId];
+  }
+
+  buildCardTooltipSpriteHtml(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
+    return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
+  }
+
   private async confirmRegroupDiscard(cardIds: number[]): Promise<void> {
     const myId = Number(this.bga.players.getCurrentPlayerId());
     if (this.countScientistsInCamps(myId) === 0) {
-      const confirmed = await this.bga.dialogs.confirmation(
-        _("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"),
-      );
-      if (!confirmed) return;
+      // OPTIONAL: preference can skip this confirm when player opts out
+      if (!this.optionalUi?.shouldSkipSafeConfirm()) {
+        const confirmed = await this.bga.dialogs.confirmation(
+          _("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"),
+        );
+        if (!confirmed) return;
+      }
     }
     await this.bga.actions.performAction("actRegroup", {
       card_ids_json: JSON.stringify(cardIds),
     });
   }
 
-  private enterRegroupMode(): void {
+  enterRegroupMode(): void {
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
@@ -413,9 +439,11 @@ export class Game {
     this.selectedRegroupIds.clear();
     this.renderAll();
     this.onUpdateActionButtons(this.currentStateName(), null);
+    this.optionalUi?.onSelectionChanged();
+    this.optionalUi?.playSound('select');
   }
 
-  private clearSelection(): void {
+  clearSelection(): void {
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
@@ -423,6 +451,7 @@ export class Game {
     this.selectedRegroupIds.clear();
     this.renderAll();
     this.onUpdateActionButtons(this.currentStateName(), null);
+    this.optionalUi?.onSelectionChanged();
   }
 
   /** BGA calls onUpdateActionButtons before onEnteringState; cache args from either source for client-side refreshes. */
@@ -470,7 +499,7 @@ export class Game {
     return true;
   }
 
-  private renderAll() {
+  renderAll() {
     this.syncGamedatas();
 
     let html = "";
@@ -665,6 +694,8 @@ export class Game {
     this.bindZoomHandlers();
     this.bindTableHandlers(myId);
     this.updateOpeningIntroOverlay();
+    // OPTIONAL: legality highlights, help, DnD, pattern match, previews
+    this.optionalUi?.afterRender();
   }
 
   private getTooltipScale(): number {
@@ -803,18 +834,20 @@ export class Game {
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
       const claimedPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'claimed').map(([pid]) => pid);
-      const claimedByName = claimedPids.length > 0
-        ? claimedPids.map((pid) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`).join(', ')
-        : '';
-      const objectiveDetail = claimedPids.length > 0
-        ? `${_('Claimed by: ')}${claimedByName}`
-        : _('Unclaimed');
-      const action = obj.active ? _('Click to claim this objective') : '';
+      const meetsPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'meets').map(([pid]) => pid);
+      const unmetPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'unmet').map(([pid]) => pid);
+      const nameOf = (pid: string) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`;
+      const progressLines = [
+        meetsPids.length ? `${_('Meets')}: ${meetsPids.map(nameOf).join(', ')}` : '',
+        claimedPids.length ? `${_('Claimed')}: ${claimedPids.map(nameOf).join(', ')}` : _('Unclaimed'),
+        unmetPids.length ? `${_('Does not meet')}: ${unmetPids.map(nameOf).join(', ')}` : '',
+      ];
+      const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
         const html = this.buildCardTooltipSpriteHtml(
           'objective',
           obj.id,
           objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-          [objectiveDetail, action],
+          [...progressLines, objectiveMat?.description ?? '', action],
         );
         this.bga.gameui.addTooltipHtml(id, html);
     });
@@ -892,8 +925,9 @@ export class Game {
           const id = `bae_track_${pid}_${loc}_${i}`;
           try { this.bga.gameui.removeTooltip(id); } catch (_) {}
           const vpEntry = trackVps[loc]?.[i] ?? 0;
-          const help = `${_('Exploration Track')} ${i} · ${vehiclesAtSpace.map(v => vehicleNames[v] ?? `#${v}`).join(', ')} · ${vpEntry} ${_('VP')}`;
-          this.bga.gameui.addTooltip(id, help, '');
+          const help = `${_('Exploration Track')} ${i} · ${vehiclesAtSpace.map(v => vehicleNames[v] ?? `#${v}`).join(', ') || _('Start')} · ${vpEntry} ${_('VP')}`;
+          const how = _('Advance the flag one space when the observed animal\'s vehicle matches a vehicle printed on the next space.');
+          this.bga.gameui.addTooltip(id, help, how);
         }
       }
     }
@@ -1086,7 +1120,7 @@ export class Game {
       .replace(/'/g, '&#39;');
   }
 
-  private buildCardTooltipSpriteHtml(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
+  private buildCardTooltipSpriteHtmlInternal(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
     const { columns, rows, lastIndex } = this.spriteMeta(type);
     const index = this.getSpriteIndex(id, lastIndex);
     const col = index % columns;
@@ -1660,6 +1694,7 @@ export class Game {
   }
 
   async notif_observeAnimal(_args: any) {
+    this.optionalUi?.playSound('success');
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
@@ -1713,6 +1748,7 @@ export class Game {
     this.renderAll();
   }
   async notif_objectiveClaimed(_args: any) {
+    this.optionalUi?.playSound('claim');
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
@@ -1740,6 +1776,8 @@ export class Game {
         this.gamedatas.boardState = _args.boardState;
     }
     this.renderAll();
+    // OPTIONAL: end-of-game statistics panel (client-side from public data)
+    this.optionalUi?.showEndGameStats();
   }
   async notif_scoringStep(_args: any) {
     if (_args.boardState) {

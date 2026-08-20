@@ -91,13 +91,14 @@ class Gameplay extends GameState
         $g->updateObjectiveConditions();
 
         $speciesName = Material::getSpeciesNames()[$def['species'] ?? 0] ?? '';
+        $locationName = Material::getLocationNames()[$location] ?? (string) $location;
 
         foreach ($g->getNextPlayerTable() as $pid => $_) {
             if ($pid === 0) continue;
             $this->bga->notify->player(
                 (int)$pid,
                 'observeAnimal',
-                clienttranslate('${player_name} observes a ${species_name}'),
+                clienttranslate('${player_name} observes a ${species_name} at the ${location_name} location'),
                 [
                     'player_id' => $activePlayerId,
                     'player_name' => $g->getPlayerNameById($activePlayerId),
@@ -105,6 +106,7 @@ class Gameplay extends GameState
                     'location' => $location,
                     'boardState' => $g->getBoardState((int)$pid),
                     'species_name' => $speciesName,
+                    'location_name' => $locationName,
                 ]
             );
         }

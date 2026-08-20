@@ -26,6 +26,8 @@ class Game extends \Bga\GameFramework\Table
 
     public const GLOBAL_ROUND_LEADER = 'round_leader_id';
 
+    public const GLOBAL_ROUND_NUMBER = 'round_number';
+
     public const GLOBAL_MULLIGAN = 'mulligan_used';
 
     public const GLOBAL_DECK = 'deck';
@@ -165,6 +167,7 @@ class Game extends \Bga\GameFramework\Table
         $result['objectives'] = $this->getObjectivesState();
         $result['scoring_cards'] = $this->getScoringCardIds();
         $result['board_for_players'] = $this->getBoardForPlayers();
+        $result['round'] = $this->getRoundNumber();
         $vps = $this->getCollectionFromDb(
             'SELECT `player_id` AS `id`, `player_score` AS `score` FROM `player`'
         );
@@ -565,6 +568,24 @@ class Game extends \Bga\GameFramework\Table
     public function setRoundLeaderId(int $id): void
     {
         $this->bga->globals->set(self::GLOBAL_ROUND_LEADER, $id);
+    }
+
+    public function getRoundNumber(): int
+    {
+        return (int) $this->bga->globals->get(self::GLOBAL_ROUND_NUMBER, 1);
+    }
+
+    public function setRoundNumber(int $n): void
+    {
+        $this->bga->globals->set(self::GLOBAL_ROUND_NUMBER, max(1, $n));
+    }
+
+    public function incrementRoundNumber(): int
+    {
+        $n = $this->getRoundNumber() + 1;
+        $this->setRoundNumber($n);
+
+        return $n;
     }
 
     /**
@@ -1635,12 +1656,12 @@ class Game extends \Bga\GameFramework\Table
         $this->setScientists(BoardModel::initialScientists($playerIds));
         $this->setFlags(BoardModel::initialFlags($playerIds));
 
-        $objPick = [];
         $objTypes = Material::getObjectivesByType();
-        shuffle($objTypes['animal']);
-        shuffle($objTypes['scientist']);
-        shuffle($objTypes['vehicle']);
-        foreach ([$objTypes['animal'][0], $objTypes['scientist'][0], $objTypes['vehicle'][0]] as $oid) {
+        $animalPick = $this->pickObjectiveFromOption(100, $objTypes['animal']);
+        $scientistPick = $this->pickObjectiveFromOption(101, $objTypes['scientist']);
+        $vehiclePick = $this->pickObjectiveFromOption(102, $objTypes['vehicle']);
+        $objPick = [];
+        foreach ([$animalPick, $scientistPick, $vehiclePick] as $oid) {
             $playersSt = [];
             foreach ($playerIds as $pid) {
                 $playersSt[$pid] = 'unmet';
@@ -1649,9 +1670,7 @@ class Game extends \Bga\GameFramework\Table
         }
         $this->setObjectivesState($objPick);
 
-        $scorePool = Material::allScoringCardIds();
-        shuffle($scorePool);
-        $this->setScoringCardIds([(int) $scorePool[0], (int) $scorePool[1]]);
+        $this->setScoringCardIds($this->pickScoringCardsFromOptions());
 
         $mull = [];
         foreach ($playerIds as $pid) {
@@ -1659,22 +1678,97 @@ class Game extends \Bga\GameFramework\Table
         }
         $this->setMulliganUsed($mull);
 
-        // Assign a random board to the players:
-        $boardForPlayers = [];
-        $boardOptions = array_keys(Material::getPlayerBoardsData());
-        shuffle($boardOptions);
-        foreach ($playerIds as $pid) {
-            $boardForPlayers[$pid] = array_pop($boardOptions);
-        }
-        $this->setBoardForPlayers($boardForPlayers);
+        $this->setBoardForPlayers($this->assignBoardsFromOption($playerIds));
 
         $this->activeNextPlayer();
         $order = $this->getNextPlayerTable();
-        $this->setRoundLeaderId((int) $order[0]);
+        // OPTIONAL: table-order option keeps seating; random is default BGA order after activeNextPlayer.
+        $leader = (int) $order[0];
+        if ((int) ($this->bga->tableOptions->get(105) ?? 0) === 1) {
+            $leader = (int) ($playerIds[0] ?? $leader);
+            $this->gamestate->changeActivePlayer($leader);
+        }
+        $this->setRoundLeaderId($leader);
+        $this->setRoundNumber(1);
         $this->updateObjectiveConditions();
         $this->recomputeTieBreakScores();
 
         return OpeningMulligan::class;
+    }
+
+    /**
+     * OPTIONAL: Resolve objective pick from table option (0 = random).
+     *
+     * @param list<int> $pool
+     */
+    private function pickObjectiveFromOption(int $optionId, array $pool): int
+    {
+        $val = (int) ($this->bga->tableOptions->get($optionId) ?? 0);
+        if ($val >= 1 && $val <= count($pool)) {
+            return (int) $pool[$val - 1];
+        }
+        $shuffled = $pool;
+        shuffle($shuffled);
+
+        return (int) $shuffled[0];
+    }
+
+    /**
+     * OPTIONAL: Scoring card picks from options 103/104 (0 = random, 1..10 = card index).
+     *
+     * @return list<int>
+     */
+    private function pickScoringCardsFromOptions(): array
+    {
+        $all = Material::allScoringCardIds();
+        $pick = function (int $optionId, array $exclude) use ($all): int {
+            $val = (int) ($this->bga->tableOptions->get($optionId) ?? 0);
+            if ($val >= 1 && $val <= count($all)) {
+                $id = (int) $all[$val - 1];
+                if (! in_array($id, $exclude, true)) {
+                    return $id;
+                }
+            }
+            $pool = array_values(array_filter($all, fn ($id) => ! in_array((int) $id, $exclude, true)));
+            shuffle($pool);
+
+            return (int) $pool[0];
+        };
+        $first = $pick(103, []);
+        $second = $pick(104, [$first]);
+
+        return [$first, $second];
+    }
+
+    /**
+     * OPTIONAL: Board assignment from option 106.
+     *
+     * @param list<int> $playerIds
+     * @return array<int, int>
+     */
+    private function assignBoardsFromOption(array $playerIds): array
+    {
+        $mode = (int) ($this->bga->tableOptions->get(106) ?? 2);
+        $all = array_keys(Material::getPlayerBoardsData());
+        $aOnly = [0];
+        $bOnly = array_values(array_filter($all, fn ($id) => (int) $id !== 0));
+        $pool = match ($mode) {
+            0 => $aOnly,
+            1 => $bOnly !== [] ? $bOnly : $all,
+            default => $all,
+        };
+        $boardForPlayers = [];
+        $options = $pool;
+        shuffle($options);
+        foreach ($playerIds as $pid) {
+            if ($options === []) {
+                $options = $pool;
+                shuffle($options);
+            }
+            $boardForPlayers[$pid] = (int) array_pop($options);
+        }
+
+        return $boardForPlayers;
     }
 
     public function upgradeTableDb($from_version)

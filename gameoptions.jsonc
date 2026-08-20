@@ -1,23 +1,87 @@
 {
-  // option ids should be between 100 and 199
-  // See https://en.doc.boardgamearena.com/Options_and_preferences:_gameoptions.json,_gamepreferences.json for more details
-  /*
-  EXAMPLE:
-
-  "101": {
-    "name": "Draft variant",
+  "$comment": "Table options 100-199. Validated in setupNewGame.",
+  "100": {
+    "name": "Animal objective",
     "values": {
-      "0": {
-        "name": "No draft"
-      },
-      "1": {
-        "name": "Draft",
-        "description": "Add a draft at the beginning of the game"
-        "tmdisplay": "Draft",
-        "nobeginner": true
-      }
+      "0": { "name": "Random" },
+      "1": { "name": "Balanced Ecosystem", "tmdisplay": "Animal: Balanced Ecosystem" },
+      "2": { "name": "Richness of Nature", "tmdisplay": "Animal: Richness of Nature" },
+      "3": { "name": "Spotting List", "tmdisplay": "Animal: Spotting List" },
+      "4": { "name": "Favorite Research Object", "tmdisplay": "Animal: Favorite Research" }
     },
     "default": 0
+  },
+  "101": {
+    "name": "Scientist objective",
+    "values": {
+      "0": { "name": "Random" },
+      "1": { "name": "Specialists' Retreat", "tmdisplay": "Scientist: Specialists' Retreat" },
+      "2": { "name": "Comparing Notes", "tmdisplay": "Scientist: Comparing Notes" },
+      "3": { "name": "Morning Shift", "tmdisplay": "Scientist: Morning Shift" },
+      "4": { "name": "Splitting Up", "tmdisplay": "Scientist: Splitting Up" }
+    },
+    "default": 0
+  },
+  "102": {
+    "name": "Vehicle objective",
+    "values": {
+      "0": { "name": "Random" },
+      "1": { "name": "Organized Expedition", "tmdisplay": "Vehicle: Organized Expedition" },
+      "2": { "name": "Climbing the Area", "tmdisplay": "Vehicle: Climbing the Area" },
+      "3": { "name": "Bold Explorers", "tmdisplay": "Vehicle: Bold Explorers" },
+      "4": { "name": "Promising Direction", "tmdisplay": "Vehicle: Promising Direction" }
+    },
+    "default": 0
+  },
+  "103": {
+    "name": "Scoring card #1",
+    "values": {
+      "0": { "name": "Random" },
+      "1": { "name": "Common Destination" },
+      "2": { "name": "Expansive Species" },
+      "3": { "name": "Farewell Party" },
+      "4": { "name": "Interspecies Relationships" },
+      "5": { "name": "Mating Season" },
+      "6": { "name": "Outer Lands" },
+      "7": { "name": "Popular Vehicle" },
+      "8": { "name": "Safe Return" },
+      "9": { "name": "Territorial Animals" },
+      "10": { "name": "Untrodden Path" }
+    },
+    "default": 0
+  },
+  "104": {
+    "name": "Scoring card #2",
+    "values": {
+      "0": { "name": "Random" },
+      "1": { "name": "Common Destination" },
+      "2": { "name": "Expansive Species" },
+      "3": { "name": "Farewell Party" },
+      "4": { "name": "Interspecies Relationships" },
+      "5": { "name": "Mating Season" },
+      "6": { "name": "Outer Lands" },
+      "7": { "name": "Popular Vehicle" },
+      "8": { "name": "Safe Return" },
+      "9": { "name": "Territorial Animals" },
+      "10": { "name": "Untrodden Path" }
+    },
+    "default": 0
+  },
+  "105": {
+    "name": "Player order",
+    "values": {
+      "0": { "name": "Random", "tmdisplay": "Random order" },
+      "1": { "name": "Table order", "tmdisplay": "Table order" }
+    },
+    "default": 0
+  },
+  "106": {
+    "name": "Player boards",
+    "values": {
+      "0": { "name": "A side only", "tmdisplay": "Boards: A only" },
+      "1": { "name": "Random B sides", "tmdisplay": "Boards: Random B" },
+      "2": { "name": "Random A+B sides", "tmdisplay": "Boards: Random A+B" }
+    },
+    "default": 2
   }
-  */
 }

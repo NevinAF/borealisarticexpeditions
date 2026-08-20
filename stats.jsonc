@@ -1,28 +1,26 @@
-{    
-    // Statistics for the table
-    "table": {},
-    
-    // Statistics for each player
-    "player": {
-      /* 
-      EXAMPLE:
-
-      "turns_number": {
-        "id": 10,
-        "name": "Number of turns",
-        "type": "int"
-      },
-      "player_teststat1": {
-        "id": 11,
-        "name": "player test stat 1",
-        "type": "int"
-      },
-      "player_teststat2": {
-        "id": 12,
-        "name": "player test stat 2",
-        "type": "float"
-      }
-      */
-
+{
+  "table": {
+    "rounds_number": {
+      "id": 10,
+      "name": "Number of rounds",
+      "type": "int"
     }
+  },
+  "player": {
+    "objectives_claimed": {
+      "id": 10,
+      "name": "Objectives claimed",
+      "type": "int"
+    },
+    "animals_observed": {
+      "id": 11,
+      "name": "Animals observed",
+      "type": "int"
+    },
+    "deepest_flag": {
+      "id": 12,
+      "name": "Deepest flag position",
+      "type": "int"
+    }
+  }
 }

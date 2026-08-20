@@ -51,6 +51,9 @@ html[data-theme=dark] {
   color: #1a1a1a;
   margin: 0;
   position: relative;
+  /* OPTIONAL: subtle arctic atmosphere without hurting readability */
+  background-image: radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.55) 0%, transparent 55%), linear-gradient(180deg, rgba(232, 242, 250, 0.35) 0%, rgba(232, 242, 250, 0) 28%);
+  background-repeat: no-repeat;
 }
 
 .bae_zoom_controls {
@@ -1011,4 +1014,185 @@ html[data-theme=dark] .bae_opening_intro {
   width: 20px;
   height: 20px;
   object-fit: contain;
+}
+
+/* ========== OPTIONAL: Extra UI, help, legality, pattern match, previews, DnD ========== */
+.bae_round_badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 30;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(248, 252, 255, 0.92);
+  border: 1px solid rgba(16, 36, 58, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  color: #0e2944;
+}
+
+.bae_help_toggle {
+  position: absolute;
+  top: 5px;
+  left: 120px;
+  z-index: 30;
+  min-height: 20px;
+  padding: 2px 10px;
+  border: 1px solid rgba(16, 36, 58, 0.42);
+  border-radius: 5px;
+  background: rgba(248, 252, 255, 0.86);
+  color: #0e2944;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bae_help_panel,
+.bae_stats_panel {
+  position: absolute;
+  top: 36px;
+  left: 5px;
+  z-index: 35;
+  width: min(360px, 100% - 20px);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(248, 252, 255, 0.97);
+  border: 1px solid rgba(16, 36, 58, 0.35);
+  box-shadow: 0 8px 24px rgba(10, 25, 50, 0.18);
+  color: #0e2944;
+}
+
+.bae_help_panel h3,
+.bae_stats_panel h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.bae_help_warn {
+  color: #8a2f12;
+  font-weight: 600;
+}
+
+.bae_help_close {
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.bae_stats_row {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.bae_cannot_play {
+  opacity: 0.42;
+  filter: grayscale(0.35);
+}
+
+.bae_can_play {
+  /* legal play target - no extra chrome */
+}
+
+.bae_hover_match {
+  outline: 2px solid #2a6fdb;
+  outline-offset: 2px;
+  opacity: 1 !important;
+  filter: none !important;
+  z-index: 2;
+}
+
+.bae_encourage_regroup {
+  box-shadow: 0 0 0 2px #c45c00, inset 0 0 18px rgba(196, 92, 0, 0.2);
+}
+
+.bae_missing_scientist {
+  box-shadow: 0 0 0 2px #c62828, inset 0 0 16px rgba(198, 40, 40, 0.18);
+}
+
+.bae_pattern_match {
+  outline: 2px solid #0a7a4a;
+  outline-offset: 1px;
+  filter: brightness(1.12);
+}
+
+.bae_meeple_img.bae_pattern_match {
+  transform: translateY(-4px) scale(1.08);
+  transition: transform 120ms ease;
+}
+
+.bae_dragging {
+  opacity: 0.55;
+}
+
+.bae_drop_target {
+  outline: 2px dashed #2a6fdb;
+  outline-offset: 2px;
+  background: rgba(42, 111, 219, 0.12);
+}
+
+.bae_preview_ghost {
+  position: absolute;
+  width: 28%;
+  aspect-ratio: 1;
+  border-radius: 40%;
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 5;
+  left: 36%;
+  top: 36%;
+  border: 2px dashed #2a6fdb;
+  background: rgba(42, 111, 219, 0.25);
+  animation: bae_preview_pulse 1.2s ease-in-out infinite;
+}
+
+.bae_preview_flag {
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.bae_preview_flag_ok {
+  box-shadow: 0 0 0 3px #2a6fdb, inset 0 0 10px rgba(42, 111, 219, 0.45);
+}
+
+.bae_preview_flag_no {
+  box-shadow: 0 0 0 3px #c62828, inset 0 0 10px rgba(198, 40, 40, 0.4);
+}
+
+.bae_preview_assign,
+.bae_preview_awaiting {
+  box-shadow: 0 0 0 2px rgba(42, 111, 219, 0.7);
+}
+
+.bae_anim_off .bae_preview_ghost,
+.bae_anim_off .bae_preview_flag,
+.bae_previews_off .bae_preview_ghost,
+.bae_previews_off .bae_preview_flag {
+  display: none !important;
+}
+
+.bae_anim_slow .bae_preview_ghost {
+  animation-duration: 2s;
+}
+
+.bae_anim_fast .bae_preview_ghost {
+  animation-duration: 0.6s;
+}
+
+@keyframes bae_preview_pulse {
+  0%, 100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+/* OPTIONAL: lightweight resolution flash on notif updates */
+.bae_anim_normal .bae_card,
+.bae_anim_slow .bae_card,
+.bae_anim_fast .bae_card {
+  transition: transform 160ms ease, opacity 160ms ease;
 }

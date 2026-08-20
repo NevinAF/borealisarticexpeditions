@@ -1,3 +1,761 @@
+// OPTIONAL: Client-side observe legality mirroring BoardModel / actObserveAnimal.
+// Happy path: active player selecting a hand card + location that has required scientists.
+// Failure modes: missing card def / inactive player / insufficient scientists → treat as illegal (no throw).
+const POS_LEFT = 0;
+const POS_MID = 1;
+const POS_RIGHT = 2;
+const POS_CAMP_L = 3;
+const POS_CAMP_R = 4;
+function colorCountAtLocation(scientists, playerId, location, color) {
+    const poses = scientists?.[playerId]?.[color] ?? [];
+    return poses.filter((p) => p === location).length;
+}
+/** True if the animal card's left_move and right_move scientists are present at the location. */
+function canObserveAtLocation(def, scientists, playerId, location) {
+    if (!def || location < 0 || location > 2)
+        return false;
+    // Each printed move requires one meeple of that color at the play location.
+    const needLeft = def.left_move;
+    const needRight = def.right_move;
+    if (needLeft === needRight) {
+        return colorCountAtLocation(scientists, playerId, location, needLeft) >= 2;
+    }
+    return (colorCountAtLocation(scientists, playerId, location, needLeft) >= 1
+        && colorCountAtLocation(scientists, playerId, location, needRight) >= 1);
+}
+function missingScientistColors(def, scientists, playerId, location) {
+    if (!def)
+        return [];
+    const missing = [];
+    const need = {};
+    need[def.left_move] = (need[def.left_move] ?? 0) + 1;
+    need[def.right_move] = (need[def.right_move] ?? 0) + 1;
+    for (const [colorStr, count] of Object.entries(need)) {
+        const color = Number(colorStr);
+        const have = colorCountAtLocation(scientists, playerId, location, color);
+        for (let i = 0; i < Math.max(0, count - have); i++) {
+            missing.push(color);
+        }
+    }
+    return missing;
+}
+function canObserveAnywhere(def, scientists, playerId) {
+    for (let loc = 0; loc < 3; loc++) {
+        if (canObserveAtLocation(def, scientists, playerId, loc))
+            return true;
+    }
+    return false;
+}
+function locationsForCard(def, scientists, playerId) {
+    const out = [];
+    for (let loc = 0; loc < 3; loc++) {
+        if (canObserveAtLocation(def, scientists, playerId, loc))
+            out.push(loc);
+    }
+    return out;
+}
+function stepFrom(from, dir) {
+    if (dir === 'shift_right') {
+        if (from === POS_LEFT)
+            return POS_MID;
+        if (from === POS_MID)
+            return POS_RIGHT;
+        if (from === POS_RIGHT)
+            return POS_CAMP_R;
+        return from;
+    }
+    if (from === POS_RIGHT)
+        return POS_MID;
+    if (from === POS_MID)
+        return POS_LEFT;
+    if (from === POS_LEFT)
+        return POS_CAMP_L;
+    return from;
+}
+/** Preview destinations for left/right printed moves (does not mutate). */
+function previewObserveMoves(scientists, playerId, location, def) {
+    const moves = [
+        { color: def.left_move, dir: 'shift_left' },
+        { color: def.right_move, dir: 'shift_right' },
+    ];
+    const result = [];
+    const used = {};
+    for (const m of moves) {
+        const poses = scientists[playerId]?.[m.color] ?? [];
+        let idx = -1;
+        for (let i = 0; i < poses.length; i++) {
+            const key = `${m.color}:${i}`;
+            if (poses[i] === location && !used[key]) {
+                idx = i;
+                used[key] = true;
+                break;
+            }
+        }
+        if (idx < 0)
+            continue;
+        result.push({
+            color: m.color,
+            from: location,
+            to: stepFrom(location, m.dir),
+        });
+    }
+    return result;
+}
+function flagWouldAdvance(def, boardVehicles, currentFlag) {
+    if (currentFlag >= 7)
+        return false;
+    const next = currentFlag + 1;
+    const vehiclesOnSpace = boardVehicles[next - 1] ?? [];
+    return vehiclesOnSpace.includes(def.vehicle);
+}
+
+/** OPTIONAL preference ids (gamepreferences.jsonc). */
+const PREF_ANIM_SPEED = 100;
+const PREF_PREVIEWS = 101;
+const PREF_CONFIRM = 102;
+const PREF_SOUND = 103;
+/**
+ * OPTIONAL: Client-only UX layer (help, legality highlights, pattern match, DnD, previews, sound, stats).
+ * Never mutates server state. Illegal actions are blocked client-side; server remains source of truth.
+ */
+class OptionalUi {
+    constructor(host) {
+        this.host = host;
+        this.helpOpen = false;
+        this.hoverLocation = null;
+        this.hoverCardId = null;
+        this.hoverMatch = null;
+        this.dragCardId = null;
+        this.cleanupFns = [];
+        this.audioCtx = null;
+    }
+    /** Call after DOM rebuild. Happy path: bind optional handlers. Failure: missing root → no-op. */
+    afterRender() {
+        this.teardown();
+        if (!this.host.root)
+            return;
+        this.applyPreferenceCss();
+        this.renderRoundBadge();
+        this.renderHelpButton();
+        if (this.helpOpen)
+            this.renderHelpPanel();
+        this.decorateMaterialAttributes();
+        this.applyLegalityClasses();
+        this.bindHoverPatternMatching();
+        this.bindDragAndDrop();
+        this.updateActionPreviews();
+        this.bindPreferenceListener();
+    }
+    teardown() {
+        for (const fn of this.cleanupFns) {
+            try {
+                fn();
+            }
+            catch (_) { /* ignore */ }
+        }
+        this.cleanupFns = [];
+        this.host.root?.querySelectorAll('.bae_preview_ghost,.bae_preview_flag').forEach((el) => el.remove());
+    }
+    onSelectionChanged() {
+        this.applyLegalityClasses();
+        this.updateActionPreviews();
+        if (this.helpOpen)
+            this.renderHelpPanel();
+    }
+    /** Soft UI sounds via WebAudio oscillators (no asset files). Respects pref + BGA mute when available. */
+    playSound(kind) {
+        if (this.host.bga.userPreferences?.get(PREF_SOUND) === 0)
+            return;
+        try {
+            if (!this.audioCtx)
+                this.audioCtx = new AudioContext();
+            const ctx = this.audioCtx;
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            const now = ctx.currentTime;
+            if (kind === 'select') {
+                osc.frequency.value = 420;
+                gain.gain.setValueAtTime(0.04, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.09);
+            }
+            else if (kind === 'success') {
+                osc.frequency.value = 660;
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+            else {
+                osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.05, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                osc.start(now);
+                osc.stop(now + 0.28);
+            }
+        }
+        catch (_) {
+            // Failure mode: AudioContext blocked — silent.
+        }
+    }
+    animSpeedClass() {
+        const v = this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2;
+        return ['bae_anim_off', 'bae_anim_slow', 'bae_anim_normal', 'bae_anim_fast'][v] ?? 'bae_anim_normal';
+    }
+    previewsEnabled() {
+        return (this.host.bga.userPreferences?.get(PREF_PREVIEWS) ?? 1) === 1
+            && (this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2) !== 0;
+    }
+    shouldSkipSafeConfirm() {
+        return (this.host.bga.userPreferences?.get(PREF_CONFIRM) ?? 1) === 0;
+    }
+    showEndGameStats() {
+        const existing = document.getElementById('bae_stats_panel');
+        if (existing)
+            existing.remove();
+        const d = this.host.gamedatas.boardState;
+        const names = this.host.gamedatas.players;
+        const rows = [];
+        rows.push(`<div class="bae_stats_row"><strong>${_('Rounds played')}</strong>: ${d.round ?? '?'}</div>`);
+        for (const pidStr of Object.keys(names)) {
+            const pid = Number(pidStr);
+            const claimed = (d.objectives ?? []).filter((o) => o.players[pid] === 'claimed').length;
+            let maxFlag = 0;
+            for (let loc = 0; loc < 3; loc++) {
+                maxFlag = Math.max(maxFlag, Number(d.flags?.[pid]?.[loc] ?? 0));
+            }
+            let animals = 0;
+            for (let loc = 0; loc < 3; loc++)
+                animals += d.boards?.[pid]?.[loc]?.length ?? 0;
+            rows.push(`<div class="bae_stats_row"><strong>${this.escape(names[pid]?.name ?? String(pid))}</strong>`
+                + ` — ${_('Score')}: ${Number(d.vps?.[pid]?.score ?? d.vps?.[pid] ?? names[pid]?.score ?? 0)}`
+                + `; ${_('Objectives claimed')}: ${claimed}`
+                + `; ${_('Deepest flag')}: ${maxFlag}`
+                + `; ${_('Animals observed')}: ${animals}</div>`);
+        }
+        const panel = document.createElement('div');
+        panel.id = 'bae_stats_panel';
+        panel.className = 'bae_stats_panel';
+        panel.innerHTML = `<h3>${_('Game statistics')}</h3>${rows.join('')}`
+            + `<button type="button" class="bae_help_close">${_('Close')}</button>`;
+        panel.querySelector('.bae_help_close')?.addEventListener('click', () => panel.remove());
+        this.host.root.appendChild(panel);
+    }
+    escape(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    applyPreferenceCss() {
+        const root = this.host.root;
+        root.classList.remove('bae_anim_off', 'bae_anim_slow', 'bae_anim_normal', 'bae_anim_fast', 'bae_previews_off', 'bae_previews_on', 'bae_sound_off', 'bae_sound_on');
+        root.classList.add(this.animSpeedClass());
+        root.classList.add(this.previewsEnabled() ? 'bae_previews_on' : 'bae_previews_off');
+        root.classList.add((this.host.bga.userPreferences?.get(PREF_SOUND) ?? 1) === 1 ? 'bae_sound_on' : 'bae_sound_off');
+    }
+    bindPreferenceListener() {
+        const prev = this.host.bga.userPreferences.onChange;
+        this.host.bga.userPreferences.onChange = (prefId, value) => {
+            prev?.(prefId, value);
+            this.applyPreferenceCss();
+            this.updateActionPreviews();
+        };
+        this.cleanupFns.push(() => {
+            this.host.bga.userPreferences.onChange = prev;
+        });
+    }
+    renderRoundBadge() {
+        const round = this.host.gamedatas.boardState.round ?? 1;
+        let badge = this.host.root.querySelector('.bae_round_badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'bae_round_badge';
+            badge.setAttribute('aria-live', 'polite');
+            this.host.root.appendChild(badge);
+        }
+        const final = (this.host.gamedatas.boardState.playersEndingGame?.length ?? 0) > 0;
+        badge.textContent = final
+            ? `${_('Round')} ${round} — ${_('Final round')}`
+            : `${_('Round')} ${round}`;
+    }
+    renderHelpButton() {
+        let btn = this.host.root.querySelector('.bae_help_toggle');
+        if (!btn) {
+            btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bae_help_toggle';
+            btn.textContent = _('Help');
+            btn.title = _('Show player aid and current possible actions');
+            this.host.root.appendChild(btn);
+        }
+        const onClick = () => {
+            this.helpOpen = !this.helpOpen;
+            if (this.helpOpen)
+                this.renderHelpPanel();
+            else
+                this.host.root.querySelector('.bae_help_panel')?.remove();
+        };
+        btn.addEventListener('click', onClick);
+        this.cleanupFns.push(() => btn?.removeEventListener('click', onClick));
+    }
+    renderHelpPanel() {
+        this.host.root.querySelector('.bae_help_panel')?.remove();
+        const panel = document.createElement('aside');
+        panel.className = 'bae_help_panel';
+        panel.setAttribute('role', 'complementary');
+        panel.setAttribute('aria-label', _('Player aid'));
+        const state = this.host.currentStateName();
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const active = this.host.bga.players.isCurrentPlayerActive();
+        const lines = [];
+        lines.push(`<p><strong>${_('State')}</strong>: ${this.escape(state)}</p>`);
+        if ((this.host.gamedatas.boardState.playersEndingGame?.length ?? 0) > 0) {
+            lines.push(`<p class="bae_help_warn">${_('This is the final round.')}</p>`);
+        }
+        if (!active) {
+            lines.push(`<p>${_('Waiting for another player.')}</p>`);
+        }
+        else if (this.host.isGameplayLike()) {
+            lines.push(`<p>${_('Possible actions')}: ${_('Observe an animal')} · ${_('Regroup')} · ${_('Claim objective (if met)')}</p>`);
+            if (this.host.selectedCardId != null && this.host.selectedLocation != null) {
+                const def = this.host.animalDef(this.host.selectedCardId);
+                const missing = missingScientistColors(def, this.host.gamedatas.boardState.scientists, myId, this.host.selectedLocation);
+                if (missing.length > 0) {
+                    const sciNames = this.host.gamedatas.materials.scientist_names ?? [];
+                    lines.push(`<p class="bae_help_warn">${_('Missing scientists')}: ${missing.map((c) => sciNames[c] ?? c).join(', ')}</p>`);
+                }
+                else {
+                    lines.push(`<p>${_('Selection is valid — confirm Observe.')}</p>`);
+                }
+            }
+        }
+        else if (this.host.isReplenishLike()) {
+            lines.push(`<p>${_('Take a pool card or draw from the deck. Optional: mulligan the pool (-1 VP).')}</p>`);
+        }
+        else if (this.host.isAssignCampLike()) {
+            lines.push(`<p>${_('Choose a location for all camp scientists.')}</p>`);
+        }
+        else if (this.host.isOpeningMulliganLike()) {
+            lines.push(`<p>${_('Optionally replace starting hand cards, then confirm.')}</p>`);
+        }
+        panel.innerHTML = `<h3>${_('Help')}</h3>${lines.join('')}<button type="button" class="bae_help_close">${_('Close')}</button>`;
+        panel.querySelector('.bae_help_close')?.addEventListener('click', () => {
+            this.helpOpen = false;
+            panel.remove();
+        });
+        this.host.root.appendChild(panel);
+    }
+    animalDefs() {
+        const raw = this.host.gamedatas.materials.animal_cards;
+        if (Array.isArray(raw)) {
+            const out = {};
+            raw.forEach((d, i) => { out[i] = d; });
+            return out;
+        }
+        return (raw ?? {});
+    }
+    decorateMaterialAttributes() {
+        const defs = this.animalDefs();
+        this.host.root.querySelectorAll('[data-hand-card], [data-pool-slot]').forEach((el) => {
+            const htmlEl = el;
+            let cardId = null;
+            if (htmlEl.dataset.handCard != null)
+                cardId = Number(htmlEl.dataset.handCard);
+            else if (htmlEl.dataset.poolSlot != null && htmlEl.dataset.poolSlot !== '-1') {
+                const slot = Number(htmlEl.dataset.poolSlot);
+                const poolCard = this.host.gamedatas.boardState.pool.find((p) => p.slot === slot);
+                cardId = poolCard?.id ?? null;
+            }
+            if (cardId == null || !defs[cardId])
+                return;
+            const def = defs[cardId];
+            htmlEl.dataset.species = String(def.species);
+            htmlEl.dataset.vehicle = String(def.vehicle);
+            htmlEl.dataset.leftMove = String(def.left_move);
+            htmlEl.dataset.rightMove = String(def.right_move);
+            htmlEl.dataset.cardId = String(cardId);
+        });
+        // Observed pile cards
+        for (const pidStr of Object.keys(this.host.gamedatas.boardState.boards ?? {})) {
+            const pid = Number(pidStr);
+            for (let loc = 0; loc < 3; loc++) {
+                (this.host.gamedatas.boardState.boards[pid]?.[loc] ?? []).forEach((c, si) => {
+                    const el = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${si}`);
+                    const def = defs[c.id];
+                    if (!el || !def)
+                        return;
+                    el.dataset.species = String(def.species);
+                    el.dataset.vehicle = String(def.vehicle);
+                    el.dataset.cardId = String(c.id);
+                });
+            }
+        }
+        this.host.root.querySelectorAll('.bae_meeple_img').forEach((img) => {
+            const el = img;
+            if (el.classList.contains('bae_meeple_yellow'))
+                el.dataset.scientist = '0';
+            if (el.classList.contains('bae_meeple_pink'))
+                el.dataset.scientist = '1';
+            if (el.classList.contains('bae_meeple_teal'))
+                el.dataset.scientist = '2';
+        });
+        // Track vehicles for pattern matching
+        for (const pidStr of Object.keys(this.host.gamedatas.players)) {
+            const pid = Number(pidStr);
+            const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
+            const board = this.host.gamedatas.materials.player_boards?.[boardId];
+            if (!board)
+                continue;
+            const locs = [board.left_location, board.mid_location, board.right_location];
+            for (let loc = 0; loc < 3; loc++) {
+                for (let space = 1; space <= 7; space++) {
+                    const el = this.host.root.querySelector(`#bae_track_${pid}_${loc}_${space}`);
+                    if (!el)
+                        continue;
+                    const vehicles = locs[loc]?.[space - 1] ?? [];
+                    el.dataset.vehicles = vehicles.join(',');
+                    el.dataset.trackSpace = String(space);
+                }
+            }
+        }
+    }
+    applyLegalityClasses() {
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const active = this.host.bga.players.isCurrentPlayerActive() && this.host.isGameplayLike() && !this.host.campSelected;
+        const scientists = this.host.gamedatas.boardState.scientists;
+        const defs = this.animalDefs();
+        this.host.root.querySelectorAll('.bae_handcard[data-hand-card]').forEach((el) => {
+            const htmlEl = el;
+            htmlEl.classList.remove('bae_can_play', 'bae_cannot_play', 'bae_hover_match');
+            if (!active)
+                return;
+            const id = Number(htmlEl.dataset.handCard);
+            const ok = canObserveAnywhere(defs[id], scientists, myId);
+            htmlEl.classList.add(ok ? 'bae_can_play' : 'bae_cannot_play');
+            if (this.hoverLocation != null && canObserveAtLocation(defs[id], scientists, myId, this.hoverLocation)) {
+                htmlEl.classList.add('bae_hover_match');
+            }
+        });
+        this.host.root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
+            const htmlEl = el;
+            htmlEl.classList.remove('bae_can_play', 'bae_cannot_play', 'bae_hover_match', 'bae_missing_scientist');
+            if (!active)
+                return;
+            const loc = Number(htmlEl.dataset.loc);
+            const hand = this.host.gamedatas.boardState.hands[myId];
+            const cards = Array.isArray(hand) ? hand.map((c) => Number(c.id)) : [];
+            const any = cards.some((cid) => canObserveAtLocation(defs[cid], scientists, myId, loc));
+            htmlEl.classList.add(any ? 'bae_can_play' : 'bae_cannot_play');
+            if (this.hoverCardId != null && canObserveAtLocation(defs[this.hoverCardId], scientists, myId, loc)) {
+                htmlEl.classList.add('bae_hover_match');
+            }
+            if (this.host.selectedCardId != null && this.host.selectedLocation === loc) {
+                const missing = missingScientistColors(defs[this.host.selectedCardId], scientists, myId, loc);
+                if (missing.length > 0)
+                    htmlEl.classList.add('bae_missing_scientist');
+            }
+        });
+        const hand = this.host.gamedatas.boardState.hands[myId];
+        const cards = Array.isArray(hand) ? hand.map((c) => Number(c.id)) : [];
+        const nonePlayable = active && cards.length > 0 && cards.every((cid) => !canObserveAnywhere(defs[cid], scientists, myId));
+        this.host.root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+            el.classList.toggle('bae_encourage_regroup', nonePlayable);
+        });
+        // Missing scientists outline on shelves
+        this.host.root.querySelectorAll('.bae_meeple_img').forEach((el) => el.classList.remove('bae_missing_outline'));
+        if (active && this.host.selectedCardId != null && this.host.selectedLocation != null) {
+            const missing = missingScientistColors(defs[this.host.selectedCardId], scientists, myId, this.host.selectedLocation);
+            const shelf = this.host.root.querySelector(`#bae_sci_shelf_loc_${myId}_${this.host.selectedLocation}`);
+            missing.forEach((color) => {
+                // Mark shelf when missing that color entirely for feedback
+                shelf?.classList.add('bae_missing_scientist');
+                void color;
+            });
+        }
+    }
+    bindHoverPatternMatching() {
+        const root = this.host.root;
+        const onCardEnter = (ev) => {
+            const t = ev.currentTarget;
+            const cardId = Number(t.dataset.handCard ?? t.dataset.cardId ?? NaN);
+            this.hoverCardId = Number.isFinite(cardId) ? cardId : null;
+            const vehicle = Number(t.dataset.vehicle ?? NaN);
+            const species = Number(t.dataset.species ?? NaN);
+            const left = Number(t.dataset.leftMove ?? NaN);
+            const right = Number(t.dataset.rightMove ?? NaN);
+            this.clearPatternClasses();
+            if (Number.isFinite(vehicle))
+                this.highlightPattern('vehicle', vehicle);
+            if (Number.isFinite(species))
+                this.highlightPattern('species', species);
+            if (Number.isFinite(left))
+                this.highlightPattern('scientist', left);
+            if (Number.isFinite(right))
+                this.highlightPattern('scientist', right);
+            this.applyLegalityClasses();
+        };
+        const onCardLeave = () => {
+            this.hoverCardId = null;
+            this.clearPatternClasses();
+            this.applyLegalityClasses();
+        };
+        root.querySelectorAll('[data-hand-card], [data-card-id], [data-species]').forEach((el) => {
+            el.addEventListener('mouseenter', onCardEnter);
+            el.addEventListener('mouseleave', onCardLeave);
+            this.cleanupFns.push(() => {
+                el.removeEventListener('mouseenter', onCardEnter);
+                el.removeEventListener('mouseleave', onCardLeave);
+            });
+        });
+        const onLocEnter = (ev) => {
+            const loc = Number(ev.currentTarget.dataset.loc);
+            this.hoverLocation = Number.isFinite(loc) ? loc : null;
+            this.applyLegalityClasses();
+        };
+        const onLocLeave = () => {
+            this.hoverLocation = null;
+            this.applyLegalityClasses();
+        };
+        root.querySelectorAll('.bae_location_zone').forEach((el) => {
+            el.addEventListener('mouseenter', onLocEnter);
+            el.addEventListener('mouseleave', onLocLeave);
+            this.cleanupFns.push(() => {
+                el.removeEventListener('mouseenter', onLocEnter);
+                el.removeEventListener('mouseleave', onLocLeave);
+            });
+        });
+        const onCampEnter = (ev) => {
+            const pid = Number(ev.currentTarget.dataset.playerId);
+            root.querySelectorAll(`.bae_camp_zone[data-player-id="${pid}"] .bae_meeple_img, #bae_sci_shelf_camp_${pid}_left .bae_meeple_img, #bae_sci_shelf_camp_${pid}_right .bae_meeple_img`)
+                .forEach((m) => m.classList.add('bae_pattern_match'));
+        };
+        const onCampLeave = () => {
+            root.querySelectorAll('.bae_meeple_img.bae_pattern_match').forEach((m) => m.classList.remove('bae_pattern_match'));
+        };
+        root.querySelectorAll('[data-camp-wrap]').forEach((el) => {
+            el.addEventListener('mouseenter', onCampEnter);
+            el.addEventListener('mouseleave', onCampLeave);
+            this.cleanupFns.push(() => {
+                el.removeEventListener('mouseenter', onCampEnter);
+                el.removeEventListener('mouseleave', onCampLeave);
+            });
+        });
+        root.querySelectorAll('[data-vehicles]').forEach((el) => {
+            const enter = () => {
+                const vehicles = (el.dataset.vehicles ?? '').split(',').filter(Boolean).map(Number);
+                this.clearPatternClasses();
+                vehicles.forEach((v) => this.highlightPattern('vehicle', v));
+            };
+            const leave = () => this.clearPatternClasses();
+            el.addEventListener('mouseenter', enter);
+            el.addEventListener('mouseleave', leave);
+            this.cleanupFns.push(() => {
+                el.removeEventListener('mouseenter', enter);
+                el.removeEventListener('mouseleave', leave);
+            });
+        });
+    }
+    clearPatternClasses() {
+        this.host.root.querySelectorAll('.bae_pattern_match').forEach((el) => el.classList.remove('bae_pattern_match'));
+    }
+    highlightPattern(kind, value) {
+        if (kind === 'vehicle') {
+            this.host.root.querySelectorAll(`[data-vehicle="${value}"]`).forEach((el) => el.classList.add('bae_pattern_match'));
+            this.host.root.querySelectorAll('[data-vehicles]').forEach((el) => {
+                const list = (el.dataset.vehicles ?? '').split(',').map(Number);
+                if (list.includes(value))
+                    el.classList.add('bae_pattern_match');
+            });
+        }
+        else if (kind === 'species') {
+            this.host.root.querySelectorAll(`[data-species="${value}"]`).forEach((el) => el.classList.add('bae_pattern_match'));
+        }
+        else if (kind === 'scientist') {
+            this.host.root.querySelectorAll(`[data-scientist="${value}"]`).forEach((el) => el.classList.add('bae_pattern_match'));
+            this.host.root.querySelectorAll(`[data-left-move="${value}"], [data-right-move="${value}"]`).forEach((el) => el.classList.add('bae_pattern_match'));
+        }
+    }
+    bindDragAndDrop() {
+        // OPTIONAL: DnD for observe / regroup / replenish selection.
+        // Failure modes: illegal mid-drag → cancel; spectator → no-op.
+        if (this.host.bga.players.isCurrentPlayerSpectator())
+            return;
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        this.host.root.querySelectorAll('.bae_handcard[data-hand-card]').forEach((el) => {
+            const htmlEl = el;
+            htmlEl.setAttribute('draggable', 'true');
+            const onDragStart = (ev) => {
+                this.dragCardId = Number(htmlEl.dataset.handCard);
+                ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
+                htmlEl.classList.add('bae_dragging');
+                this.playSound('select');
+            };
+            const onDragEnd = () => {
+                htmlEl.classList.remove('bae_dragging');
+                this.dragCardId = null;
+                this.host.root.querySelectorAll('.bae_drop_target').forEach((t) => t.classList.remove('bae_drop_target'));
+            };
+            htmlEl.addEventListener('dragstart', onDragStart);
+            htmlEl.addEventListener('dragend', onDragEnd);
+            this.cleanupFns.push(() => {
+                htmlEl.removeEventListener('dragstart', onDragStart);
+                htmlEl.removeEventListener('dragend', onDragEnd);
+            });
+        });
+        this.host.root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
+            const htmlEl = el;
+            const onDragOver = (ev) => {
+                if (this.dragCardId == null || !this.host.isGameplayLike())
+                    return;
+                ev.preventDefault();
+                htmlEl.classList.add('bae_drop_target');
+            };
+            const onDragLeave = () => htmlEl.classList.remove('bae_drop_target');
+            const onDrop = (ev) => {
+                ev.preventDefault();
+                htmlEl.classList.remove('bae_drop_target');
+                const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
+                const loc = Number(htmlEl.dataset.loc);
+                if (!this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
+                    return;
+                const def = this.animalDefs()[cardId];
+                if (!canObserveAtLocation(def, this.host.gamedatas.boardState.scientists, myId, loc))
+                    return;
+                // Select card+location then re-render (clearSelection alone would wipe after render).
+                this.host.campSelected = false;
+                this.host.selectedRegroupIds.clear();
+                this.host.selectedCardId = cardId;
+                this.host.selectedLocation = loc;
+                this.host.selectedPoolSlot = null;
+                this.host.renderAll();
+                this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+                this.onSelectionChanged();
+            };
+            htmlEl.addEventListener('dragover', onDragOver);
+            htmlEl.addEventListener('dragleave', onDragLeave);
+            htmlEl.addEventListener('drop', onDrop);
+            this.cleanupFns.push(() => {
+                htmlEl.removeEventListener('dragover', onDragOver);
+                htmlEl.removeEventListener('dragleave', onDragLeave);
+                htmlEl.removeEventListener('drop', onDrop);
+            });
+        });
+        this.host.root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+            const htmlEl = el;
+            const onDragOver = (ev) => {
+                if (this.dragCardId == null || !this.host.isGameplayLike())
+                    return;
+                ev.preventDefault();
+                htmlEl.classList.add('bae_drop_target');
+            };
+            const onDrop = (ev) => {
+                ev.preventDefault();
+                htmlEl.classList.remove('bae_drop_target');
+                const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
+                if (!this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
+                    return;
+                this.host.enterRegroupMode();
+                this.host.selectedRegroupIds.add(cardId);
+                this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+                this.onSelectionChanged();
+            };
+            htmlEl.addEventListener('dragover', onDragOver);
+            htmlEl.addEventListener('drop', onDrop);
+            this.cleanupFns.push(() => {
+                htmlEl.removeEventListener('dragover', onDragOver);
+                htmlEl.removeEventListener('drop', onDrop);
+            });
+        });
+        // Pool → hand (replenish): drop on hand column selects/confirms
+        const handCol = this.host.root.querySelector(`.bae_player_handcol[data-player-id="${myId}"]`);
+        if (handCol) {
+            const onDragOver = (ev) => {
+                if (!this.host.isReplenishLike())
+                    return;
+                ev.preventDefault();
+            };
+            const onDrop = (ev) => {
+                if (!this.host.isReplenishLike() || !this.host.bga.players.isCurrentPlayerActive())
+                    return;
+                ev.preventDefault();
+                // Prefer selected pool slot if set via click; otherwise ignore (pool drag attrs set below)
+                const slotRaw = ev.dataTransfer?.getData('text/bae-pool');
+                if (slotRaw === '' || slotRaw == null)
+                    return;
+                void this.host.bga.actions.performAction('actTakeAnimal', { pool_slot: Number(slotRaw) });
+            };
+            handCol.addEventListener('dragover', onDragOver);
+            handCol.addEventListener('drop', onDrop);
+            this.cleanupFns.push(() => {
+                handCol.removeEventListener('dragover', onDragOver);
+                handCol.removeEventListener('drop', onDrop);
+            });
+        }
+        this.host.root.querySelectorAll('[data-pool-slot]').forEach((el) => {
+            const htmlEl = el;
+            htmlEl.setAttribute('draggable', 'true');
+            const onDragStart = (ev) => {
+                if (!this.host.isReplenishLike()) {
+                    ev.preventDefault();
+                    return;
+                }
+                ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
+            };
+            htmlEl.addEventListener('dragstart', onDragStart);
+            this.cleanupFns.push(() => htmlEl.removeEventListener('dragstart', onDragStart));
+        });
+    }
+    updateActionPreviews() {
+        this.host.root.querySelectorAll('.bae_preview_ghost,.bae_preview_flag').forEach((el) => el.remove());
+        if (!this.previewsEnabled())
+            return;
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        if (!this.host.bga.players.isCurrentPlayerActive())
+            return;
+        if (this.host.isGameplayLike() && this.host.selectedCardId != null && this.host.selectedLocation != null && !this.host.campSelected) {
+            const def = this.animalDefs()[this.host.selectedCardId];
+            if (!def || !canObserveAtLocation(def, this.host.gamedatas.boardState.scientists, myId, this.host.selectedLocation))
+                return;
+            const moves = previewObserveMoves(this.host.gamedatas.boardState.scientists, myId, this.host.selectedLocation, def);
+            for (const m of moves) {
+                const destShelf = m.to <= 2
+                    ? this.host.root.querySelector(`#bae_sci_shelf_loc_${myId}_${m.to}`)
+                    : this.host.root.querySelector(m.to === 3 ? `#bae_sci_shelf_camp_${myId}_left` : `#bae_sci_shelf_camp_${myId}_right`);
+                if (!destShelf)
+                    continue;
+                const ghost = document.createElement('span');
+                ghost.className = `bae_preview_ghost bae_meeple_preview bae_meeple_${['yellow', 'pink', 'teal'][m.color]}`;
+                ghost.title = _('Preview scientist move');
+                destShelf.appendChild(ghost);
+            }
+            const flagDepth = Number(this.host.gamedatas.boardState.flags?.[myId]?.[this.host.selectedLocation] ?? 0);
+            const boardId = this.host.gamedatas.boardState.board_for_players?.[myId] ?? 0;
+            const board = this.host.gamedatas.materials.player_boards?.[boardId];
+            const locKey = ['left_location', 'mid_location', 'right_location'][this.host.selectedLocation];
+            const vehicles = board?.[locKey] ?? [];
+            const advances = flagWouldAdvance(def, vehicles, flagDepth);
+            const nextSpace = Math.min(7, flagDepth + 1);
+            const trackEl = this.host.root.querySelector(`#bae_track_${myId}_${this.host.selectedLocation}_${nextSpace}`);
+            if (trackEl) {
+                const mark = document.createElement('span');
+                mark.className = `bae_preview_flag ${advances ? 'bae_preview_flag_ok' : 'bae_preview_flag_no'}`;
+                trackEl.appendChild(mark);
+            }
+        }
+        if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
+            const shelf = this.host.root.querySelector(`#bae_sci_shelf_loc_${myId}_${this.host.selectedLocation}`);
+            shelf?.classList.add('bae_preview_assign');
+            this.cleanupFns.push(() => shelf?.classList.remove('bae_preview_assign'));
+        }
+        if (this.host.campSelected) {
+            this.host.root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+                el.classList.add('bae_preview_awaiting');
+            });
+        }
+    }
+}
+
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 class Game {
     constructor(bga) {
@@ -16,6 +774,7 @@ class Game {
         this.isShowingLastTurnBanner = false;
         this.openingIntroPage = "objectives";
         this.openingIntroEl = null;
+        this.optionalUi = null;
         this.bga = bga;
     }
     setup(gamedatas) {
@@ -26,6 +785,8 @@ class Game {
         this.root.id = "bae_playarea";
         this.root.className = "bae";
         area.appendChild(this.root);
+        // OPTIONAL: client-only UX helpers (help, legality, DnD, previews, sound)
+        this.optionalUi = new OptionalUi(this);
         // Keep --board-scale up to date when the window resizes
         window.addEventListener('resize', () => this.updateBoardScale());
         this.renderAll();
@@ -279,8 +1040,15 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
+            const def = this.animalDef(numericCardId);
+            const species = this.gamedatas.materials.species_names?.[def?.species ?? 0] ?? '';
+            const vehicle = this.gamedatas.materials.vehicle_names?.[def?.vehicle ?? 0] ?? '';
+            const sci = this.gamedatas.materials.scientist_names ?? [];
+            const effect = def
+                ? `${_('Moves')} ${sci[def.left_move] ?? def.left_move} ${_('left')} · ${sci[def.right_move] ?? def.right_move} ${_('right')}. ${_('Vehicle')}: ${vehicle}. ${_('Bonus VP')}: ${def.bonus_vp}.`
+                : '';
             if (canHtmlTooltip) {
-                const html = this.buildCardTooltipSpriteHtml('animal', numericCardId, `${_('Animal card')} #${numericCardId}`, [actionText]);
+                const html = this.buildCardTooltipSpriteHtml('animal', numericCardId, `${species || _('Animal card')} #${numericCardId}`, [effect, actionText]);
                 this.bga.gameui.addTooltipHtml(id, html);
             }
             else {
@@ -338,12 +1106,24 @@ class Game {
         }
         return count;
     }
+    animalDef(cardId) {
+        const raw = this.gamedatas.materials.animal_cards;
+        if (Array.isArray(raw))
+            return raw[cardId];
+        return raw?.[cardId];
+    }
+    buildCardTooltipSpriteHtml(type, id, title, details) {
+        return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
+    }
     async confirmRegroupDiscard(cardIds) {
         const myId = Number(this.bga.players.getCurrentPlayerId());
         if (this.countScientistsInCamps(myId) === 0) {
-            const confirmed = await this.bga.dialogs.confirmation(_("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"));
-            if (!confirmed)
-                return;
+            // OPTIONAL: preference can skip this confirm when player opts out
+            if (!this.optionalUi?.shouldSkipSafeConfirm()) {
+                const confirmed = await this.bga.dialogs.confirmation(_("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"));
+                if (!confirmed)
+                    return;
+            }
         }
         await this.bga.actions.performAction("actRegroup", {
             card_ids_json: JSON.stringify(cardIds),
@@ -357,6 +1137,8 @@ class Game {
         this.selectedRegroupIds.clear();
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
+        this.optionalUi?.onSelectionChanged();
+        this.optionalUi?.playSound('select');
     }
     clearSelection() {
         this.selectedCardId = null;
@@ -366,6 +1148,7 @@ class Game {
         this.selectedRegroupIds.clear();
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
+        this.optionalUi?.onSelectionChanged();
     }
     /** BGA calls onUpdateActionButtons before onEnteringState; cache args from either source for client-side refreshes. */
     cacheStateActionArgs(args) {
@@ -590,6 +1373,8 @@ class Game {
         this.bindZoomHandlers();
         this.bindTableHandlers(myId);
         this.updateOpeningIntroOverlay();
+        // OPTIONAL: legality highlights, help, DnD, pattern match, previews
+        this.optionalUi?.afterRender();
     }
     getTooltipScale() {
         const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
@@ -708,14 +1493,16 @@ class Game {
             catch (_) { }
             const objectiveMat = this.gamedatas.materials.objectives[obj.id];
             const claimedPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'claimed').map(([pid]) => pid);
-            const claimedByName = claimedPids.length > 0
-                ? claimedPids.map((pid) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`).join(', ')
-                : '';
-            const objectiveDetail = claimedPids.length > 0
-                ? `${_('Claimed by: ')}${claimedByName}`
-                : _('Unclaimed');
-            const action = obj.active ? _('Click to claim this objective') : '';
-            const html = this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [objectiveDetail, action]);
+            const meetsPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'meets').map(([pid]) => pid);
+            const unmetPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'unmet').map(([pid]) => pid);
+            const nameOf = (pid) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`;
+            const progressLines = [
+                meetsPids.length ? `${_('Meets')}: ${meetsPids.map(nameOf).join(', ')}` : '',
+                claimedPids.length ? `${_('Claimed')}: ${claimedPids.map(nameOf).join(', ')}` : _('Unclaimed'),
+                unmetPids.length ? `${_('Does not meet')}: ${unmetPids.map(nameOf).join(', ')}` : '',
+            ];
+            const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
+            const html = this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [...progressLines, objectiveMat?.description ?? '', action]);
             this.bga.gameui.addTooltipHtml(id, html);
         });
         // Scoring cards
@@ -794,8 +1581,9 @@ class Game {
                     }
                     catch (_) { }
                     const vpEntry = trackVps[loc]?.[i] ?? 0;
-                    const help = `${_('Exploration Track')} ${i} · ${vehiclesAtSpace.map(v => vehicleNames[v] ?? `#${v}`).join(', ')} · ${vpEntry} ${_('VP')}`;
-                    this.bga.gameui.addTooltip(id, help, '');
+                    const help = `${_('Exploration Track')} ${i} · ${vehiclesAtSpace.map(v => vehicleNames[v] ?? `#${v}`).join(', ') || _('Start')} · ${vpEntry} ${_('VP')}`;
+                    const how = _('Advance the flag one space when the observed animal\'s vehicle matches a vehicle printed on the next space.');
+                    this.bga.gameui.addTooltip(id, help, how);
                 }
             }
         }
@@ -979,7 +1767,7 @@ class Game {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
-    buildCardTooltipSpriteHtml(type, id, title, details) {
+    buildCardTooltipSpriteHtmlInternal(type, id, title, details) {
         const { columns, rows, lastIndex } = this.spriteMeta(type);
         const index = this.getSpriteIndex(id, lastIndex);
         const col = index % columns;
@@ -1526,6 +2314,7 @@ class Game {
         }
     }
     async notif_observeAnimal(_args) {
+        this.optionalUi?.playSound('success');
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
@@ -1577,6 +2366,7 @@ class Game {
         this.renderAll();
     }
     async notif_objectiveClaimed(_args) {
+        this.optionalUi?.playSound('claim');
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
@@ -1603,6 +2393,8 @@ class Game {
             this.gamedatas.boardState = _args.boardState;
         }
         this.renderAll();
+        // OPTIONAL: end-of-game statistics panel (client-side from public data)
+        this.optionalUi?.showEndGameStats();
     }
     async notif_scoringStep(_args) {
         if (_args.boardState) {

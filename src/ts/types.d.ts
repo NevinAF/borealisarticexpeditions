@@ -59,6 +59,7 @@ interface BoardState {
   track?: TrackUiClient;
   vps: Record<number, number>;
   playersEndingGame: number[];
+  round?: number;
 }
 
 interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
