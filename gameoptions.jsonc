@@ -1,5 +1,5 @@
+// Table options 100-199. Validated in setupNewGame.
 {
-  "$comment": "Table options 100-199. Validated in setupNewGame.",
   "100": {
     "name": "Animal objective",
     "values": {

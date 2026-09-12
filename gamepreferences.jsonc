@@ -1,5 +1,5 @@
+// Player preferences 100-199. Applied client-side for optional UX.
 {
-  "$comment": "Player preferences 100-199. Applied client-side for optional UX.",
   "100": {
     "name": "Animation speed",
     "needReload": false,
