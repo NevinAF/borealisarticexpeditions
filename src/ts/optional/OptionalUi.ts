@@ -92,6 +92,7 @@ export class OptionalUi {
   private tooltipRetrigger = false;
   private lastHoverEl: Element | null = null;
   private previewLocked = false;
+  private lastClaimFlightKey = '';
   private static readonly TOOLTIP_CLICK_MS = 500;
   private vp: VpTokens;
 
@@ -229,7 +230,7 @@ export class OptionalUi {
     return Math.max(1000, Math.round(this.duration() * 4));
   }
 
-  private prepareResolution(zones: string[] = ['all']): void {
+  private prepareResolution(zones: string[] = ['all'], keepRegroupSelection = false): void {
     this.beginTooltipGuard(zones);
     this.clearPreviews();
     this.host.selectedCardId = null;
@@ -237,10 +238,16 @@ export class OptionalUi {
     this.host.selectedPoolSlot = null;
     this.host.selectedObjectiveIdx = null;
     this.host.campSelected = false;
-    this.host.selectedRegroupIds.clear();
-    this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
-      el.classList.remove('bae_card_selected', 'bae_card_regroup');
-    });
+    if (!keepRegroupSelection) {
+      this.host.selectedRegroupIds.clear();
+      this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
+        el.classList.remove('bae_card_selected', 'bae_card_regroup');
+      });
+    } else {
+      this.host.root.querySelectorAll('.bae_card_selected').forEach((el) => {
+        el.classList.remove('bae_card_selected');
+      });
+    }
     this.host.root.querySelectorAll('.bae_loc_selected').forEach((el) => el.classList.remove('bae_loc_selected'));
     this.host.root.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
   }
@@ -454,7 +461,9 @@ export class OptionalUi {
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    this.prepareResolution([`player:${pid}`]);
+    const myId = Number(this.host.bga.players.getCurrentPlayerId());
+    const keepRegroupSelection = this.host.isOpeningMulliganLike() && pid !== myId;
+    this.prepareResolution([`player:${pid}`], keepRegroupSelection);
     try {
       const discarded = (args.discarded as number[] | undefined) ?? [];
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
@@ -466,15 +475,19 @@ export class OptionalUi {
   async playObjectiveClaimResolution(_prev: BoardState, args: Record<string, unknown>): Promise<void> {
     const ms = this.duration();
     const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
+    const key = `${pid}:${Number.isFinite(idx) ? idx : 'x'}`;
+    if (this.lastClaimFlightKey === key) return;
     if (ms === 0 || this.resolving || !pid) return;
+    this.lastClaimFlightKey = key;
     this.resolving = true;
     this.prepareResolution([`player:${pid}`]);
     try {
-      const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
       const obj = Number.isFinite(idx)
         ? this.host.root.querySelector(`#bae_obj_${idx}`) as HTMLElement | null
-        : null;
-      const from = rectOf(obj);
+        : (this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target') as HTMLElement | null);
+      const from = rectOf(obj)
+        ?? rectOf(this.host.root.querySelector('.bae_top_objectives') as HTMLElement | null);
       await this.vp.addIncoming(pid, [5], [from], ms, false);
     } finally {
       this.endResolution();
@@ -717,7 +730,17 @@ export class OptionalUi {
       this.previewRegroupPickup(myId);
     }
 
+    this.previewObjectiveClaim(myId);
+
     if (selectingDiscards) this.syncDiscardGhosts(myId);
+  }
+
+  private previewObjectiveClaim(pid: number): void {
+    const source = this.host.root.querySelector(
+      '.bae_obj_selected, .bae_obj_prompt_target',
+    ) as HTMLElement | null;
+    if (!source) return;
+    this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
   }
 
   private syncDiscardGhosts(pid: number): void {

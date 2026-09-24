@@ -239,16 +239,20 @@ export class VpTokens {
   }
 
   previewOnesFrom(pid: number, sources: HTMLElement[], ms: number): void {
+    this.previewTokensFrom(pid, sources, 1, ms);
+  }
+
+  previewTokensFrom(pid: number, sources: HTMLElement[], value: VpValue, ms: number): void {
     if (sources.length === 0 || ms <= 0) return;
     const current = this.tokensFor(pid);
-    const next = [...current, ...sources.map(() => 1 as VpValue)];
+    const next = [...current, ...sources.map(() => value)];
     const slots = vpTokenLayout(next.length, pid);
     const destSlots = slots.slice(current.length);
     const layer = motionLayer(this.host.root);
     sources.forEach((src, i) => {
       const destSlot = destSlots[i];
       if (!destSlot) return;
-      const size = this.tokenPixelSize(pid, 1);
+      const size = this.tokenPixelSize(pid, value);
       const srcR = src.getBoundingClientRect();
       const from = new DOMRect(
         srcR.left + srcR.width / 2 - size.w / 2,
@@ -256,7 +260,7 @@ export class VpTokens {
         size.w,
         size.h,
       );
-      const dummy = this.createTokenEl(1);
+      const dummy = this.createTokenEl(value);
       dummy.style.position = 'absolute';
       dummy.style.transform = 'none';
       dummy.style.margin = '0';
@@ -267,7 +271,7 @@ export class VpTokens {
       dummy.style.width = `${size.w}px`;
       dummy.style.height = `${size.h}px`;
       layer.appendChild(dummy);
-      const destFn = (): DOMRect | null => this.slotRect(pid, destSlot, 1);
+      const destFn = (): DOMRect | null => this.slotRect(pid, destSlot, value);
       const dest = destFn() ?? from;
       const clone = startTrailToRect(dummy, dest, ms, this.host.root, 'bae_vp_mover', destFn);
       bindPreviewFollow(clone, src);

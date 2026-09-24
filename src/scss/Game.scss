@@ -289,6 +289,10 @@ html[data-theme="dark"] {
   padding-top: 8px;
 }
 
+.bae_tooltip_claimed_by {
+  margin-top: 6px;
+}
+
 .bae_tooltip_player_name {
   font-weight: 700;
 }
@@ -800,16 +804,20 @@ html[data-theme="dark"] {
 }
 
 /* Objective highlight states */
-.bae_obj_meets:not(:disabled) {
-  box-shadow: none;
+.bae_obj_selected:not(:disabled)::before,
+.bae_obj_prompt_target:not(:disabled)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border-radius: scaled(45);
+  pointer-events: none;
+  z-index: 2;
+  border: #{$border}px solid #2a6fdb;
+  box-shadow: inset 0 0 scaled(12) rgba(42, 111, 219, 0.28);
 }
 
-/* Claimed this round while the objective remains active for the round. */
-.bae_obj_claimed_by_you:not(:disabled),
-.bae_obj_claimed_round:not(:disabled) {
-  position: relative;
-}
-
+/* Claimed this round while the objective remains active. */
 .bae_obj_claimed_by_you:not(:disabled)::after,
 .bae_obj_claimed_round:not(:disabled)::after {
   content: "";
@@ -820,29 +828,24 @@ html[data-theme="dark"] {
   pointer-events: none;
   z-index: 1;
   border: #{$border}px solid #9a7b1a;
-  background: rgba(201, 162, 39, 0.2);
+  background: rgba(201, 162, 39, 0.28);
   box-shadow: inset 0 0 scaled(10) rgba(201, 162, 39, 0.18);
+  animation: bae_obj_claimed_pulse 1.8s ease-in-out infinite;
 }
 
 .bae_obj_claimed_by_you:not(:disabled)::after {
   border-color: #7a5f10;
-  background: rgba(201, 162, 39, 0.28);
+  background: rgba(201, 162, 39, 0.34);
 }
 
-.bae_obj_prompt_target:not(:disabled) {
-  border-radius: scaled(45);
+.bae_anim_off .bae_obj_claimed_by_you:not(:disabled)::after,
+.bae_anim_off .bae_obj_claimed_round:not(:disabled)::after {
+  animation: none;
 }
 
-.bae_obj_prompt_target:not(:disabled)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  box-sizing: border-box;
-  border-radius: scaled(45);
-  pointer-events: none;
-  z-index: 1;
-  border: #{$border}px solid #2a6fdb;
-  background: rgba(42, 111, 219, 0.25);
+@keyframes bae_obj_claimed_pulse {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 0.95; }
 }
 
 .bae_columns {

@@ -736,10 +736,13 @@ class VpTokens {
         await this.convertTo(pid, optimalTokens(tokensSum(this.liveMix(pid))), ms);
     }
     previewOnesFrom(pid, sources, ms) {
+        this.previewTokensFrom(pid, sources, 1, ms);
+    }
+    previewTokensFrom(pid, sources, value, ms) {
         if (sources.length === 0 || ms <= 0)
             return;
         const current = this.tokensFor(pid);
-        const next = [...current, ...sources.map(() => 1)];
+        const next = [...current, ...sources.map(() => value)];
         const slots = vpTokenLayout(next.length, pid);
         const destSlots = slots.slice(current.length);
         const layer = motionLayer(this.host.root);
@@ -747,10 +750,10 @@ class VpTokens {
             const destSlot = destSlots[i];
             if (!destSlot)
                 return;
-            const size = this.tokenPixelSize(pid, 1);
+            const size = this.tokenPixelSize(pid, value);
             const srcR = src.getBoundingClientRect();
             const from = new DOMRect(srcR.left + srcR.width / 2 - size.w / 2, srcR.top + srcR.height / 2 - size.h / 2, size.w, size.h);
-            const dummy = this.createTokenEl(1);
+            const dummy = this.createTokenEl(value);
             dummy.style.position = 'absolute';
             dummy.style.transform = 'none';
             dummy.style.margin = '0';
@@ -761,7 +764,7 @@ class VpTokens {
             dummy.style.width = `${size.w}px`;
             dummy.style.height = `${size.h}px`;
             layer.appendChild(dummy);
-            const destFn = () => this.slotRect(pid, destSlot, 1);
+            const destFn = () => this.slotRect(pid, destSlot, value);
             const dest = destFn() ?? from;
             const clone = startTrailToRect(dummy, dest, ms, this.host.root, 'bae_vp_mover', destFn);
             bindPreviewFollow(clone, src);
@@ -997,6 +1000,7 @@ class OptionalUi {
         this.tooltipRetrigger = false;
         this.lastHoverEl = null;
         this.previewLocked = false;
+        this.lastClaimFlightKey = '';
         this.vp = new VpTokens(host);
     }
     vpTokensFor(pid) {
@@ -1124,7 +1128,7 @@ class OptionalUi {
     previewLoopMs() {
         return Math.max(1000, Math.round(this.duration() * 4));
     }
-    prepareResolution(zones = ['all']) {
+    prepareResolution(zones = ['all'], keepRegroupSelection = false) {
         this.beginTooltipGuard(zones);
         this.clearPreviews();
         this.host.selectedCardId = null;
@@ -1132,10 +1136,17 @@ class OptionalUi {
         this.host.selectedPoolSlot = null;
         this.host.selectedObjectiveIdx = null;
         this.host.campSelected = false;
-        this.host.selectedRegroupIds.clear();
-        this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
-            el.classList.remove('bae_card_selected', 'bae_card_regroup');
-        });
+        if (!keepRegroupSelection) {
+            this.host.selectedRegroupIds.clear();
+            this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
+                el.classList.remove('bae_card_selected', 'bae_card_regroup');
+            });
+        }
+        else {
+            this.host.root.querySelectorAll('.bae_card_selected').forEach((el) => {
+                el.classList.remove('bae_card_selected');
+            });
+        }
         this.host.root.querySelectorAll('.bae_loc_selected').forEach((el) => el.classList.remove('bae_loc_selected'));
         this.host.root.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
     }
@@ -1357,7 +1368,9 @@ class OptionalUi {
             return;
         this.resolving = true;
         const pid = Number(args.player_id ?? args.playerId ?? 0);
-        this.prepareResolution([`player:${pid}`]);
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const keepRegroupSelection = this.host.isOpeningMulliganLike() && pid !== myId;
+        this.prepareResolution([`player:${pid}`], keepRegroupSelection);
         try {
             const discarded = args.discarded ?? [];
             await this.animateHandReplace(pid, discarded, prev, args.boardState, ms);
@@ -1369,16 +1382,21 @@ class OptionalUi {
     async playObjectiveClaimResolution(_prev, args) {
         const ms = this.duration();
         const pid = Number(args.player_id ?? args.playerId ?? 0);
+        const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
+        const key = `${pid}:${Number.isFinite(idx) ? idx : 'x'}`;
+        if (this.lastClaimFlightKey === key)
+            return;
         if (ms === 0 || this.resolving || !pid)
             return;
+        this.lastClaimFlightKey = key;
         this.resolving = true;
         this.prepareResolution([`player:${pid}`]);
         try {
-            const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
             const obj = Number.isFinite(idx)
                 ? this.host.root.querySelector(`#bae_obj_${idx}`)
-                : null;
-            const from = rectOf(obj);
+                : this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target');
+            const from = rectOf(obj)
+                ?? rectOf(this.host.root.querySelector('.bae_top_objectives'));
             await this.vp.addIncoming(pid, [5], [from], ms, false);
         }
         finally {
@@ -1592,8 +1610,15 @@ class OptionalUi {
         if (this.host.campSelected) {
             this.previewRegroupPickup(myId);
         }
+        this.previewObjectiveClaim(myId);
         if (selectingDiscards)
             this.syncDiscardGhosts(myId);
+    }
+    previewObjectiveClaim(pid) {
+        const source = this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target');
+        if (!source)
+            return;
+        this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
     }
     syncDiscardGhosts(pid) {
         if (!this.previewsEnabled())
@@ -3561,14 +3586,10 @@ class Game {
         d.objectives.forEach((obj, idx) => {
             const playerState = obj.players[myId] ?? "unmet";
             let extraClass = "";
-            if (playerState === "meets")
-                extraClass = " bae_obj_meets";
-            else if (playerState === "claimed")
+            if (playerState === "claimed")
                 extraClass = " bae_obj_claimed_by_you";
-            // If any player has claimed this objective this round while it remains active,
-            // show a distinct claimed-this-round highlight for other players.
             const anyClaimed = obj.active && Object.values(obj.players).some((s) => s === "claimed");
-            if (anyClaimed && playerState !== "claimed")
+            if (anyClaimed)
                 extraClass += " bae_obj_claimed_round";
             if (promptedObjectiveIdx === idx)
                 extraClass += " bae_obj_prompt_target";
@@ -4267,10 +4288,15 @@ class Game {
     }
     objectiveScoresHtml(obj, state) {
         const materials = this.gamedatas.materials;
-        return this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
+        const progress = this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
             const { count, required } = objectiveProgress(obj.id, pid, state, materials);
             return { pid, value: `${count}/${required}` };
         }));
+        const claimed = this.seatedPlayerIds().filter((pid) => obj.players?.[pid] === 'claimed');
+        if (claimed.length === 0)
+            return progress;
+        const claimedLine = `<div class="bae_tooltip_claimed_by">${this.escapeHtml(_('Claimed by'))}: ${claimed.map((pid) => this.coloredPlayerName(pid)).join(', ')}</div>`;
+        return `${progress}${claimedLine}`;
     }
     scoringScoresHtml(scoringId, state) {
         const materials = this.gamedatas.materials;
@@ -4279,20 +4305,33 @@ class Game {
             return { pid, value: String(vp) };
         }));
     }
+    objectiveClaimedThisRound(obj) {
+        return !!obj.active && Object.values(obj.players ?? {}).some((s) => s === 'claimed');
+    }
     objectiveActionText(obj) {
         const myId = Number(this.bga.players.getCurrentPlayerId());
         const seated = Number.isFinite(myId) && !!this.gamedatas.players[myId];
         const playerState = seated ? (obj.players?.[myId] ?? 'unmet') : null;
-        if (playerState === 'claimed')
-            return _('You have already claimed this objective.');
+        const claimedThisRound = this.objectiveClaimedThisRound(obj);
+        const endRoundPrompt = _('Players that meet the objective will be prompted to claim it at the end of the round.');
+        if (playerState === 'claimed') {
+            return claimedThisRound
+                ? `${_('You have already claimed this objective.')} ${endRoundPrompt}`
+                : _('You have already claimed this objective.');
+        }
+        if (claimedThisRound)
+            return endRoundPrompt;
         if (!obj.active)
             return _('The objective has been claimed on a previous round.');
         if (!seated)
             return '';
         if (playerState !== 'meets')
             return _('You do not meet the requirements for this objective.');
+        if (this.isPromptClaimObjectiveLike() && this.bga.players.isCurrentPlayerActive()) {
+            return _('Click to claim this objective now, or use the status bar if you would rather pass.');
+        }
         if (this.bga.players.isCurrentPlayerActive() && !this.isOpeningMulliganLike()) {
-            return _('Click to claim this objective.');
+            return _('Click to select this objective, then click again (or confirm) to claim it for 5 VP.');
         }
         return _('Click to claim this objective on your turn.');
     }
@@ -4689,8 +4728,10 @@ class Game {
         this.selectedPoolSlot = null;
         this.selectedObjectiveIdx = null;
         this.campSelected = false;
-        this.selectedRegroupIds.clear();
         const n = stateName.toLowerCase();
+        const keepOpeningDiscards = n.includes('openingmulligan') || n.includes('opening_mulligan');
+        if (!keepOpeningDiscards)
+            this.selectedRegroupIds.clear();
         if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign") || n.includes("openingmulligan") || n.includes("promptclaim") || n.includes("prompt_claim")) {
             this.renderAll();
         }
@@ -4919,7 +4960,11 @@ class Game {
         if (args.boardState) {
             this.gamedatas.boardState = args.boardState;
         }
-        this.selectedRegroupIds.clear();
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        if (pid === myId || !this.isOpeningMulliganLike()) {
+            this.selectedRegroupIds.clear();
+        }
         this.renderAll();
     }
     async notif_actionUndone(_args) {
@@ -4975,6 +5020,11 @@ class Game {
         this.renderAll();
     }
     async notif_objectiveScored(_args) {
+        const prev = this.gamedatas.boardState;
+        try {
+            await this.optionalUi?.playObjectiveClaimResolution(prev, _args);
+        }
+        catch (_) { /* keep state apply */ }
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }

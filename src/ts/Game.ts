@@ -727,12 +727,9 @@ export class Game {
     d.objectives.forEach((obj, idx) => {
       const playerState = obj.players[myId] ?? "unmet";
       let extraClass = "";
-      if (playerState === "meets") extraClass = " bae_obj_meets";
-      else if (playerState === "claimed") extraClass = " bae_obj_claimed_by_you";
-      // If any player has claimed this objective this round while it remains active,
-      // show a distinct claimed-this-round highlight for other players.
+      if (playerState === "claimed") extraClass = " bae_obj_claimed_by_you";
       const anyClaimed = obj.active && Object.values(obj.players).some((s) => s === "claimed");
-      if (anyClaimed && playerState !== "claimed") extraClass += " bae_obj_claimed_round";
+      if (anyClaimed) extraClass += " bae_obj_claimed_round";
       if (promptedObjectiveIdx === idx) extraClass += " bae_obj_prompt_target";
       const disabledAttr = obj.active ? "" : "disabled";
       const canConfirmClaim = this.canSelectObjectiveToClaim()
@@ -1497,10 +1494,14 @@ export class Game {
 
   private objectiveScoresHtml(obj: ObjectiveClient, state: BoardState): string {
     const materials = this.gamedatas.materials;
-    return this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
+    const progress = this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
       const { count, required } = objectiveProgress(obj.id, pid, state, materials);
       return { pid, value: `${count}/${required}` };
     }));
+    const claimed = this.seatedPlayerIds().filter((pid) => obj.players?.[pid] === 'claimed');
+    if (claimed.length === 0) return progress;
+    const claimedLine = `<div class="bae_tooltip_claimed_by">${this.escapeHtml(_('Claimed by'))}: ${claimed.map((pid) => this.coloredPlayerName(pid)).join(', ')}</div>`;
+    return `${progress}${claimedLine}`;
   }
 
   private scoringScoresHtml(scoringId: number, state: BoardState): string {
@@ -1511,16 +1512,30 @@ export class Game {
     }));
   }
 
+  private objectiveClaimedThisRound(obj: ObjectiveClient): boolean {
+    return !!obj.active && Object.values(obj.players ?? {}).some((s) => s === 'claimed');
+  }
+
   private objectiveActionText(obj: ObjectiveClient): string {
     const myId = Number(this.bga.players.getCurrentPlayerId());
     const seated = Number.isFinite(myId) && !!this.gamedatas.players[myId];
     const playerState = seated ? (obj.players?.[myId] ?? 'unmet') : null;
-    if (playerState === 'claimed') return _('You have already claimed this objective.');
+    const claimedThisRound = this.objectiveClaimedThisRound(obj);
+    const endRoundPrompt = _('Players that meet the objective will be prompted to claim it at the end of the round.');
+    if (playerState === 'claimed') {
+      return claimedThisRound
+        ? `${_('You have already claimed this objective.')} ${endRoundPrompt}`
+        : _('You have already claimed this objective.');
+    }
+    if (claimedThisRound) return endRoundPrompt;
     if (!obj.active) return _('The objective has been claimed on a previous round.');
     if (!seated) return '';
     if (playerState !== 'meets') return _('You do not meet the requirements for this objective.');
+    if (this.isPromptClaimObjectiveLike() && this.bga.players.isCurrentPlayerActive()) {
+      return _('Click to claim this objective now, or use the status bar if you would rather pass.');
+    }
     if (this.bga.players.isCurrentPlayerActive() && !this.isOpeningMulliganLike()) {
-      return _('Click to claim this objective.');
+      return _('Click to select this objective, then click again (or confirm) to claim it for 5 VP.');
     }
     return _('Click to claim this objective on your turn.');
   }
@@ -1932,8 +1947,9 @@ export class Game {
     this.selectedPoolSlot = null;
     this.selectedObjectiveIdx = null;
     this.campSelected = false;
-    this.selectedRegroupIds.clear();
     const n = stateName.toLowerCase();
+    const keepOpeningDiscards = n.includes('openingmulligan') || n.includes('opening_mulligan');
+    if (!keepOpeningDiscards) this.selectedRegroupIds.clear();
     if (n.includes("gameplay") || n.includes("replenish") || n.includes("assign") || n.includes("openingmulligan") || n.includes("promptclaim") || n.includes("prompt_claim")) {
       this.renderAll();
     }
@@ -2168,7 +2184,11 @@ export class Game {
     if (args.boardState) {
         this.gamedatas.boardState = args.boardState;
     }
-    this.selectedRegroupIds.clear();
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    if (pid === myId || !this.isOpeningMulliganLike()) {
+      this.selectedRegroupIds.clear();
+    }
     this.renderAll();
   }
   async notif_actionUndone(_args: any) {
@@ -2216,6 +2236,8 @@ export class Game {
     this.renderAll();
   }
   async notif_objectiveScored(_args: any) {
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playObjectiveClaimResolution(prev, _args); } catch (_) { /* keep state apply */ }
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }

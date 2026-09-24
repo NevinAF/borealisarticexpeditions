@@ -1215,6 +1215,23 @@ class Game extends \Bga\GameFramework\Table
                 if ($pid === 0) continue;
                 $this->bga->notify->player(
                     (int)$pid,
+                    'objectiveClaimed',
+                    clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
+                    [
+                        'player_id' => $playerId,
+                        'player_name' => $playerName,
+                        'objective_index' => $objectiveIndex,
+                        'objective_id' => $oid,
+                        'objective_title' => $title,
+                        'boardState' => $this->getBoardState((int)$pid),
+                    ]
+                );
+            }
+
+            foreach ($this->getNextPlayerTable() as $pid => $_) {
+                if ($pid === 0) continue;
+                $this->bga->notify->player(
+                    (int)$pid,
                     'objectiveScored',
                     clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
                     [
