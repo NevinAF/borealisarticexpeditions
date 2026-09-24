@@ -452,6 +452,10 @@ export class Game {
     return this.cardFaceById(cardId);
   }
 
+  refreshScientistTooltips(): void {
+    this.registerScientistTooltips();
+  }
+
   buildCardTooltipSpriteHtml(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
     return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
   }
@@ -645,7 +649,9 @@ export class Game {
     html += `<div class="bae_playerboards">`;
     for (const pid of orderedPids) {
       const isSelf = pid === myId;
-      const animal_card_slots = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length), 1) ?? 1;
+      const maxPlayed = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length), 0) ?? 0;
+      const animal_card_slots = Math.max(1, maxPlayed);
+      const outlineSlots = maxPlayed + 1;
       const rawPlayerColor = String(this.gamedatas.players[pid]?.color ?? "");
       const playerColor = rawPlayerColor.length > 0
         ? (rawPlayerColor.startsWith("#") ? rawPlayerColor : `#${rawPlayerColor}`)
@@ -691,7 +697,7 @@ export class Game {
       const campDotsSel = isSelf && this.campSelected ? " bae_sci_shelf_camp_selected" : "";
       const boardBg = this.imagePath("Playerboards", d.board_for_players[pid] ?? 0);
       // Expose number of animal-card slots to CSS so margin spacing scales correctly
-      html += `<div class="bae_board_canvas" style="background-image:url('${boardBg}'); --animal-card-slots: ${animal_card_slots}">`;
+      html += `<div class="bae_board_canvas" style="background-image:url('${boardBg}'); --animal-card-slots: ${outlineSlots}">`;
 
       html += `<div id="bae_camp_${pid}_left" class="bae_camp_zone bae_camp_left${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
       html += `<div id="bae_sci_shelf_camp_${pid}_left" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 3)}</div>`;
@@ -863,6 +869,65 @@ export class Game {
     }
   }
 
+  private registerScientistTooltips(): void {
+    if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function') return;
+    const d = this.gamedatas.boardState;
+    const scientistNames = this.gamedatas.materials.scientist_names ?? [];
+    const sciByPlayer = d.scientists || {};
+
+    const countParts = (sciMap: Record<number, number[]> | undefined, at: number | number[]): string[] => {
+      if (!sciMap) return [];
+      const locs = Array.isArray(at) ? at : [at];
+      const parts: string[] = [];
+      const maxCols = Math.max(scientistNames.length, 3);
+      for (let col = 0; col < maxCols; col++) {
+        const poses = sciMap[col] ?? [];
+        const cnt = poses.filter((p) => locs.includes(p)).length;
+        if (cnt > 0) {
+          const label = scientistNames[col] ?? `${_('Col')} ${col + 1}`;
+          parts.push(`${cnt} ${label}`);
+        }
+      }
+      return parts;
+    };
+
+    const summaryAt = (sciMap: Record<number, number[]> | undefined, atIndex: number): string => {
+      const parts = countParts(sciMap, atIndex);
+      return parts.length > 0 ? parts.join(', ') : _('No scientists');
+    };
+
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const pid = Number(pidStr);
+      const holding = !!this.root.querySelector(`#bae_regroup_hold_${pid}_left, #bae_regroup_hold_${pid}_right`);
+      const leftId = `bae_camp_${pid}_left`;
+      const rightId = `bae_camp_${pid}_right`;
+      try { this.bga.gameui.removeTooltip(leftId); } catch (_) {}
+      try { this.bga.gameui.removeTooltip(rightId); } catch (_) {}
+      const campHelp = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 3);
+      const campHelpR = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 4);
+      this.bga.gameui.addTooltip(leftId, campHelp, _('Select this camp to start/cancel regroup.'));
+      this.bga.gameui.addTooltip(rightId, campHelpR, _('Select this camp to start/cancel regroup.'));
+
+      const reassignParts = countParts(sciByPlayer[pid], [3, 4]);
+      const reassignHelp = reassignParts.length > 0
+        ? `${_('Reassign')} ${reassignParts.join(', ')}`
+        : `${_('Reassign')} ${_('No scientists')}`;
+      for (const side of ['left', 'right'] as const) {
+        const holdId = `bae_regroup_hold_${pid}_${side}`;
+        try { this.bga.gameui.removeTooltip(holdId); } catch (_) {}
+        if (this.root.querySelector(`#${holdId}`)) {
+          this.bga.gameui.addTooltip(holdId, reassignHelp, '');
+        }
+      }
+
+      for (let loc = 0; loc < 3; loc++) {
+        const shelfId = `bae_sci_shelf_loc_${pid}_${loc}`;
+        try { this.bga.gameui.removeTooltip(shelfId); } catch (_) {}
+        this.bga.gameui.addTooltip(shelfId, summaryAt(sciByPlayer[pid], loc), '');
+      }
+    }
+  }
+
   private registerTooltips(): void {
     // Ensure gameui tooltip API is available
     if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function') return;
@@ -919,45 +984,8 @@ export class Game {
         this.bga.gameui.addTooltipHtml(id, html);
     });
 
-    // Camps and scientist shelves: build per-location summaries using
-    // gamedatas.boardState.scientists and the scientist name labels.
-    const scientistNames = this.gamedatas.materials.scientist_names ?? [];
-    const sciByPlayer = d.scientists || {};
-
-    const buildSummary = (sciMap: Record<number, number[]> | undefined, atIndex: number): string => {
-      if (!sciMap) return _('No scientists');
-      const parts: string[] = [];
-      const maxCols = Math.max(scientistNames.length, 3);
-      for (let col = 0; col < maxCols; col++) {
-        const poses = (sciMap[col] ?? []);
-        const cnt = poses.filter((p) => p === atIndex).length;
-        if (cnt > 0) {
-          const label = scientistNames[col] ?? `${_('Col')} ${col + 1}`;
-          parts.push(`${cnt} ${label}`);
-        }
-      }
-      return parts.length > 0 ? parts.join(', ') : _('No scientists');
-    };
-
-    for (const pidStr of Object.keys(this.gamedatas.players)) {
-      const pid = Number(pidStr);
-      const leftId = `bae_camp_${pid}_left`;
-      const rightId = `bae_camp_${pid}_right`;
-      try { this.bga.gameui.removeTooltip(leftId); } catch (_) {}
-      try { this.bga.gameui.removeTooltip(rightId); } catch (_) {}
-
-      const campLeftSummary = buildSummary(sciByPlayer[pid], 3);
-      const campRightSummary = buildSummary(sciByPlayer[pid], 4);
-      this.bga.gameui.addTooltip(leftId, campLeftSummary, _('Select this camp to start/cancel regroup.'));
-      this.bga.gameui.addTooltip(rightId, campRightSummary, _('Select this camp to start/cancel regroup.'));
-
-      for (let loc = 0; loc < 3; loc++) {
-        const shelfId = `bae_sci_shelf_loc_${pid}_${loc}`;
-        try { this.bga.gameui.removeTooltip(shelfId); } catch (_) {}
-        const shelfSummary = buildSummary(sciByPlayer[pid], loc);
-        this.bga.gameui.addTooltip(shelfId, shelfSummary, '');
-      }
-    }
+    // Camps, holds, and scientist shelves
+    this.registerScientistTooltips();
 
     // console.log(d, this.gamedatas.materials);
 

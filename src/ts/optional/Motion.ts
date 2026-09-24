@@ -177,6 +177,7 @@ export function startScientistTrailToRect(
   root: HTMLElement,
 ): HTMLElement {
   source.classList.add('bae_preview_fade_left');
+  source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover');
 }
 

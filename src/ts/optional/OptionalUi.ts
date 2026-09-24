@@ -48,6 +48,7 @@ export interface OptionalUiHost {
   currentStateName(): string;
   animalDef(cardId: number): AnimalDefLite | undefined;
   animalCardHtml(cardId: number): string;
+  refreshScientistTooltips(): void;
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null): void;
   cachedActionArgs: Record<string, unknown> | null;
   renderAll(): void;
@@ -65,16 +66,26 @@ export class OptionalUi {
   private resolving = false;
   private holdingPid: number | null = null;
   private discardGhosts = new Map<number, HTMLElement>();
+  private pendingDiscard = new Map<number, number>();
+  private discardLoopEpoch = 0;
+  private static readonly DISCARD_LOOP_MS = 1850;
+  private tooltipBound = false;
+  private tooltipBlockNew = false;
+  private tooltipWaitForMove = false;
+  private tooltipQuietUntil = 0;
+  private lastHoverEl: Element | null = null;
 
   constructor(private host: OptionalUiHost) {}
 
   afterRender(): void {
     this.teardown();
     if (!this.host.root) return;
+    this.bindTooltipGate();
     this.applyPreferenceCss();
     this.renderRoundBadge();
     this.bindDragAndDrop();
     this.renderRegroupHold();
+    this.host.refreshScientistTooltips();
     this.updateActionPreviews();
     this.bindPreferenceListener();
   }
@@ -175,7 +186,8 @@ export class OptionalUi {
     return Math.max(1000, Math.round(this.duration() * 4));
   }
 
-  private prepareResolution(): void {
+  private prepareResolution(zones: string[] = ['all']): void {
+    this.beginTooltipGuard(zones);
     this.clearPreviews();
     this.host.selectedCardId = null;
     this.host.selectedLocation = null;
@@ -191,15 +203,16 @@ export class OptionalUi {
 
   private endResolution(): void {
     this.resolving = false;
+    this.endTooltipGuard();
   }
 
   async playObserveResolution(prev: BoardState, args: Record<string, unknown>): Promise<void> {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution();
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    this.prepareResolution([`player:${pid}`]);
     try {
-      const pid = Number(args.player_id ?? args.playerId ?? 0);
       const cardId = Number(args.card_id ?? NaN);
       const loc = Number(args.location ?? NaN);
       if (!Number.isFinite(pid) || !Number.isFinite(cardId) || loc < 0 || loc > 2) return;
@@ -212,6 +225,7 @@ export class OptionalUi {
       if (cardEl && pileRect) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
         cardEl.style.visibility = 'hidden';
+        this.expandLocationOutline(pid, loc, ms);
         await Promise.all([
           flyClone(clone, pileRect, ms, root, true),
           this.compactHandToSlots(remaining, slots, ms),
@@ -256,20 +270,21 @@ export class OptionalUi {
     if (campMeeples.length > 0) this.holdingPid = pid;
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution();
+    this.prepareResolution([`player:${pid}`]);
     try {
       const discarded = (args.discarded as number[] | undefined) ?? [];
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
 
-      const linger = this.ensureRegroupHold(pid);
-      const lingerRect = linger?.getBoundingClientRect() ?? this.lingerRect(pid);
-      if (lingerRect) {
-        await Promise.all(campMeeples.map((el) => {
-          const clone = placeClone(el, 'bae_resolve_clone', this.host.root);
-          el.style.visibility = 'hidden';
-          return flyClone(clone, lingerRect, ms, this.host.root);
-        }));
-      }
+      const leftHold = this.ensureRegroupHold(pid, 'left');
+      const rightHold = this.ensureRegroupHold(pid, 'right');
+      const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
+      const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`) as HTMLElement | null;
+      const leftMeeples = Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
+      const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
+      await Promise.all([
+        ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms)),
+        ...rightMeeples.map((el) => this.flyMeepleToHold(el, rightCamp, rightHold, ms)),
+      ]);
     } finally {
       this.endResolution();
     }
@@ -284,7 +299,7 @@ export class OptionalUi {
       return;
     }
     this.resolving = true;
-    this.prepareResolution();
+    this.prepareResolution([`player:${pid}`]);
     try {
       if (loc < 0 || loc > 2) return;
       if (!this.shelfEl(pid, loc)) return;
@@ -300,9 +315,9 @@ export class OptionalUi {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution();
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    this.prepareResolution(['pool', `player:${pid}`]);
     try {
-      const pid = Number(args.player_id ?? args.playerId ?? 0);
       const fromDeck = Boolean(args.from_deck);
       const slot = Number(args.pool_slot ?? args.slot ?? NaN);
       const src = (!fromDeck && Number.isFinite(slot) && slot >= 0)
@@ -338,7 +353,7 @@ export class OptionalUi {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution();
+    this.prepareResolution(['pool']);
     try {
       const root = this.host.root;
       const deck = this.deckEl();
@@ -369,9 +384,9 @@ export class OptionalUi {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution();
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    this.prepareResolution([`player:${pid}`]);
     try {
-      const pid = Number(args.player_id ?? args.playerId ?? 0);
       const discarded = (args.discarded as number[] | undefined) ?? [];
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
     } finally {
@@ -489,6 +504,9 @@ export class OptionalUi {
   }
 
   private clearDiscardGhosts(): void {
+    this.pendingDiscard.forEach((id) => window.clearTimeout(id));
+    this.pendingDiscard.clear();
+    this.discardLoopEpoch = 0;
     this.discardGhosts.forEach((el) => el.remove());
     this.discardGhosts.clear();
     this.host.root?.querySelectorAll('.bae_discard_ghost').forEach((el) => el.remove());
@@ -547,18 +565,43 @@ export class OptionalUi {
   private syncDiscardGhosts(pid: number): void {
     if (!this.previewsEnabled()) return;
     const wanted = this.host.selectedRegroupIds;
+    this.pendingDiscard.forEach((timeoutId, cardId) => {
+      if (wanted.has(cardId)) return;
+      window.clearTimeout(timeoutId);
+      this.pendingDiscard.delete(cardId);
+    });
     this.discardGhosts.forEach((el, cardId) => {
       if (!el.isConnected || !wanted.has(cardId)) {
         el.remove();
         this.discardGhosts.delete(cardId);
       }
     });
-    if (wanted.size === 0) return;
+    if (wanted.size === 0) {
+      this.discardLoopEpoch = 0;
+      return;
+    }
     wanted.forEach((cardId) => {
-      if (this.discardGhosts.has(cardId)) return;
+      if (this.discardGhosts.has(cardId) || this.pendingDiscard.has(cardId)) return;
       const el = this.cardEl(pid, cardId);
-      if (el) this.discardGhosts.set(cardId, startDiscardGhost(el, this.host.root, cardId));
+      if (!el) return;
+      const start = () => {
+        this.pendingDiscard.delete(cardId);
+        if (!this.host.selectedRegroupIds.has(cardId) || this.discardGhosts.has(cardId)) return;
+        const card = this.cardEl(pid, cardId);
+        if (!card) return;
+        if (this.discardGhosts.size === 0) this.discardLoopEpoch = performance.now();
+        this.discardGhosts.set(cardId, startDiscardGhost(card, this.host.root, cardId));
+      };
+      const waitMs = this.discardLoopWaitMs();
+      if (waitMs <= 16) start();
+      else this.pendingDiscard.set(cardId, window.setTimeout(start, waitMs));
     });
+  }
+
+  private discardLoopWaitMs(): number {
+    if (this.discardGhosts.size === 0 || this.discardLoopEpoch <= 0) return 0;
+    const elapsed = (performance.now() - this.discardLoopEpoch) % OptionalUi.DISCARD_LOOP_MS;
+    return Math.max(0, OptionalUi.DISCARD_LOOP_MS - elapsed);
   }
 
   private previewObserve(pid: number, cardId: number, loc: number): void {
@@ -599,12 +642,22 @@ export class OptionalUi {
   }
 
   private previewRegroupPickup(pid: number): void {
-    const hold = this.ensureRegroupHold(pid);
-    const dest = hold?.getBoundingClientRect() ?? this.lingerRect(pid);
-    if (!dest) return;
     const ms = this.previewLoopMs();
-    for (const src of this.campMeeples(pid)) {
-      startScientistTrailToRect(src, dest, ms, this.host.root);
+    const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
+    const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`) as HTMLElement | null;
+    if (leftCamp) {
+      const r = leftCamp.getBoundingClientRect();
+      const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
+      for (const src of Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[]) {
+        startScientistTrailToRect(src, dest, ms, this.host.root);
+      }
+    }
+    if (rightCamp) {
+      const r = rightCamp.getBoundingClientRect();
+      const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
+      for (const src of Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[]) {
+        startScientistTrailToRect(src, dest, ms, this.host.root);
+      }
     }
   }
 
@@ -616,6 +669,7 @@ export class OptionalUi {
     if (!zone || !pile) return;
     const slot = document.createElement('div');
     slot.className = 'bae_pile_slot bae_card_place_preview';
+    slot.style.zIndex = '2';
     slot.setAttribute('aria-hidden', 'true');
     slot.innerHTML = this.host.animalCardHtml(cardId);
     slot.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
@@ -897,44 +951,161 @@ export class OptionalUi {
 
   private renderRegroupHold(): void {
     const pid = this.holdingPid;
-    if (pid == null && !this.host.campSelected) {
+    if (pid == null) {
       this.host.root.querySelectorAll('.bae_regroup_hold').forEach((el) => el.remove());
       return;
     }
-    const targetPid = pid ?? Number(this.host.bga.players.getCurrentPlayerId());
-    const hold = this.ensureRegroupHold(targetPid);
-    if (!hold) return;
-    hold.replaceChildren();
-    if (this.holdingPid == null) return;
-    const left = this.shelfEl(targetPid, 3);
-    const right = this.shelfEl(targetPid, 4);
-    hold.innerHTML = `<div class="bae_sci_shelf">${left?.innerHTML ?? ''}${right?.innerHTML ?? ''}</div>`;
-    this.campMeeples(targetPid).forEach((el) => { el.style.visibility = 'hidden'; });
+    const leftHold = this.ensureRegroupHold(pid, 'left');
+    const rightHold = this.ensureRegroupHold(pid, 'right');
+    const left = this.shelfEl(pid, 3);
+    const right = this.shelfEl(pid, 4);
+    if (leftHold) leftHold.innerHTML = `<div class="bae_sci_shelf">${left?.innerHTML ?? ''}</div>`;
+    if (rightHold) rightHold.innerHTML = `<div class="bae_sci_shelf">${right?.innerHTML ?? ''}</div>`;
+    this.campMeeples(pid).forEach((el) => { el.style.visibility = 'hidden'; });
   }
 
-  private ensureRegroupHold(pid: number): HTMLElement | null {
+  private ensureRegroupHold(pid: number, side: 'left' | 'right'): HTMLElement | null {
     const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`) as HTMLElement | null;
     if (!canvas) return null;
-    let hold = canvas.querySelector('.bae_regroup_hold') as HTMLElement | null;
+    const id = `bae_regroup_hold_${pid}_${side}`;
+    let hold = canvas.querySelector(`#${id}`) as HTMLElement | null;
     if (!hold) {
       hold = document.createElement('div');
-      hold.className = 'bae_regroup_hold';
-      hold.setAttribute('aria-hidden', 'true');
+      hold.id = id;
+      hold.className = `bae_regroup_hold bae_regroup_hold_${side}`;
       canvas.appendChild(hold);
     }
     return hold;
   }
 
-  private lingerRect(pid: number): DOMRect | null {
-    const camp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
-    if (!camp) return null;
-    const r = camp.getBoundingClientRect();
-    return new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
+  private flyMeepleToHold(
+    el: HTMLElement,
+    camp: HTMLElement | null,
+    hold: HTMLElement | null,
+    ms: number,
+  ): Promise<void> {
+    const destBox = hold?.getBoundingClientRect() ?? (camp ? this.offsetRect(camp.getBoundingClientRect(), 0, -camp.getBoundingClientRect().height * 1.2) : null);
+    const campBox = camp?.getBoundingClientRect();
+    if (!destBox || !campBox) return Promise.resolve();
+    const from = el.getBoundingClientRect();
+    const dest = new DOMRect(
+      destBox.left + (from.left - campBox.left),
+      destBox.top + (from.top - campBox.top),
+      from.width,
+      from.height,
+    );
+    const clone = placeClone(el, 'bae_resolve_clone', this.host.root);
+    el.style.visibility = 'hidden';
+    return flyClone(clone, dest, ms, this.host.root, true);
   }
 
-  private holdMeeples(pid: number): HTMLElement[] {
-    const hold = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_regroup_hold`);
-    return Array.from(hold?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
+  private offsetRect(r: DOMRect, dx: number, dy: number): DOMRect {
+    return new DOMRect(r.left + dx, r.top + dy, r.width, r.height);
+  }
+
+  private holdMeeples(pid: number, side?: 'left' | 'right'): HTMLElement[] {
+    const sel = side
+      ? `#bae_regroup_hold_${pid}_${side}`
+      : `#bae_playerboard_${pid} .bae_regroup_hold`;
+    const nodes = this.host.root.querySelectorAll(sel);
+    return Array.from(nodes).flatMap((hold) => Array.from(hold.querySelectorAll('.bae_meeple_img'))) as HTMLElement[];
+  }
+
+  private expandLocationOutline(pid: number, loc: number, ms: number): void {
+    const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`) as HTMLElement | null;
+    if (!canvas) return;
+    const boards = this.host.gamedatas.boardState.boards?.[pid] ?? [];
+    const maxPlayed = boards.reduce((max, pile) => Math.max(max, pile.length), 0);
+    const afterPile = (boards[loc]?.length ?? 0) + 1;
+    const oldSlots = maxPlayed + 1;
+    const newSlots = Math.max(maxPlayed, afterPile) + 1;
+    if (newSlots <= oldSlots) return;
+    canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
+    canvas.style.setProperty('--animal-card-slots', String(newSlots));
+  }
+
+  private bindTooltipGate(): void {
+    if (this.tooltipBound) return;
+    this.tooltipBound = true;
+    const onMove = (ev: Event) => {
+      this.lastHoverEl = ev.target as Element | null;
+      if (Date.now() < this.tooltipQuietUntil) return;
+      if (!this.tooltipWaitForMove && !this.tooltipBlockNew) return;
+      this.tooltipWaitForMove = false;
+      this.setTooltipBlock(this.resolving);
+      this.clearTooltipKeeper();
+    };
+    const onClick = () => {
+      this.tooltipQuietUntil = Date.now() + 500;
+      this.tooltipWaitForMove = true;
+      this.setTooltipBlock(true);
+    };
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('click', onClick, true);
+  }
+
+  private beginTooltipGuard(zones: string[]): void {
+    this.tooltipBlockNew = true;
+    const hoverZone = this.hoverTooltipZone();
+    const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
+    if (affected) this.closeOpenTooltips();
+    else this.parkOpenTooltip();
+    this.setTooltipBlock(true);
+  }
+
+  private endTooltipGuard(): void {
+    this.tooltipWaitForMove = true;
+    this.setTooltipBlock(true);
+  }
+
+  private setTooltipBlock(on: boolean): void {
+    this.tooltipBlockNew = on;
+    document.body.classList.toggle('bae_block_tooltips', on);
+  }
+
+  private hoverTooltipZone(): string | null {
+    const el = this.lastHoverEl;
+    if (!el || typeof (el as Element).closest !== 'function') return null;
+    if ((el as Element).closest('.bae_pool, .bae_top_pool')) return 'pool';
+    const board = (el as Element).closest('.bae_playerboard') as HTMLElement | null;
+    if (board?.dataset.playerId) return `player:${board.dataset.playerId}`;
+    return null;
+  }
+
+  private tooltipNodes(): HTMLElement[] {
+    return Array.from(document.querySelectorAll(
+      '.dijitTooltip, .dijitTooltipPopup, .bga-tooltip, .tooltip',
+    )) as HTMLElement[];
+  }
+
+  private closeOpenTooltips(): void {
+    this.clearTooltipKeeper();
+    this.tooltipNodes().forEach((node) => {
+      node.style.display = 'none';
+      node.style.visibility = 'hidden';
+    });
+  }
+
+  private parkOpenTooltip(): void {
+    this.clearTooltipKeeper();
+    const open = this.tooltipNodes().find((node) => {
+      const cs = getComputedStyle(node);
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && node.offsetHeight > 0;
+    });
+    if (!open) return;
+    const keeper = document.createElement('div');
+    keeper.className = 'bae_tooltip_keeper';
+    keeper.innerHTML = open.innerHTML;
+    const r = open.getBoundingClientRect();
+    keeper.style.left = `${r.left}px`;
+    keeper.style.top = `${r.top}px`;
+    keeper.style.width = `${Math.max(r.width, 40)}px`;
+    document.body.appendChild(keeper);
+    open.style.visibility = 'hidden';
+  }
+
+  private clearTooltipKeeper(): void {
+    document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
   }
 
   private deckEl(): HTMLElement | null {
@@ -987,15 +1158,15 @@ export class OptionalUi {
     ms: number,
   ): Promise<void> {
     const root = this.host.root;
-    const hold = this.holdMeeples(pid);
+    const leftHold = this.holdMeeples(pid, 'left');
+    const rightHold = this.holdMeeples(pid, 'right');
     const used = new Set<HTMLElement>();
     const flights: Promise<void>[] = [];
     const assigned: { el: HTMLElement; dest: DOMRect }[] = [];
 
     const currentAt = (loc: number): HTMLElement[] => {
-      if (hold.length > 0 && (loc === 3 || loc === 4)) {
-        return loc === 3 ? hold : [];
-      }
+      if (leftHold.length + rightHold.length > 0 && loc === 3) return leftHold;
+      if (leftHold.length + rightHold.length > 0 && loc === 4) return rightHold;
       const shelf = this.shelfEl(pid, loc);
       return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
     };
