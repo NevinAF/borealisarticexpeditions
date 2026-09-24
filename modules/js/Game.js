@@ -176,6 +176,8 @@ function placeClone(source, extraClass, root) {
     clone.style.pointerEvents = 'none';
     clone.style.zIndex = '80';
     clone.style.opacity = '1';
+    clone.style.transform = 'none';
+    clone.style.transformOrigin = 'center center';
     motionLayer(root).appendChild(clone);
     return clone;
 }
@@ -199,18 +201,12 @@ function flyClone(clone, to, durationMs, root, matchSize = false) {
     return wait(durationMs).then(() => {
         const parked = localOffset(root, to);
         clone.style.transition = 'none';
-        clone.style.transform = '';
+        clone.style.transform = 'none';
+        clone.style.left = `${parked.left}px`;
+        clone.style.top = `${parked.top}px`;
         if (matchSize) {
-            clone.style.left = `${parked.left}px`;
-            clone.style.top = `${parked.top}px`;
             clone.style.width = `${to.width}px`;
             clone.style.height = `${to.height}px`;
-        }
-        else {
-            const now = clone.getBoundingClientRect();
-            const baked = localOffset(root, now);
-            clone.style.left = `${baked.left}px`;
-            clone.style.top = `${baked.top}px`;
         }
     });
 }
@@ -278,9 +274,10 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '') {
     clone.style.margin = '0';
     clone.style.pointerEvents = 'none';
     clone.style.zIndex = '70';
+    clone.style.transform = 'none';
     clone.style.setProperty('--dx', `${dx}px`);
     clone.style.setProperty('--dy', `${dy}px`);
-    clone.style.setProperty('--dur', `${Math.max(900, durationMs * 3)}ms`);
+    clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
     motionLayer(root).appendChild(clone);
     return clone;
 }
@@ -681,6 +678,9 @@ class OptionalUi {
     duration() {
         return animMs(this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2);
     }
+    previewLoopMs() {
+        return Math.max(1000, Math.round(this.duration() * 4));
+    }
     prepareResolution() {
         this.clearPreviews();
         this.host.selectedCardId = null;
@@ -726,20 +726,10 @@ class OptionalUi {
                 await this.compactHandToSlots(remaining, slots, ms);
             }
             const def = this.host.animalDef(cardId);
-            if (def) {
-                const moves = previewObserveMoves(prev.scientists, pid, loc, def);
-                const used = new Set();
-                await Promise.all(moves.map((m) => {
-                    const src = this.meepleAt(pid, m.from, m.color, used);
-                    const destShelf = this.shelfEl(pid, m.to);
-                    if (!src || !destShelf)
-                        return Promise.resolve();
-                    const clone = placeClone(src, 'bae_resolve_clone', root);
-                    src.style.visibility = 'hidden';
-                    return flyClone(clone, destShelf.getBoundingClientRect(), ms, root);
-                }));
-            }
             const nextState = args.boardState;
+            if (def) {
+                await this.animateScientists(pid, nextState?.scientists ?? prev.scientists, ms);
+            }
             const oldFlag = Number(prev.flags?.[pid]?.[loc] ?? 0);
             const newFlag = Number(nextState?.flags?.[pid]?.[loc] ?? oldFlag);
             const flagEl = this.flagEl(pid, loc, oldFlag);
@@ -801,17 +791,10 @@ class OptionalUi {
         try {
             if (loc < 0 || loc > 2)
                 return;
-            const dest = this.shelfEl(pid, loc);
-            if (!dest)
+            if (!this.shelfEl(pid, loc))
                 return;
-            const destRect = dest.getBoundingClientRect();
-            const sources = this.holdMeeples(pid);
-            const from = sources.length > 0 ? sources : this.campMeeples(pid);
-            await Promise.all(from.map((el) => {
-                const clone = placeClone(el, 'bae_resolve_clone', this.host.root);
-                el.style.visibility = 'hidden';
-                return flyClone(clone, destRect, ms, this.host.root);
-            }));
+            const nextSci = args.boardState?.scientists ?? _prev.scientists;
+            await this.animateScientists(pid, nextSci, ms);
         }
         finally {
             this.holdingPid = null;
@@ -850,7 +833,9 @@ class OptionalUi {
                 return;
             await wait(Math.round(ms * 0.2));
             if (deck) {
-                const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
+                const nextPool = args.boardState?.pool;
+                const refillId = nextPool?.find((p) => Number(p.slot) === slot)?.id;
+                const refill = this.cloneForHandDraw(deck, refillId);
                 await flyClone(refill, hole, ms, root, true);
             }
         }
@@ -858,7 +843,7 @@ class OptionalUi {
             this.endResolution();
         }
     }
-    async playMulliganPoolResolution(_prev, _args) {
+    async playMulliganPoolResolution(_prev, args) {
         const ms = this.duration();
         if (ms === 0 || this.resolving)
             return;
@@ -868,7 +853,10 @@ class OptionalUi {
             const root = this.host.root;
             const deck = this.deckEl();
             const cards = this.poolCards();
-            const dests = cards.map((el) => el.getBoundingClientRect());
+            const dests = cards.map((el) => ({
+                rect: el.getBoundingClientRect(),
+                slot: Number(el.dataset.poolSlot),
+            }));
             if (!deck)
                 return;
             await Promise.all(cards.map((el) => {
@@ -877,9 +865,11 @@ class OptionalUi {
                 return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
             }));
             await wait(Math.round(ms * 0.15));
-            for (let i = 0; i < dests.length; i++) {
-                const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
-                await flyClone(refill, dests[i], ms, root, true);
+            const nextPool = args.boardState?.pool ?? [];
+            for (const dest of dests) {
+                const id = nextPool.find((p) => Number(p.slot) === dest.slot)?.id;
+                const refill = this.cloneForHandDraw(deck, id);
+                await flyClone(refill, dest.rect, ms, root, true);
             }
         }
         finally {
@@ -999,6 +989,7 @@ class OptionalUi {
         this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
         document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
         this.host.root.querySelectorAll('.bae_preview_fade_left').forEach((el) => el.classList.remove('bae_preview_fade_left'));
+        this.host.root.querySelectorAll('.bae_card_place_preview').forEach((el) => el.remove());
     }
     clearDiscardGhosts() {
         this.discardGhosts.forEach((el) => el.remove());
@@ -1031,11 +1022,10 @@ class OptionalUi {
         if (this.host.isGameplayLike()
             && this.host.selectedCardId != null
             && this.host.selectedLocation != null
-            && !this.host.campSelected) {
+            && !this.host.campSelected
+            && this.isObserveSelectionLegal()) {
             this.previewCardPlacement(myId, this.host.selectedCardId, this.host.selectedLocation);
-            if (this.isObserveSelectionLegal()) {
-                this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
-            }
+            this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
         }
         if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
             this.previewAssign(myId, this.host.selectedLocation);
@@ -1070,7 +1060,7 @@ class OptionalUi {
         const def = this.host.animalDef(cardId);
         if (!def)
             return;
-        const ms = Math.max(700, this.duration() * 3);
+        const ms = this.previewLoopMs();
         const used = new Set();
         for (const m of previewObserveMoves(this.host.gamedatas.boardState.scientists, pid, loc, def)) {
             const src = this.meepleAt(pid, m.from, m.color, used);
@@ -1089,18 +1079,18 @@ class OptionalUi {
         if (flagWouldAdvance(def, vehicles, flagDepth)) {
             const dest = this.trackEl(pid, loc, Math.min(7, flagDepth + 1));
             if (dest)
-                startTrail(flag, dest, ms, this.host.root);
+                startScientistTrail(flag, dest, ms, this.host.root);
         }
         else {
-            const clone = placeClone(flag, 'bae_trail_ghost bae_trail_stuck', this.host.root);
-            clone.style.setProperty('--dur', `${ms}ms`);
+            const r = flag.getBoundingClientRect();
+            startScientistTrailToRect(flag, new DOMRect(r.left, r.top - 7, r.width, r.height), ms, this.host.root);
         }
     }
     previewAssign(pid, loc) {
         const dest = this.shelfEl(pid, loc);
         if (!dest)
             return;
-        const ms = Math.max(700, this.duration() * 3);
+        const ms = this.previewLoopMs();
         const sources = this.holdMeeples(pid);
         const from = sources.length > 0 ? sources : this.campMeeples(pid);
         for (const src of from) {
@@ -1112,17 +1102,22 @@ class OptionalUi {
         const dest = hold?.getBoundingClientRect() ?? this.lingerRect(pid);
         if (!dest)
             return;
-        const ms = Math.max(800, this.duration() * 3);
+        const ms = this.previewLoopMs();
         for (const src of this.campMeeples(pid)) {
             startScientistTrailToRect(src, dest, ms, this.host.root);
         }
     }
     previewCardPlacement(pid, cardId, loc) {
-        const src = this.cardEl(pid, cardId);
-        const dest = this.nextPileRect(pid, loc);
-        if (!src || !dest)
+        const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
+        const pile = zone?.querySelector('.bae_anim_pile');
+        if (!zone || !pile)
             return;
-        placeCloneAt(src, 'bae_card_place_preview', this.host.root, dest);
+        const slot = document.createElement('div');
+        slot.className = 'bae_pile_slot bae_card_place_preview';
+        slot.setAttribute('aria-hidden', 'true');
+        slot.innerHTML = this.host.animalCardHtml(cardId);
+        slot.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
+        pile.appendChild(slot);
     }
     renderInvalidBubble(text) {
         this.host.root.querySelectorAll('.bae_invalid_bubble').forEach((el) => el.remove());
@@ -1463,6 +1458,125 @@ class OptionalUi {
             return placeholder;
         const cards = col.querySelectorAll('.bae_handcard, .bae_handcard_hidden, .bae_card:not(.bae_card_placeholder)');
         return cards[cards.length - 1] ?? col;
+    }
+    async animateScientists(pid, next, ms) {
+        const root = this.host.root;
+        const hold = this.holdMeeples(pid);
+        const used = new Set();
+        const flights = [];
+        const assigned = [];
+        const currentAt = (loc) => {
+            if (hold.length > 0 && (loc === 3 || loc === 4)) {
+                return loc === 3 ? hold : [];
+            }
+            const shelf = this.shelfEl(pid, loc);
+            return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []);
+        };
+        const takeColor = (els, color) => {
+            const el = els.find((node) => !used.has(node) && Number(node.dataset.scientist) === color) ?? null;
+            if (el)
+                used.add(el);
+            return el;
+        };
+        const slotsByLoc = [0, 1, 2, 3, 4].map((loc) => ({
+            loc,
+            shelf: this.shelfEl(pid, loc),
+            slots: this.scientistLayout(pid, next, loc),
+        }));
+        const filled = slotsByLoc.map((row) => row.slots.map(() => null));
+        for (const row of slotsByLoc) {
+            const staying = currentAt(row.loc);
+            row.slots.forEach((slot, i) => {
+                const el = takeColor(staying, slot.color);
+                if (el)
+                    filled[row.loc][i] = el;
+            });
+        }
+        for (const row of slotsByLoc) {
+            row.slots.forEach((slot, i) => {
+                if (filled[row.loc][i])
+                    return;
+                let el = null;
+                for (let from = 0; from <= 4 && !el; from++) {
+                    el = takeColor(currentAt(from), slot.color);
+                }
+                if (el)
+                    filled[row.loc][i] = el;
+            });
+        }
+        for (const row of slotsByLoc) {
+            if (!row.shelf)
+                continue;
+            row.slots.forEach((slot, i) => {
+                const el = filled[row.loc][i];
+                if (!el)
+                    return;
+                assigned.push({ el, dest: this.meepleSlotRect(row.shelf, slot, el) });
+            });
+        }
+        for (const { el, dest } of assigned) {
+            const clone = placeClone(el, 'bae_resolve_clone', root);
+            el.style.visibility = 'hidden';
+            flights.push(flyClone(clone, dest, ms, root, true));
+        }
+        for (let loc = 0; loc <= 4; loc++) {
+            for (const el of currentAt(loc)) {
+                if (used.has(el))
+                    continue;
+                el.style.visibility = 'hidden';
+                placeClone(el, 'bae_resolve_clone', root);
+            }
+        }
+        if (flights.length > 0)
+            await Promise.all(flights);
+    }
+    scientistLayout(playerId, sci, location) {
+        const poses = sci?.[playerId];
+        if (!poses)
+            return [];
+        const meeples = [];
+        for (let col = 0; col < 3; col++) {
+            const n = (poses[col] ?? []).filter((p) => p === location).length;
+            for (let i = 0; i < n; i++)
+                meeples.push(col);
+        }
+        const n = meeples.length;
+        if (n === 0)
+            return [];
+        const [cols, rows] = (() => {
+            switch (n) {
+                case 1: return [1, 1];
+                case 2: return [2, 1];
+                case 3: return location < 3 ? [3, 1] : [2, 2];
+                case 4: return [2, 2];
+                case 5: return location < 3 ? [3, 2] : [2, 3];
+                case 6: return location < 3 ? [3, 2] : [2, 3];
+                case 7: return location < 3 ? [3, 3] : [2, 4];
+                case 8: return location < 3 ? [3, 3] : [2, 4];
+                case 9: return [3, 3];
+                default: return location < 3
+                    ? [4, Math.ceil(n / 4)]
+                    : [3, Math.ceil(n / 3)];
+            }
+        })();
+        return meeples.map((col, i) => {
+            const c = i % cols;
+            const r = Math.floor(i / cols);
+            const jitterX = ((i * 7 + col * 3 + 13 * location + 11 * playerId) % 5) - 2;
+            const jitterY = ((i * 11 + col * 5 + 17 * location + 19 * playerId) % 5) - 2;
+            return {
+                color: col,
+                leftPct: (c + 1) / (cols + 1) * 100 + jitterX,
+                topPct: (r + 1) / (rows + 1) * 100 + jitterY,
+            };
+        });
+    }
+    meepleSlotRect(shelf, slot, sample) {
+        const shelfR = shelf.getBoundingClientRect();
+        const size = sample.getBoundingClientRect();
+        const cx = shelfR.left + shelfR.width * slot.leftPct / 100;
+        const cy = shelfR.top + shelfR.height * slot.topPct / 100;
+        return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);
     }
     cardEl(pid, cardId) {
         return this.host.root.querySelector(`#bae_hand_${pid}_${cardId}`)

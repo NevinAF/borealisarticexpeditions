@@ -71,6 +71,8 @@ export function placeClone(
   clone.style.pointerEvents = 'none';
   clone.style.zIndex = '80';
   clone.style.opacity = '1';
+  clone.style.transform = 'none';
+  clone.style.transformOrigin = 'center center';
   motionLayer(root).appendChild(clone);
   return clone;
 }
@@ -101,17 +103,12 @@ export function flyClone(
   return wait(durationMs).then(() => {
     const parked = localOffset(root, to);
     clone.style.transition = 'none';
-    clone.style.transform = '';
+    clone.style.transform = 'none';
+    clone.style.left = `${parked.left}px`;
+    clone.style.top = `${parked.top}px`;
     if (matchSize) {
-      clone.style.left = `${parked.left}px`;
-      clone.style.top = `${parked.top}px`;
       clone.style.width = `${to.width}px`;
       clone.style.height = `${to.height}px`;
-    } else {
-      const now = clone.getBoundingClientRect();
-      const baked = localOffset(root, now);
-      clone.style.left = `${baked.left}px`;
-      clone.style.top = `${baked.top}px`;
     }
   });
 }
@@ -209,9 +206,10 @@ export function startTrailToRect(
   clone.style.margin = '0';
   clone.style.pointerEvents = 'none';
   clone.style.zIndex = '70';
+  clone.style.transform = 'none';
   clone.style.setProperty('--dx', `${dx}px`);
   clone.style.setProperty('--dy', `${dy}px`);
-  clone.style.setProperty('--dur', `${Math.max(900, durationMs * 3)}ms`);
+  clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   motionLayer(root).appendChild(clone);
   return clone;
 }

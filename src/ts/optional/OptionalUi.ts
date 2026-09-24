@@ -9,11 +9,9 @@ import {
   clearMotionLayer,
   flyClone,
   placeClone,
-  placeCloneAt,
   startDiscardGhost,
   startScientistTrail,
   startScientistTrailToRect,
-  startTrail,
   wait,
 } from './Motion';
 import {
@@ -173,6 +171,10 @@ export class OptionalUi {
     return animMs(this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2);
   }
 
+  private previewLoopMs(): number {
+    return Math.max(1000, Math.round(this.duration() * 4));
+  }
+
   private prepareResolution(): void {
     this.clearPreviews();
     this.host.selectedCardId = null;
@@ -219,20 +221,15 @@ export class OptionalUi {
       }
 
       const def = this.host.animalDef(cardId);
+      const nextState = args.boardState as BoardState | undefined;
       if (def) {
-        const moves = previewObserveMoves(prev.scientists, pid, loc, def);
-        const used = new Set<HTMLElement>();
-        await Promise.all(moves.map((m) => {
-          const src = this.meepleAt(pid, m.from, m.color, used);
-          const destShelf = this.shelfEl(pid, m.to);
-          if (!src || !destShelf) return Promise.resolve();
-          const clone = placeClone(src, 'bae_resolve_clone', root);
-          src.style.visibility = 'hidden';
-          return flyClone(clone, destShelf.getBoundingClientRect(), ms, root);
-        }));
+        await this.animateScientists(
+          pid,
+          nextState?.scientists ?? prev.scientists,
+          ms,
+        );
       }
 
-      const nextState = args.boardState as BoardState | undefined;
       const oldFlag = Number(prev.flags?.[pid]?.[loc] ?? 0);
       const newFlag = Number(nextState?.flags?.[pid]?.[loc] ?? oldFlag);
       const flagEl = this.flagEl(pid, loc, oldFlag);
@@ -290,16 +287,9 @@ export class OptionalUi {
     this.prepareResolution();
     try {
       if (loc < 0 || loc > 2) return;
-      const dest = this.shelfEl(pid, loc);
-      if (!dest) return;
-      const destRect = dest.getBoundingClientRect();
-      const sources = this.holdMeeples(pid);
-      const from = sources.length > 0 ? sources : this.campMeeples(pid);
-      await Promise.all(from.map((el) => {
-        const clone = placeClone(el, 'bae_resolve_clone', this.host.root);
-        el.style.visibility = 'hidden';
-        return flyClone(clone, destRect, ms, this.host.root);
-      }));
+      if (!this.shelfEl(pid, loc)) return;
+      const nextSci = (args.boardState as BoardState | undefined)?.scientists ?? _prev.scientists;
+      await this.animateScientists(pid, nextSci, ms);
     } finally {
       this.holdingPid = null;
       this.endResolution();
@@ -334,7 +324,9 @@ export class OptionalUi {
       if (fromDeck) return;
       await wait(Math.round(ms * 0.2));
       if (deck) {
-        const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
+        const nextPool = (args.boardState as BoardState | undefined)?.pool;
+        const refillId = nextPool?.find((p) => Number(p.slot) === slot)?.id;
+        const refill = this.cloneForHandDraw(deck, refillId);
         await flyClone(refill, hole, ms, root, true);
       }
     } finally {
@@ -342,7 +334,7 @@ export class OptionalUi {
     }
   }
 
-  async playMulliganPoolResolution(_prev: BoardState, _args: Record<string, unknown>): Promise<void> {
+  async playMulliganPoolResolution(_prev: BoardState, args: Record<string, unknown>): Promise<void> {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
@@ -351,7 +343,10 @@ export class OptionalUi {
       const root = this.host.root;
       const deck = this.deckEl();
       const cards = this.poolCards();
-      const dests = cards.map((el) => el.getBoundingClientRect());
+      const dests = cards.map((el) => ({
+        rect: el.getBoundingClientRect(),
+        slot: Number((el as HTMLElement).dataset.poolSlot),
+      }));
       if (!deck) return;
       await Promise.all(cards.map((el) => {
         const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
@@ -359,9 +354,11 @@ export class OptionalUi {
         return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
       }));
       await wait(Math.round(ms * 0.15));
-      for (let i = 0; i < dests.length; i++) {
-        const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
-        await flyClone(refill, dests[i], ms, root, true);
+      const nextPool = (args.boardState as BoardState | undefined)?.pool ?? [];
+      for (const dest of dests) {
+        const id = nextPool.find((p) => Number(p.slot) === dest.slot)?.id;
+        const refill = this.cloneForHandDraw(deck, id);
+        await flyClone(refill, dest.rect, ms, root, true);
       }
     } finally {
       this.endResolution();
@@ -488,6 +485,7 @@ export class OptionalUi {
     this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
     document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
     this.host.root.querySelectorAll('.bae_preview_fade_left').forEach((el) => el.classList.remove('bae_preview_fade_left'));
+    this.host.root.querySelectorAll('.bae_card_place_preview').forEach((el) => el.remove());
   }
 
   private clearDiscardGhosts(): void {
@@ -529,11 +527,10 @@ export class OptionalUi {
       && this.host.selectedCardId != null
       && this.host.selectedLocation != null
       && !this.host.campSelected
+      && this.isObserveSelectionLegal()
     ) {
       this.previewCardPlacement(myId, this.host.selectedCardId, this.host.selectedLocation);
-      if (this.isObserveSelectionLegal()) {
-        this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
-      }
+      this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
     }
 
     if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
@@ -567,7 +564,7 @@ export class OptionalUi {
   private previewObserve(pid: number, cardId: number, loc: number): void {
     const def = this.host.animalDef(cardId);
     if (!def) return;
-    const ms = Math.max(700, this.duration() * 3);
+    const ms = this.previewLoopMs();
     const used = new Set<HTMLElement>();
     for (const m of previewObserveMoves(this.host.gamedatas.boardState.scientists, pid, loc, def)) {
       const src = this.meepleAt(pid, m.from, m.color, used);
@@ -583,17 +580,17 @@ export class OptionalUi {
     if (!flag) return;
     if (flagWouldAdvance(def, vehicles, flagDepth)) {
       const dest = this.trackEl(pid, loc, Math.min(7, flagDepth + 1));
-      if (dest) startTrail(flag, dest, ms, this.host.root);
+      if (dest) startScientistTrail(flag, dest, ms, this.host.root);
     } else {
-      const clone = placeClone(flag, 'bae_trail_ghost bae_trail_stuck', this.host.root);
-      clone.style.setProperty('--dur', `${ms}ms`);
+      const r = flag.getBoundingClientRect();
+      startScientistTrailToRect(flag, new DOMRect(r.left, r.top - 7, r.width, r.height), ms, this.host.root);
     }
   }
 
   private previewAssign(pid: number, loc: number): void {
     const dest = this.shelfEl(pid, loc);
     if (!dest) return;
-    const ms = Math.max(700, this.duration() * 3);
+    const ms = this.previewLoopMs();
     const sources = this.holdMeeples(pid);
     const from = sources.length > 0 ? sources : this.campMeeples(pid);
     for (const src of from) {
@@ -605,17 +602,24 @@ export class OptionalUi {
     const hold = this.ensureRegroupHold(pid);
     const dest = hold?.getBoundingClientRect() ?? this.lingerRect(pid);
     if (!dest) return;
-    const ms = Math.max(800, this.duration() * 3);
+    const ms = this.previewLoopMs();
     for (const src of this.campMeeples(pid)) {
       startScientistTrailToRect(src, dest, ms, this.host.root);
     }
   }
 
   private previewCardPlacement(pid: number, cardId: number, loc: number): void {
-    const src = this.cardEl(pid, cardId);
-    const dest = this.nextPileRect(pid, loc);
-    if (!src || !dest) return;
-    placeCloneAt(src, 'bae_card_place_preview', this.host.root, dest);
+    const zone = this.host.root.querySelector(
+      `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
+    ) as HTMLElement | null;
+    const pile = zone?.querySelector('.bae_anim_pile');
+    if (!zone || !pile) return;
+    const slot = document.createElement('div');
+    slot.className = 'bae_pile_slot bae_card_place_preview';
+    slot.setAttribute('aria-hidden', 'true');
+    slot.innerHTML = this.host.animalCardHtml(cardId);
+    slot.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
+    pile.appendChild(slot);
   }
 
   private renderInvalidBubble(text: string): void {
@@ -975,6 +979,138 @@ export class OptionalUi {
     if (placeholder) return placeholder;
     const cards = col.querySelectorAll('.bae_handcard, .bae_handcard_hidden, .bae_card:not(.bae_card_placeholder)');
     return (cards[cards.length - 1] as HTMLElement | undefined) ?? col;
+  }
+
+  private async animateScientists(
+    pid: number,
+    next: Record<number, Record<number, number[]>>,
+    ms: number,
+  ): Promise<void> {
+    const root = this.host.root;
+    const hold = this.holdMeeples(pid);
+    const used = new Set<HTMLElement>();
+    const flights: Promise<void>[] = [];
+    const assigned: { el: HTMLElement; dest: DOMRect }[] = [];
+
+    const currentAt = (loc: number): HTMLElement[] => {
+      if (hold.length > 0 && (loc === 3 || loc === 4)) {
+        return loc === 3 ? hold : [];
+      }
+      const shelf = this.shelfEl(pid, loc);
+      return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
+    };
+
+    const takeColor = (els: HTMLElement[], color: number): HTMLElement | null => {
+      const el = els.find((node) => !used.has(node) && Number(node.dataset.scientist) === color) ?? null;
+      if (el) used.add(el);
+      return el;
+    };
+
+    const slotsByLoc = [0, 1, 2, 3, 4].map((loc) => ({
+      loc,
+      shelf: this.shelfEl(pid, loc),
+      slots: this.scientistLayout(pid, next, loc),
+    }));
+    const filled: Array<Array<HTMLElement | null>> = slotsByLoc.map((row) => row.slots.map(() => null));
+
+    for (const row of slotsByLoc) {
+      const staying = currentAt(row.loc);
+      row.slots.forEach((slot, i) => {
+        const el = takeColor(staying, slot.color);
+        if (el) filled[row.loc][i] = el;
+      });
+    }
+
+    for (const row of slotsByLoc) {
+      row.slots.forEach((slot, i) => {
+        if (filled[row.loc][i]) return;
+        let el: HTMLElement | null = null;
+        for (let from = 0; from <= 4 && !el; from++) {
+          el = takeColor(currentAt(from), slot.color);
+        }
+        if (el) filled[row.loc][i] = el;
+      });
+    }
+
+    for (const row of slotsByLoc) {
+      if (!row.shelf) continue;
+      row.slots.forEach((slot, i) => {
+        const el = filled[row.loc][i];
+        if (!el) return;
+        assigned.push({ el, dest: this.meepleSlotRect(row.shelf!, slot, el) });
+      });
+    }
+
+    for (const { el, dest } of assigned) {
+      const clone = placeClone(el, 'bae_resolve_clone', root);
+      el.style.visibility = 'hidden';
+      flights.push(flyClone(clone, dest, ms, root, true));
+    }
+
+    for (let loc = 0; loc <= 4; loc++) {
+      for (const el of currentAt(loc)) {
+        if (used.has(el)) continue;
+        el.style.visibility = 'hidden';
+        placeClone(el, 'bae_resolve_clone', root);
+      }
+    }
+
+    if (flights.length > 0) await Promise.all(flights);
+  }
+
+  private scientistLayout(
+    playerId: number,
+    sci: Record<number, Record<number, number[]>> | undefined,
+    location: number,
+  ): { color: number; leftPct: number; topPct: number }[] {
+    const poses = sci?.[playerId];
+    if (!poses) return [];
+    const meeples: number[] = [];
+    for (let col = 0; col < 3; col++) {
+      const n = (poses[col] ?? []).filter((p) => p === location).length;
+      for (let i = 0; i < n; i++) meeples.push(col);
+    }
+    const n = meeples.length;
+    if (n === 0) return [];
+    const [cols, rows] = (() => {
+      switch (n) {
+        case 1: return [1, 1] as const;
+        case 2: return [2, 1] as const;
+        case 3: return location < 3 ? [3, 1] as const : [2, 2] as const;
+        case 4: return [2, 2] as const;
+        case 5: return location < 3 ? [3, 2] as const : [2, 3] as const;
+        case 6: return location < 3 ? [3, 2] as const : [2, 3] as const;
+        case 7: return location < 3 ? [3, 3] as const : [2, 4] as const;
+        case 8: return location < 3 ? [3, 3] as const : [2, 4] as const;
+        case 9: return [3, 3] as const;
+        default: return location < 3
+          ? [4, Math.ceil(n / 4)] as const
+          : [3, Math.ceil(n / 3)] as const;
+      }
+    })();
+    return meeples.map((col, i) => {
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+      const jitterX = ((i * 7 + col * 3 + 13 * location + 11 * playerId) % 5) - 2;
+      const jitterY = ((i * 11 + col * 5 + 17 * location + 19 * playerId) % 5) - 2;
+      return {
+        color: col,
+        leftPct: (c + 1) / (cols + 1) * 100 + jitterX,
+        topPct: (r + 1) / (rows + 1) * 100 + jitterY,
+      };
+    });
+  }
+
+  private meepleSlotRect(
+    shelf: HTMLElement,
+    slot: { leftPct: number; topPct: number },
+    sample: HTMLElement,
+  ): DOMRect {
+    const shelfR = shelf.getBoundingClientRect();
+    const size = sample.getBoundingClientRect();
+    const cx = shelfR.left + shelfR.width * slot.leftPct / 100;
+    const cy = shelfR.top + shelfR.height * slot.topPct / 100;
+    return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);
   }
 
   private cardEl(pid: number, cardId: number): HTMLElement | null {
