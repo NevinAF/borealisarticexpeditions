@@ -1,7 +1,8 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
-import { OptionalUi, MAX_LOCATION_CARDS, objectiveProgressLines, scoringVpLines } from './optional/OptionalUi';
+import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
+import { objectiveProgress, scoreScoringCard } from './optional/Progress';
 
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
@@ -471,8 +472,14 @@ export class Game {
     this.registerScientistTooltips();
   }
 
-  buildCardTooltipSpriteHtml(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
-    return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
+  buildCardTooltipSpriteHtml(
+    type: 'animal' | 'objective' | 'scoring',
+    id: number,
+    title: string,
+    details: string[],
+    scoresHtml = '',
+  ): string {
+    return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details, scoresHtml);
   }
 
   private wrapTooltipGrid(cells: string[]): string {
@@ -1044,13 +1051,13 @@ export class Game {
 
     const d = this.gamedatas.boardState;
 
-    // Pool slots: all four face-up pool cards share one grouped tooltip
+    // Pool slots: all face-up pool cards share one grouped tooltip
     const poolCells = (d.pool || []).slice().sort((a, b) => a.slot - b.slot).map((slot) => (
       this.buildCardTooltipSpriteHtml(
         'animal',
         slot.id,
         _('Pool card'),
-        [_('Click to take this card')],
+        [],
       )
     ));
     const poolGroupHtml = this.wrapTooltipGrid(poolCells);
@@ -1065,13 +1072,12 @@ export class Game {
     // Objectives: hovering any one shows all of them in the top-row layout
     const objectiveCells = (d.objectives || []).map((obj) => {
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-      const progressLines = objectiveProgressLines(obj, d, this.gamedatas.materials, this.gamedatas.players);
-      const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
       return this.buildCardTooltipSpriteHtml(
         'objective',
         obj.id,
         objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-        [objectiveMat?.description ?? '', ...progressLines, action],
+        [this.objectiveActionText(obj)],
+        this.objectiveScoresHtml(obj, d),
       );
     });
     const objectiveGroupHtml = this.wrapTooltipGrid(objectiveCells);
@@ -1085,14 +1091,13 @@ export class Game {
     const scoringCells = (d.scoring_cards || []).map((scoringId) => {
       const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
       const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
-      const description = scoringMat?.description ?? '';
       const explanation = scoringMat?.explanation ?? '';
-      const vpLines = scoringVpLines(scoringId, d, this.gamedatas.materials, this.gamedatas.players);
       return this.buildCardTooltipSpriteHtml(
         'scoring',
         scoringId,
         title,
-        [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines],
+        [explanation],
+        this.scoringScoresHtml(scoringId, d),
       );
     });
     const scoringGroupHtml = this.wrapTooltipGrid(scoringCells);
@@ -1332,16 +1337,77 @@ export class Game {
       .replace(/'/g, '&#39;');
   }
 
-  private buildCardTooltipSpriteHtmlInternal(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
-    const { columns, rows, lastIndex } = this.spriteMeta(type);
-    const index = this.getSpriteIndex(id, lastIndex);
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const x = columns > 1 ? (col / (columns - 1)) * 100 : 0;
-    const y = rows > 1 ? (row / (rows - 1)) * 100 : 0;
+  private seatedPlayerIds(): number[] {
+    const order = this.gamedatas.playerOrder;
+    if (Array.isArray(order) && order.length > 0) {
+      return order.map(Number).filter((pid) => pid > 0 && this.gamedatas.players[pid]);
+    }
+    return Object.keys(this.gamedatas.players).map(Number);
+  }
 
-    const safeTitle = this.escapeHtml(title);
+  private playerColorCss(pid: number): string {
+    const raw = String(this.gamedatas.players[pid]?.color ?? '').trim();
+    if (!raw) return '#1a1a1a';
+    return raw.startsWith('#') ? raw : `#${raw}`;
+  }
 
+  private coloredPlayerName(pid: number): string {
+    const name = this.escapeHtml(this.gamedatas.players[pid]?.name ?? `${_('Player')} ${pid}`);
+    return `<span class="bae_tooltip_player_name" style="color:${this.playerColorCss(pid)}">${name}</span>`;
+  }
+
+  private vpInlineIcon(): string {
+    const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
+    return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+  }
+
+  private tooltipTextHtml(text: string): string {
+    return this.escapeHtml(text).replace(/\{VP\}/g, this.vpInlineIcon());
+  }
+
+  private tooltipScoresHtml(rows: Array<{ pid: number; value: string }>): string {
+    return rows
+      .map((row) => `<div>${this.coloredPlayerName(row.pid)}: ${this.tooltipTextHtml(row.value)}</div>`)
+      .join('');
+  }
+
+  private objectiveScoresHtml(obj: ObjectiveClient, state: BoardState): string {
+    const materials = this.gamedatas.materials;
+    return this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
+      const { count, required } = objectiveProgress(obj.id, pid, state, materials);
+      return { pid, value: `${count}/${required}` };
+    }));
+  }
+
+  private scoringScoresHtml(scoringId: number, state: BoardState): string {
+    const materials = this.gamedatas.materials;
+    return this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
+      const vp = scoreScoringCard(scoringId, pid, state, materials);
+      return { pid, value: String(vp) };
+    }));
+  }
+
+  private objectiveActionText(obj: ObjectiveClient): string {
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    const seated = Number.isFinite(myId) && !!this.gamedatas.players[myId];
+    const playerState = seated ? (obj.players?.[myId] ?? 'unmet') : null;
+    if (playerState === 'claimed') return _('You have already claimed this objective.');
+    if (!obj.active) return _('The objective has been claimed on a previous round.');
+    if (!seated) return '';
+    if (playerState !== 'meets') return _('You do not meet the requirements for this objective.');
+    if (this.bga.players.isCurrentPlayerActive() && !this.isOpeningMulliganLike()) {
+      return _('Click to claim this objective.');
+    }
+    return _('Click to claim this objective on your turn.');
+  }
+
+  private buildCardTooltipSpriteHtmlInternal(
+    type: 'animal' | 'objective' | 'scoring',
+    id: number,
+    _title: string,
+    details: string[],
+    scoresHtml = '',
+  ): string {
     const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
     const currentScale = Number.parseFloat(scaleRaw);
     const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
@@ -1351,23 +1417,15 @@ export class Game {
     const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
     const objectiveSpriteUrl = `${baseUrl}Sprites/ObjectiveCards_sheet_${tier}.webp`;
     const scoringSpriteUrl = `${baseUrl}Sprites/ScoringCards_sheet_${tier}.webp`;
-    const vpIcon = `${baseUrl}Tokens/VP.svg`;
-    const vpInline = `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+    const vpInline = this.vpInlineIcon();
 
-    const detailHtml = details
+    const extraHtml = details
       .filter((line) => line && line.trim().length > 0)
-      .map((line) => {
-        const escapedLine = this.escapeHtml(line);
-        const withIcons = escapedLine.replace(/\{VP\}/g, vpInline);
-        return `<div>${withIcons}</div>`;
-      })
+      .map((line) => `<div>${this.escapeHtml(line).replace(/\{VP\}/g, vpInline)}</div>`)
       .join('');
 
-    const bgSizeX = (columns * 100).toFixed(4);
-    const bgSizeY = (rows * 100).toFixed(4);
     const width = (type === 'objective' ? 745 : 528) * tooltipScale;
     const aspectRatio = type === 'objective' ? '745 / 528' : '528 / 745';
-    const detailFontPx = 13;
 
     let cardHtml;
     if (type === 'objective') {
@@ -1383,14 +1441,18 @@ export class Game {
         );
     }
 
-    const detailsBlock = detailHtml.length > 0
-      ? `<div style="width:${width}px;font-size:${detailFontPx}px;line-height:1.35;">${detailHtml}</div>`
+    const scoresBlock = scoresHtml
+      ? `<div class="bae_tooltip_scores">${scoresHtml}</div>`
+      : '';
+    const extraBlock = extraHtml
+      ? `<div class="bae_tooltip_extra">${extraHtml}</div>`
       : '';
 
     return `
-      <div style="width:${width}px;max-width:${width}px;display:flex;flex-direction:column;align-items:stretch;gap:8px;font-family:'BaeCardSerif', serif;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
-        <div style="width:${width}px;aspect-ratio:${aspectRatio};display:block;border-radius:6px;overflow:hidden;">${cardHtml}</div>
-        ${detailsBlock}
+      <div class="bae_tooltip_card" style="width:${width}px;max-width:${width}px;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
+        <div class="bae_tooltip_card_face" style="width:${width}px;aspect-ratio:${aspectRatio};">${cardHtml}</div>
+        ${scoresBlock}
+        ${extraBlock}
       </div>
     `;
   }

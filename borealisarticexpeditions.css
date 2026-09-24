@@ -152,6 +152,41 @@ html[data-theme=dark] {
   align-content: center;
 }
 
+.bae_tooltip_card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  font-family: "BaeCardSerif", serif;
+}
+
+.bae_tooltip_card_face {
+  display: block;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.bae_tooltip_card_face .bae_card_img,
+.bae_tooltip_card_face .bae_obj_img,
+.bae_tooltip_card_face .bae_score_img {
+  width: 100%;
+  height: 100%;
+}
+
+.bae_tooltip_scores,
+.bae_tooltip_extra {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.bae_tooltip_scores + .bae_tooltip_extra {
+  padding-top: 8px;
+}
+
+.bae_tooltip_player_name {
+  font-weight: 700;
+}
+
 .bae_pool {
   display: grid;
   grid-template-columns: repeat(5, max-content);
@@ -1341,7 +1376,7 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0.28;
   }
   50% {
-    top: calc(var(--from-t) - 7px);
+    top: calc(var(--from-t) - 30px);
     opacity: 0.16;
   }
   78% {
@@ -1354,7 +1389,7 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0;
   }
   22% {
-    opacity: 0.18;
+    opacity: 0.28;
   }
   100% {
     left: calc(var(--from-l) + var(--dx, -60px));

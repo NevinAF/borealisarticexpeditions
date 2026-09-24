@@ -25,7 +25,6 @@ import {
   animalBonusVp,
   flagTrackVp,
   locationSetVp,
-  objectiveProgress,
   scoreScoringCard,
   speciesCounts,
 } from './Progress';
@@ -1692,30 +1691,3 @@ export class OptionalUi {
   }
 }
 
-export function objectiveProgressLines(
-  obj: ObjectiveClient,
-  state: BoardState,
-  materials: MaterialsClient,
-  players: BorealisArticExpeditionsGamedatas['players'],
-): string[] {
-  return Object.keys(players).map((pidStr) => {
-    const pid = Number(pidStr);
-    const { count, required } = objectiveProgress(obj.id, pid, state, materials);
-    const name = players[pid]?.name ?? `${_('Player')} ${pid}`;
-    return `${name}: ${count}/${required}`;
-  });
-}
-
-export function scoringVpLines(
-  scoringId: number,
-  state: BoardState,
-  materials: MaterialsClient,
-  players: BorealisArticExpeditionsGamedatas['players'],
-): string[] {
-  return Object.keys(players).map((pidStr) => {
-    const pid = Number(pidStr);
-    const vp = scoreScoringCard(scoringId, pid, state, materials);
-    const name = players[pid]?.name ?? `${_('Player')} ${pid}`;
-    return `${name}: ${vp}`;
-  });
-}
