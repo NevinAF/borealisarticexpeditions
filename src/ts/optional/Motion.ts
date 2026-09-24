@@ -163,6 +163,26 @@ export function startTrail(
   return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass);
 }
 
+/** Leave a faded scientist in place and loop an opaque copy toward the destination. */
+export function startScientistTrail(
+  source: HTMLElement,
+  dest: HTMLElement,
+  durationMs: number,
+  root: HTMLElement,
+): HTMLElement {
+  return startScientistTrailToRect(source, dest.getBoundingClientRect(), durationMs, root);
+}
+
+export function startScientistTrailToRect(
+  source: HTMLElement,
+  to: DOMRect,
+  durationMs: number,
+  root: HTMLElement,
+): HTMLElement {
+  source.classList.add('bae_preview_fade_left');
+  return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover');
+}
+
 export function startTrailToRect(
   source: HTMLElement,
   to: DOMRect,
@@ -178,6 +198,7 @@ export function startTrailToRect(
   clone.setAttribute('aria-hidden', 'true');
   stripChrome(clone);
   copySpriteVars(root, clone);
+  clone.classList.remove('bae_preview_fade_left');
   const dx = to.left + to.width / 2 - (from.left + from.width / 2);
   const dy = to.top + to.height / 2 - (from.top + from.height / 2);
   clone.style.position = 'absolute';
@@ -195,10 +216,27 @@ export function startTrailToRect(
   return clone;
 }
 
+/** Static clone parked at a destination (card placement preview). */
+export function placeCloneAt(
+  source: HTMLElement,
+  extraClass: string,
+  root: HTMLElement,
+  at: DOMRect,
+): HTMLElement {
+  const clone = placeClone(source, extraClass, root);
+  const parked = localOffset(root, at);
+  clone.style.left = `${parked.left}px`;
+  clone.style.top = `${parked.top}px`;
+  clone.style.width = `${at.width}px`;
+  clone.style.height = `${at.height}px`;
+  return clone;
+}
+
 /** Soft, slow discard preview: ghost only, real card stays put. */
-export function startDiscardGhost(source: HTMLElement, root: HTMLElement): HTMLElement {
+export function startDiscardGhost(source: HTMLElement, root: HTMLElement, cardId?: number): HTMLElement {
   const clone = placeClone(source, 'bae_discard_ghost', root);
   clone.style.setProperty('--dur', '1.85s');
   clone.style.setProperty('--dx', '-10px');
+  if (cardId != null) clone.dataset.previewCard = String(cardId);
   return clone;
 }

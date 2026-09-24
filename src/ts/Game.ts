@@ -45,6 +45,7 @@ export class Game {
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
     this.bga = bga;
+    this.preloadGameImages();
   }
 
   setup(gamedatas: BorealisArticExpeditionsGamedatas) {
@@ -60,6 +61,42 @@ export class Game {
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
     this.renderAll();
+  }
+
+  /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
+  private preloadGameImages(): void {
+    const files = [
+      'Sprites/AnimalCards_sheet_full.webp',
+      'Sprites/AnimalCards_sheet_half.webp',
+      'Sprites/AnimalCards_sheet_quarter.webp',
+      'Sprites/ObjectiveCards_sheet_full.webp',
+      'Sprites/ObjectiveCards_sheet_half.webp',
+      'Sprites/ObjectiveCards_sheet_quarter.webp',
+      'Sprites/ScoringCards_sheet_full.webp',
+      'Sprites/ScoringCards_sheet_half.webp',
+      'Sprites/ScoringCards_sheet_quarter.webp',
+      'Playerboards/0000.webp',
+      'Playerboards/0001.webp',
+      'Playerboards/0002.webp',
+      'Playerboards/0003.webp',
+      'Playerboards/0004.webp',
+      'Tokens/YellowMeeple.webp',
+      'Tokens/PinkMeeple.webp',
+      'Tokens/TealMeeple.webp',
+      'Tokens/FlagToken.webp',
+      'Tokens/FirstPlayerToken.webp',
+      'Tokens/animal_obj.webp',
+      'Tokens/meeple_obj.webp',
+      'Tokens/track_obj.webp',
+      'Tokens/VP.svg',
+    ];
+    this.bga.images.preloadImages(files);
+    for (const file of files) {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = this.bga.images.getImgUrl(file);
+      void img.decode().catch(() => {});
+    }
   }
 
   private renderPlayerPanelInfo(): void {
@@ -409,6 +446,10 @@ export class Game {
     const raw = this.gamedatas.materials.animal_cards;
     if (Array.isArray(raw)) return raw[cardId] as AnimalDefLite | undefined;
     return (raw as Record<number, AnimalDefLite> | undefined)?.[cardId];
+  }
+
+  animalCardHtml(cardId: number): string {
+    return this.cardFaceById(cardId);
   }
 
   buildCardTooltipSpriteHtml(type: 'animal' | 'objective' | 'scoring', id: number, title: string, details: string[]): string {
@@ -1335,12 +1376,13 @@ export class Game {
           ev.stopPropagation();
           const id = Number((ev.currentTarget as HTMLElement).dataset.handCard);
           if (!this.bga.players.isCurrentPlayerActive()) return;
-          if (this.isOpeningMulliganLike()) {
+          if (this.isOpeningMulliganLike() || this.campSelected) {
             if (this.selectedRegroupIds.has(id)) this.selectedRegroupIds.delete(id);
             else this.selectedRegroupIds.add(id);
-          } else if (this.campSelected) {
-            if (this.selectedRegroupIds.has(id)) this.selectedRegroupIds.delete(id);
-            else this.selectedRegroupIds.add(id);
+            (ev.currentTarget as HTMLElement).classList.toggle('bae_card_regroup', this.selectedRegroupIds.has(id));
+            this.optionalUi?.onSelectionChanged();
+            this.onUpdateActionButtons(this.currentStateName(), null);
+            return;
           } else if (this.isGameplayLike()) {
             if (this.selectedCardId === id) {
               if (this.confirmObserveIfReady(id, this.selectedLocation)) return;

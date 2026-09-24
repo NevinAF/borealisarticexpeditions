@@ -1137,6 +1137,15 @@ html[data-theme=dark] .bae_opening_intro {
   max-width: none;
 }
 
+.bae_preview_fade_left {
+  opacity: 0.35;
+}
+
+.bae_card_place_preview {
+  opacity: 0.38;
+  z-index: 25;
+}
+
 .bae_trail_ghost {
   animation: bae_trail_flow var(--dur, 900ms) ease-in-out infinite;
 }
@@ -1145,8 +1154,12 @@ html[data-theme=dark] .bae_opening_intro {
   animation-name: bae_trail_stuck;
 }
 
+.bae_trail_ghost.bae_sci_mover {
+  animation-name: bae_sci_trail_flow;
+}
+
 .bae_discard_ghost {
-  animation: bae_discard_preview var(--dur, 1.85s) ease-in-out infinite;
+  animation: bae_discard_preview var(--dur, 900ms) ease-in-out infinite;
 }
 
 .bae_stuck_once {
@@ -1173,16 +1186,25 @@ html[data-theme=dark] .bae_opening_intro {
 
 .bae_previews_off .bae_trail_ghost,
 .bae_previews_off .bae_discard_ghost,
+.bae_previews_off .bae_card_place_preview,
 .bae_anim_off .bae_trail_ghost,
-.bae_anim_off .bae_discard_ghost {
+.bae_anim_off .bae_discard_ghost,
+.bae_anim_off .bae_card_place_preview {
   animation: none !important;
 }
 
 .bae_previews_off .bae_trail_ghost,
 .bae_previews_off .bae_discard_ghost,
+.bae_previews_off .bae_card_place_preview,
 .bae_anim_off .bae_trail_ghost,
-.bae_anim_off .bae_discard_ghost {
+.bae_anim_off .bae_discard_ghost,
+.bae_anim_off .bae_card_place_preview {
   display: none !important;
+}
+
+.bae_previews_off .bae_preview_fade_left,
+.bae_anim_off .bae_preview_fade_left {
+  opacity: 1;
 }
 
 .bae_anim_slow .bae_trail_ghost {
@@ -1203,6 +1225,23 @@ html[data-theme=dark] .bae_opening_intro {
   }
   72% {
     opacity: 0.1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 0;
+  }
+}
+@keyframes bae_sci_trail_flow {
+  0% {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  78% {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 1;
   }
   100% {
     transform: translate(var(--dx), var(--dy));
@@ -1234,7 +1273,7 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0.18;
   }
   100% {
-    transform: translateX(var(--dx, -10px));
+    transform: translateX(var(--dx, -60px));
     opacity: 0;
   }
 }

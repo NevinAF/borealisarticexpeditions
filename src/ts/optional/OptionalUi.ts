@@ -7,12 +7,13 @@ import {
 import {
   animMs,
   clearMotionLayer,
-  flipElements,
   flyClone,
   placeClone,
+  placeCloneAt,
   startDiscardGhost,
+  startScientistTrail,
+  startScientistTrailToRect,
   startTrail,
-  startTrailToRect,
   wait,
 } from './Motion';
 import {
@@ -48,6 +49,7 @@ export interface OptionalUiHost {
   enterRegroupMode(): void;
   currentStateName(): string;
   animalDef(cardId: number): AnimalDefLite | undefined;
+  animalCardHtml(cardId: number): string;
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null): void;
   cachedActionArgs: Record<string, unknown> | null;
   renderAll(): void;
@@ -64,6 +66,7 @@ export class OptionalUi {
   private prefBound = false;
   private resolving = false;
   private holdingPid: number | null = null;
+  private discardGhosts = new Map<number, HTMLElement>();
 
   constructor(private host: OptionalUiHost) {}
 
@@ -87,6 +90,12 @@ export class OptionalUi {
   }
 
   onSelectionChanged(): void {
+    if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
+      const myId = Number(this.host.bga.players.getCurrentPlayerId());
+      if (this.host.selectedRegroupIds.size === 0) this.clearDiscardGhosts();
+      else this.syncDiscardGhosts(myId);
+      return;
+    }
     this.updateActionPreviews();
   }
 
@@ -196,13 +205,17 @@ export class OptionalUi {
 
       const cardEl = this.cardEl(pid, cardId);
       const pileRect = this.nextPileRect(pid, loc);
+      const slots = this.handSlotRects(pid);
       const remaining = this.handCards(pid).filter((el) => el !== cardEl);
       if (cardEl && pileRect) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
+        cardEl.style.visibility = 'hidden';
         await Promise.all([
           flyClone(clone, pileRect, ms, root, true),
-          flipElements(remaining, () => { cardEl.style.display = 'none'; }, ms),
+          this.compactHandToSlots(remaining, slots, ms),
         ]);
+      } else {
+        await this.compactHandToSlots(remaining, slots, ms);
       }
 
       const def = this.host.animalDef(cardId);
@@ -305,14 +318,19 @@ export class OptionalUi {
       const src = (!fromDeck && Number.isFinite(slot) && slot >= 0)
         ? this.host.root.querySelector(`#bae_pool_slot_${slot}`) as HTMLElement | null
         : this.deckEl();
-      const dest = this.handDestEl(pid);
+      const destRect = this.handSlotRects(pid)[this.handCards(pid).length]
+        ?? this.handDestEl(pid)?.getBoundingClientRect()
+        ?? null;
       const deck = this.deckEl();
-      if (!src || !dest || !pid) return;
+      if (!src || !destRect || !pid) return;
       const root = this.host.root;
       const hole = src.getBoundingClientRect();
-      const clone = placeClone(src, 'bae_resolve_clone bae_resolve_card', root);
+      const faceId = fromDeck
+        ? this.drawnHandCardIds(pid, [], _prev, args.boardState as BoardState | undefined)[0]
+        : undefined;
+      const clone = this.cloneForHandDraw(src, faceId);
       if (!fromDeck) src.style.visibility = 'hidden';
-      await flyClone(clone, dest.getBoundingClientRect(), ms, root, true);
+      await flyClone(clone, destRect, ms, root, true);
       if (fromDeck) return;
       await wait(Math.round(ms * 0.2));
       if (deck) {
@@ -459,13 +477,27 @@ export class OptionalUi {
   }
 
   private clearPreviews(): void {
+    this.clearDiscardGhosts();
+    this.clearTransientPreviews();
     clearMotionLayer(this.host.root);
     document.querySelectorAll('.bae_motion_clone, .bae_invalid_bubble').forEach((el) => el.remove());
+  }
+
+  private clearTransientPreviews(): void {
+    if (!this.host.root) return;
+    this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
+    document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
     this.host.root.querySelectorAll('.bae_preview_fade_left').forEach((el) => el.classList.remove('bae_preview_fade_left'));
   }
 
+  private clearDiscardGhosts(): void {
+    this.discardGhosts.forEach((el) => el.remove());
+    this.discardGhosts.clear();
+    this.host.root?.querySelectorAll('.bae_discard_ghost').forEach((el) => el.remove());
+  }
+
   private updateActionPreviews(): void {
-    this.clearPreviews();
+    this.clearTransientPreviews();
     if (this.resolving) return;
 
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
@@ -482,32 +514,54 @@ export class OptionalUi {
       this.showInvalidObserveHint();
     }
 
-    if (!this.previewsEnabled() || !active) return;
+    const selectingDiscards = this.host.campSelected || this.host.isOpeningMulliganLike();
+    if (!selectingDiscards || this.host.selectedRegroupIds.size === 0) {
+      this.clearDiscardGhosts();
+    }
+
+    if (!this.previewsEnabled() || !active) {
+      if (selectingDiscards) this.syncDiscardGhosts(myId);
+      return;
+    }
 
     if (
       this.host.isGameplayLike()
       && this.host.selectedCardId != null
       && this.host.selectedLocation != null
       && !this.host.campSelected
-      && this.isObserveSelectionLegal()
     ) {
-      this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
+      this.previewCardPlacement(myId, this.host.selectedCardId, this.host.selectedLocation);
+      if (this.isObserveSelectionLegal()) {
+        this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
+      }
     }
 
     if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
       this.previewAssign(myId, this.host.selectedLocation);
     }
 
-    if (this.host.campSelected && this.previewsEnabled()) {
+    if (this.host.campSelected) {
       this.previewRegroupPickup(myId);
     }
 
-    if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
-      this.host.selectedRegroupIds.forEach((cardId) => {
-        const el = this.cardEl(myId, cardId);
-        if (el) startDiscardGhost(el, this.host.root);
-      });
-    }
+    if (selectingDiscards) this.syncDiscardGhosts(myId);
+  }
+
+  private syncDiscardGhosts(pid: number): void {
+    if (!this.previewsEnabled()) return;
+    const wanted = this.host.selectedRegroupIds;
+    this.discardGhosts.forEach((el, cardId) => {
+      if (!el.isConnected || !wanted.has(cardId)) {
+        el.remove();
+        this.discardGhosts.delete(cardId);
+      }
+    });
+    if (wanted.size === 0) return;
+    wanted.forEach((cardId) => {
+      if (this.discardGhosts.has(cardId)) return;
+      const el = this.cardEl(pid, cardId);
+      if (el) this.discardGhosts.set(cardId, startDiscardGhost(el, this.host.root, cardId));
+    });
   }
 
   private previewObserve(pid: number, cardId: number, loc: number): void {
@@ -518,7 +572,7 @@ export class OptionalUi {
     for (const m of previewObserveMoves(this.host.gamedatas.boardState.scientists, pid, loc, def)) {
       const src = this.meepleAt(pid, m.from, m.color, used);
       const dest = this.shelfEl(pid, m.to);
-      if (src && dest) startTrail(src, dest, ms, this.host.root);
+      if (src && dest) startScientistTrail(src, dest, ms, this.host.root);
     }
     const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
     const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
@@ -543,7 +597,7 @@ export class OptionalUi {
     const sources = this.holdMeeples(pid);
     const from = sources.length > 0 ? sources : this.campMeeples(pid);
     for (const src of from) {
-      startTrail(src, dest, ms, this.host.root);
+      startScientistTrail(src, dest, ms, this.host.root);
     }
   }
 
@@ -553,8 +607,15 @@ export class OptionalUi {
     if (!dest) return;
     const ms = Math.max(800, this.duration() * 3);
     for (const src of this.campMeeples(pid)) {
-      startTrailToRect(src, dest, ms, this.host.root);
+      startScientistTrailToRect(src, dest, ms, this.host.root);
     }
+  }
+
+  private previewCardPlacement(pid: number, cardId: number, loc: number): void {
+    const src = this.cardEl(pid, cardId);
+    const dest = this.nextPileRect(pid, loc);
+    if (!src || !dest) return;
+    placeCloneAt(src, 'bae_card_place_preview', this.host.root, dest);
   }
 
   private renderInvalidBubble(text: string): void {
@@ -703,36 +764,93 @@ export class OptionalUi {
   ): Promise<void> {
     const root = this.host.root;
     const deck = this.deckEl();
-    const col = this.handCol(pid);
-    if (!col) return;
-    const leaving: HTMLElement[] = [];
-    for (const cardId of discarded) {
-      const el = this.cardEl(pid, cardId);
-      if (el && !leaving.includes(el)) leaving.push(el);
-    }
-    if (leaving.length === 0 && discarded.length > 0) {
-      const hidden = this.handCards(pid);
-      for (let i = 0; i < discarded.length && i < hidden.length; i++) leaving.push(hidden[i]);
-    }
+    const slots = this.handSlotRects(pid);
+    if (slots.length === 0) return;
+    const leaving = this.leavingHandCards(pid, discarded);
     const remaining = this.handCards(pid).filter((el) => !leaving.includes(el));
     leaving.forEach((el) => { el.style.visibility = 'hidden'; });
-    if (deck) {
+    if (deck && leaving.length > 0) {
       await Promise.all(leaving.map((el) => {
         const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
         return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
       }));
     }
-    await flipElements(remaining, () => {
-      leaving.forEach((el) => { el.style.display = 'none'; });
-    }, ms);
+    await this.compactHandToSlots(remaining, slots, ms);
 
     const drawCount = this.handDrawCount(pid, discarded, prev, next);
     if (!deck || drawCount <= 0) return;
-    const dests = this.afterHandRects(col, remaining, drawCount);
-    for (const dest of dests) {
-      const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
-      await flyClone(refill, dest, ms, root, true);
+    const dests = this.handFillRects(slots, remaining.length, drawCount);
+    const faces = this.drawnHandCardIds(pid, discarded, prev, next);
+    for (let i = 0; i < dests.length; i++) {
+      const refill = this.cloneForHandDraw(deck, faces[i]);
+      await flyClone(refill, dests[i], ms, root, true);
     }
+  }
+
+  /** Facedown hands always drop the first N cards; own hand uses the discarded ids. */
+  private leavingHandCards(pid: number, discarded: number[]): HTMLElement[] {
+    const cards = this.handCards(pid);
+    if (discarded.length <= 0 || cards.length === 0) return [];
+    const byId: HTMLElement[] = [];
+    for (const cardId of discarded) {
+      const el = this.host.root.querySelector(`#bae_hand_${pid}_${cardId}`) as HTMLElement | null;
+      if (!el || byId.includes(el)) {
+        return cards.slice(0, Math.min(discarded.length, cards.length));
+      }
+      byId.push(el);
+    }
+    return byId;
+  }
+
+  /** Slide leftover cards into the top slots without shrinking the 4-slot column. */
+  private async compactHandToSlots(
+    remaining: HTMLElement[],
+    slots: DOMRect[],
+    ms: number,
+  ): Promise<void> {
+    if (remaining.length === 0 || slots.length === 0) return;
+    const moved = remaining.some((el, i) => {
+      const dest = slots[i];
+      if (!dest) return false;
+      const r = el.getBoundingClientRect();
+      return Math.abs(r.top - dest.top) > 1 || Math.abs(r.left - dest.left) > 1;
+    });
+    if (!moved) return;
+    const root = this.host.root;
+    await Promise.all(remaining.map((el, i) => {
+      const dest = slots[i];
+      if (!dest) return Promise.resolve();
+      const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
+      el.style.visibility = 'hidden';
+      return flyClone(clone, dest, ms, root, true);
+    }));
+  }
+
+  private handSlotRects(pid: number): DOMRect[] {
+    const col = this.handCol(pid);
+    if (!col) return [];
+    return Array.from(col.children)
+      .filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains('bae_card'))
+      .map((el) => el.getBoundingClientRect());
+  }
+
+  private handFillRects(slots: DOMRect[], startIndex: number, count: number): DOMRect[] {
+    if (count <= 0) return [];
+    const needed = startIndex + count;
+    const filled = slots.length >= needed ? slots : this.extendSlotRects(slots, needed);
+    return filled.slice(startIndex, startIndex + count);
+  }
+
+  private extendSlotRects(slots: DOMRect[], count: number): DOMRect[] {
+    if (slots.length === 0 || slots.length >= count) return slots;
+    const out = [...slots];
+    const sample = slots[0];
+    const gap = slots.length >= 2 ? slots[1].top - slots[0].bottom : 8;
+    while (out.length < count) {
+      const last = out[out.length - 1];
+      out.push(new DOMRect(last.left, last.bottom + gap, sample.width, sample.height));
+    }
+    return out;
   }
 
   private handDrawCount(
@@ -749,18 +867,28 @@ export class OptionalUi {
     return Math.max(0, nextN - (prevN - discarded.length));
   }
 
-  private afterHandRects(col: HTMLElement, remaining: HTMLElement[], count: number): DOMRect[] {
-    const sample = remaining[remaining.length - 1]
-      ?? (col.querySelector('.bae_card') as HTMLElement | null);
-    if (!sample || count <= 0) return [];
-    const r = sample.getBoundingClientRect();
-    const gap = 8;
-    const startTop = remaining.length > 0 ? r.bottom + gap : r.top;
-    const rects: DOMRect[] = [];
-    for (let i = 0; i < count; i++) {
-      rects.push(new DOMRect(r.left, startTop + i * (r.height + gap), r.width, r.height));
+  private drawnHandCardIds(
+    pid: number,
+    discarded: number[],
+    prev: BoardState,
+    next: BoardState | undefined,
+  ): number[] {
+    const nextHand = next?.hands?.[pid];
+    if (!Array.isArray(nextHand)) return [];
+    const prevHand = prev.hands?.[pid];
+    const prevIds = Array.isArray(prevHand) ? prevHand.map((c) => Number(c.id)) : [];
+    const discardedSet = new Set(discarded.map(Number));
+    const keepCount = prevIds.filter((id) => !discardedSet.has(id)).length;
+    return nextHand.slice(keepCount).map((c) => Number(c.id));
+  }
+
+  private cloneForHandDraw(source: HTMLElement, cardId?: number): HTMLElement {
+    const clone = placeClone(source, 'bae_resolve_clone bae_resolve_card', this.host.root);
+    clone.querySelectorAll('.bae_deck_overlay, .bae_confirm_blurb').forEach((node) => node.remove());
+    if (cardId != null && Number.isFinite(cardId)) {
+      clone.innerHTML = this.host.animalCardHtml(cardId);
     }
-    return rects;
+    return clone;
   }
 
   private renderRegroupHold(): void {

@@ -250,6 +250,14 @@ function flipElements(els, apply, durationMs) {
 function startTrail(source, dest, durationMs, root, extraClass = '') {
     return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass);
 }
+/** Leave a faded scientist in place and loop an opaque copy toward the destination. */
+function startScientistTrail(source, dest, durationMs, root) {
+    return startScientistTrailToRect(source, dest.getBoundingClientRect(), durationMs, root);
+}
+function startScientistTrailToRect(source, to, durationMs, root) {
+    source.classList.add('bae_preview_fade_left');
+    return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover');
+}
 function startTrailToRect(source, to, durationMs, root, extraClass = '') {
     const from = source.getBoundingClientRect();
     const { left, top } = localOffset(root, from);
@@ -259,6 +267,7 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '') {
     clone.setAttribute('aria-hidden', 'true');
     stripChrome(clone);
     copySpriteVars(root, clone);
+    clone.classList.remove('bae_preview_fade_left');
     const dx = to.left + to.width / 2 - (from.left + from.width / 2);
     const dy = to.top + to.height / 2 - (from.top + from.height / 2);
     clone.style.position = 'absolute';
@@ -275,11 +284,23 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '') {
     motionLayer(root).appendChild(clone);
     return clone;
 }
+/** Static clone parked at a destination (card placement preview). */
+function placeCloneAt(source, extraClass, root, at) {
+    const clone = placeClone(source, extraClass, root);
+    const parked = localOffset(root, at);
+    clone.style.left = `${parked.left}px`;
+    clone.style.top = `${parked.top}px`;
+    clone.style.width = `${at.width}px`;
+    clone.style.height = `${at.height}px`;
+    return clone;
+}
 /** Soft, slow discard preview: ghost only, real card stays put. */
-function startDiscardGhost(source, root) {
+function startDiscardGhost(source, root, cardId) {
     const clone = placeClone(source, 'bae_discard_ghost', root);
     clone.style.setProperty('--dur', '1.85s');
     clone.style.setProperty('--dx', '-10px');
+    if (cardId != null)
+        clone.dataset.previewCard = String(cardId);
     return clone;
 }
 
@@ -559,6 +580,7 @@ class OptionalUi {
         this.prefBound = false;
         this.resolving = false;
         this.holdingPid = null;
+        this.discardGhosts = new Map();
     }
     afterRender() {
         this.teardown();
@@ -582,6 +604,14 @@ class OptionalUi {
         this.clearPreviews();
     }
     onSelectionChanged() {
+        if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
+            const myId = Number(this.host.bga.players.getCurrentPlayerId());
+            if (this.host.selectedRegroupIds.size === 0)
+                this.clearDiscardGhosts();
+            else
+                this.syncDiscardGhosts(myId);
+            return;
+        }
         this.updateActionPreviews();
     }
     isObserveSelectionLegal() {
@@ -682,13 +712,18 @@ class OptionalUi {
             const root = this.host.root;
             const cardEl = this.cardEl(pid, cardId);
             const pileRect = this.nextPileRect(pid, loc);
+            const slots = this.handSlotRects(pid);
             const remaining = this.handCards(pid).filter((el) => el !== cardEl);
             if (cardEl && pileRect) {
                 const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
+                cardEl.style.visibility = 'hidden';
                 await Promise.all([
                     flyClone(clone, pileRect, ms, root, true),
-                    flipElements(remaining, () => { cardEl.style.display = 'none'; }, ms),
+                    this.compactHandToSlots(remaining, slots, ms),
                 ]);
+            }
+            else {
+                await this.compactHandToSlots(remaining, slots, ms);
             }
             const def = this.host.animalDef(cardId);
             if (def) {
@@ -796,16 +831,21 @@ class OptionalUi {
             const src = (!fromDeck && Number.isFinite(slot) && slot >= 0)
                 ? this.host.root.querySelector(`#bae_pool_slot_${slot}`)
                 : this.deckEl();
-            const dest = this.handDestEl(pid);
+            const destRect = this.handSlotRects(pid)[this.handCards(pid).length]
+                ?? this.handDestEl(pid)?.getBoundingClientRect()
+                ?? null;
             const deck = this.deckEl();
-            if (!src || !dest || !pid)
+            if (!src || !destRect || !pid)
                 return;
             const root = this.host.root;
             const hole = src.getBoundingClientRect();
-            const clone = placeClone(src, 'bae_resolve_clone bae_resolve_card', root);
+            const faceId = fromDeck
+                ? this.drawnHandCardIds(pid, [], _prev, args.boardState)[0]
+                : undefined;
+            const clone = this.cloneForHandDraw(src, faceId);
             if (!fromDeck)
                 src.style.visibility = 'hidden';
-            await flyClone(clone, dest.getBoundingClientRect(), ms, root, true);
+            await flyClone(clone, destRect, ms, root, true);
             if (fromDeck)
                 return;
             await wait(Math.round(ms * 0.2));
@@ -948,12 +988,25 @@ class OptionalUi {
             : `${_('Round')} ${round}`;
     }
     clearPreviews() {
+        this.clearDiscardGhosts();
+        this.clearTransientPreviews();
         clearMotionLayer(this.host.root);
         document.querySelectorAll('.bae_motion_clone, .bae_invalid_bubble').forEach((el) => el.remove());
+    }
+    clearTransientPreviews() {
+        if (!this.host.root)
+            return;
+        this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
+        document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
         this.host.root.querySelectorAll('.bae_preview_fade_left').forEach((el) => el.classList.remove('bae_preview_fade_left'));
     }
+    clearDiscardGhosts() {
+        this.discardGhosts.forEach((el) => el.remove());
+        this.discardGhosts.clear();
+        this.host.root?.querySelectorAll('.bae_discard_ghost').forEach((el) => el.remove());
+    }
     updateActionPreviews() {
-        this.clearPreviews();
+        this.clearTransientPreviews();
         if (this.resolving)
             return;
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
@@ -966,28 +1019,52 @@ class OptionalUi {
             && !this.isObserveSelectionLegal()) {
             this.showInvalidObserveHint();
         }
-        if (!this.previewsEnabled() || !active)
+        const selectingDiscards = this.host.campSelected || this.host.isOpeningMulliganLike();
+        if (!selectingDiscards || this.host.selectedRegroupIds.size === 0) {
+            this.clearDiscardGhosts();
+        }
+        if (!this.previewsEnabled() || !active) {
+            if (selectingDiscards)
+                this.syncDiscardGhosts(myId);
             return;
+        }
         if (this.host.isGameplayLike()
             && this.host.selectedCardId != null
             && this.host.selectedLocation != null
-            && !this.host.campSelected
-            && this.isObserveSelectionLegal()) {
-            this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
+            && !this.host.campSelected) {
+            this.previewCardPlacement(myId, this.host.selectedCardId, this.host.selectedLocation);
+            if (this.isObserveSelectionLegal()) {
+                this.previewObserve(myId, this.host.selectedCardId, this.host.selectedLocation);
+            }
         }
         if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
             this.previewAssign(myId, this.host.selectedLocation);
         }
-        if (this.host.campSelected && this.previewsEnabled()) {
+        if (this.host.campSelected) {
             this.previewRegroupPickup(myId);
         }
-        if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
-            this.host.selectedRegroupIds.forEach((cardId) => {
-                const el = this.cardEl(myId, cardId);
-                if (el)
-                    startDiscardGhost(el, this.host.root);
-            });
-        }
+        if (selectingDiscards)
+            this.syncDiscardGhosts(myId);
+    }
+    syncDiscardGhosts(pid) {
+        if (!this.previewsEnabled())
+            return;
+        const wanted = this.host.selectedRegroupIds;
+        this.discardGhosts.forEach((el, cardId) => {
+            if (!el.isConnected || !wanted.has(cardId)) {
+                el.remove();
+                this.discardGhosts.delete(cardId);
+            }
+        });
+        if (wanted.size === 0)
+            return;
+        wanted.forEach((cardId) => {
+            if (this.discardGhosts.has(cardId))
+                return;
+            const el = this.cardEl(pid, cardId);
+            if (el)
+                this.discardGhosts.set(cardId, startDiscardGhost(el, this.host.root, cardId));
+        });
     }
     previewObserve(pid, cardId, loc) {
         const def = this.host.animalDef(cardId);
@@ -999,7 +1076,7 @@ class OptionalUi {
             const src = this.meepleAt(pid, m.from, m.color, used);
             const dest = this.shelfEl(pid, m.to);
             if (src && dest)
-                startTrail(src, dest, ms, this.host.root);
+                startScientistTrail(src, dest, ms, this.host.root);
         }
         const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
         const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
@@ -1027,7 +1104,7 @@ class OptionalUi {
         const sources = this.holdMeeples(pid);
         const from = sources.length > 0 ? sources : this.campMeeples(pid);
         for (const src of from) {
-            startTrail(src, dest, ms, this.host.root);
+            startScientistTrail(src, dest, ms, this.host.root);
         }
     }
     previewRegroupPickup(pid) {
@@ -1037,8 +1114,15 @@ class OptionalUi {
             return;
         const ms = Math.max(800, this.duration() * 3);
         for (const src of this.campMeeples(pid)) {
-            startTrailToRect(src, dest, ms, this.host.root);
+            startScientistTrailToRect(src, dest, ms, this.host.root);
         }
+    }
+    previewCardPlacement(pid, cardId, loc) {
+        const src = this.cardEl(pid, cardId);
+        const dest = this.nextPileRect(pid, loc);
+        if (!src || !dest)
+            return;
+        placeCloneAt(src, 'bae_card_place_preview', this.host.root, dest);
     }
     renderInvalidBubble(text) {
         this.host.root.querySelectorAll('.bae_invalid_bubble').forEach((el) => el.remove());
@@ -1182,39 +1266,93 @@ class OptionalUi {
     async animateHandReplace(pid, discarded, prev, next, ms) {
         const root = this.host.root;
         const deck = this.deckEl();
-        const col = this.handCol(pid);
-        if (!col)
+        const slots = this.handSlotRects(pid);
+        if (slots.length === 0)
             return;
-        const leaving = [];
-        for (const cardId of discarded) {
-            const el = this.cardEl(pid, cardId);
-            if (el && !leaving.includes(el))
-                leaving.push(el);
-        }
-        if (leaving.length === 0 && discarded.length > 0) {
-            const hidden = this.handCards(pid);
-            for (let i = 0; i < discarded.length && i < hidden.length; i++)
-                leaving.push(hidden[i]);
-        }
+        const leaving = this.leavingHandCards(pid, discarded);
         const remaining = this.handCards(pid).filter((el) => !leaving.includes(el));
         leaving.forEach((el) => { el.style.visibility = 'hidden'; });
-        if (deck) {
+        if (deck && leaving.length > 0) {
             await Promise.all(leaving.map((el) => {
                 const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
                 return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
             }));
         }
-        await flipElements(remaining, () => {
-            leaving.forEach((el) => { el.style.display = 'none'; });
-        }, ms);
+        await this.compactHandToSlots(remaining, slots, ms);
         const drawCount = this.handDrawCount(pid, discarded, prev, next);
         if (!deck || drawCount <= 0)
             return;
-        const dests = this.afterHandRects(col, remaining, drawCount);
-        for (const dest of dests) {
-            const refill = placeClone(deck, 'bae_resolve_clone bae_resolve_card', root);
-            await flyClone(refill, dest, ms, root, true);
+        const dests = this.handFillRects(slots, remaining.length, drawCount);
+        const faces = this.drawnHandCardIds(pid, discarded, prev, next);
+        for (let i = 0; i < dests.length; i++) {
+            const refill = this.cloneForHandDraw(deck, faces[i]);
+            await flyClone(refill, dests[i], ms, root, true);
         }
+    }
+    /** Facedown hands always drop the first N cards; own hand uses the discarded ids. */
+    leavingHandCards(pid, discarded) {
+        const cards = this.handCards(pid);
+        if (discarded.length <= 0 || cards.length === 0)
+            return [];
+        const byId = [];
+        for (const cardId of discarded) {
+            const el = this.host.root.querySelector(`#bae_hand_${pid}_${cardId}`);
+            if (!el || byId.includes(el)) {
+                return cards.slice(0, Math.min(discarded.length, cards.length));
+            }
+            byId.push(el);
+        }
+        return byId;
+    }
+    /** Slide leftover cards into the top slots without shrinking the 4-slot column. */
+    async compactHandToSlots(remaining, slots, ms) {
+        if (remaining.length === 0 || slots.length === 0)
+            return;
+        const moved = remaining.some((el, i) => {
+            const dest = slots[i];
+            if (!dest)
+                return false;
+            const r = el.getBoundingClientRect();
+            return Math.abs(r.top - dest.top) > 1 || Math.abs(r.left - dest.left) > 1;
+        });
+        if (!moved)
+            return;
+        const root = this.host.root;
+        await Promise.all(remaining.map((el, i) => {
+            const dest = slots[i];
+            if (!dest)
+                return Promise.resolve();
+            const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
+            el.style.visibility = 'hidden';
+            return flyClone(clone, dest, ms, root, true);
+        }));
+    }
+    handSlotRects(pid) {
+        const col = this.handCol(pid);
+        if (!col)
+            return [];
+        return Array.from(col.children)
+            .filter((el) => el instanceof HTMLElement && el.classList.contains('bae_card'))
+            .map((el) => el.getBoundingClientRect());
+    }
+    handFillRects(slots, startIndex, count) {
+        if (count <= 0)
+            return [];
+        const needed = startIndex + count;
+        const filled = slots.length >= needed ? slots : this.extendSlotRects(slots, needed);
+        return filled.slice(startIndex, startIndex + count);
+    }
+    extendSlotRects(slots, count) {
+        if (slots.length === 0 || slots.length >= count)
+            return slots;
+        const out = [...slots];
+        const sample = slots[0];
+        const gap = slots.length >= 2 ? slots[1].top - slots[0].bottom : 8;
+        while (out.length < count) {
+            const last = out[out.length - 1];
+            out.push(new DOMRect(last.left, last.bottom + gap, sample.width, sample.height));
+        }
+        return out;
     }
     handDrawCount(pid, discarded, prev, next) {
         if (discarded.length > 0)
@@ -1225,19 +1363,23 @@ class OptionalUi {
         const nextN = typeof nextHand === 'number' ? nextHand : Array.isArray(nextHand) ? nextHand.length : 0;
         return Math.max(0, nextN - (prevN - discarded.length));
     }
-    afterHandRects(col, remaining, count) {
-        const sample = remaining[remaining.length - 1]
-            ?? col.querySelector('.bae_card');
-        if (!sample || count <= 0)
+    drawnHandCardIds(pid, discarded, prev, next) {
+        const nextHand = next?.hands?.[pid];
+        if (!Array.isArray(nextHand))
             return [];
-        const r = sample.getBoundingClientRect();
-        const gap = 8;
-        const startTop = remaining.length > 0 ? r.bottom + gap : r.top;
-        const rects = [];
-        for (let i = 0; i < count; i++) {
-            rects.push(new DOMRect(r.left, startTop + i * (r.height + gap), r.width, r.height));
+        const prevHand = prev.hands?.[pid];
+        const prevIds = Array.isArray(prevHand) ? prevHand.map((c) => Number(c.id)) : [];
+        const discardedSet = new Set(discarded.map(Number));
+        const keepCount = prevIds.filter((id) => !discardedSet.has(id)).length;
+        return nextHand.slice(keepCount).map((c) => Number(c.id));
+    }
+    cloneForHandDraw(source, cardId) {
+        const clone = placeClone(source, 'bae_resolve_clone bae_resolve_card', this.host.root);
+        clone.querySelectorAll('.bae_deck_overlay, .bae_confirm_blurb').forEach((node) => node.remove());
+        if (cardId != null && Number.isFinite(cardId)) {
+            clone.innerHTML = this.host.animalCardHtml(cardId);
         }
-        return rects;
+        return clone;
     }
     renderRegroupHold() {
         const pid = this.holdingPid;
@@ -1395,6 +1537,7 @@ class Game {
         this.openingIntroEl = null;
         this.optionalUi = null;
         this.bga = bga;
+        this.preloadGameImages();
     }
     setup(gamedatas) {
         this.gamedatas = gamedatas;
@@ -1409,6 +1552,41 @@ class Game {
         // Keep --board-scale up to date when the window resizes
         window.addEventListener('resize', () => this.updateBoardScale());
         this.renderAll();
+    }
+    /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
+    preloadGameImages() {
+        const files = [
+            'Sprites/AnimalCards_sheet_full.webp',
+            'Sprites/AnimalCards_sheet_half.webp',
+            'Sprites/AnimalCards_sheet_quarter.webp',
+            'Sprites/ObjectiveCards_sheet_full.webp',
+            'Sprites/ObjectiveCards_sheet_half.webp',
+            'Sprites/ObjectiveCards_sheet_quarter.webp',
+            'Sprites/ScoringCards_sheet_full.webp',
+            'Sprites/ScoringCards_sheet_half.webp',
+            'Sprites/ScoringCards_sheet_quarter.webp',
+            'Playerboards/0000.webp',
+            'Playerboards/0001.webp',
+            'Playerboards/0002.webp',
+            'Playerboards/0003.webp',
+            'Playerboards/0004.webp',
+            'Tokens/YellowMeeple.webp',
+            'Tokens/PinkMeeple.webp',
+            'Tokens/TealMeeple.webp',
+            'Tokens/FlagToken.webp',
+            'Tokens/FirstPlayerToken.webp',
+            'Tokens/animal_obj.webp',
+            'Tokens/meeple_obj.webp',
+            'Tokens/track_obj.webp',
+            'Tokens/VP.svg',
+        ];
+        this.bga.images.preloadImages(files);
+        for (const file of files) {
+            const img = new Image();
+            img.decoding = 'async';
+            img.src = this.bga.images.getImgUrl(file);
+            void img.decode().catch(() => { });
+        }
     }
     renderPlayerPanelInfo() {
         const d = this.gamedatas.boardState;
@@ -1730,6 +1908,9 @@ class Game {
         if (Array.isArray(raw))
             return raw[cardId];
         return raw?.[cardId];
+    }
+    animalCardHtml(cardId) {
+        return this.cardFaceById(cardId);
     }
     buildCardTooltipSpriteHtml(type, id, title, details) {
         return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
@@ -2579,17 +2760,15 @@ class Game {
                 const id = Number(ev.currentTarget.dataset.handCard);
                 if (!this.bga.players.isCurrentPlayerActive())
                     return;
-                if (this.isOpeningMulliganLike()) {
+                if (this.isOpeningMulliganLike() || this.campSelected) {
                     if (this.selectedRegroupIds.has(id))
                         this.selectedRegroupIds.delete(id);
                     else
                         this.selectedRegroupIds.add(id);
-                }
-                else if (this.campSelected) {
-                    if (this.selectedRegroupIds.has(id))
-                        this.selectedRegroupIds.delete(id);
-                    else
-                        this.selectedRegroupIds.add(id);
+                    ev.currentTarget.classList.toggle('bae_card_regroup', this.selectedRegroupIds.has(id));
+                    this.optionalUi?.onSelectionChanged();
+                    this.onUpdateActionButtons(this.currentStateName(), null);
+                    return;
                 }
                 else if (this.isGameplayLike()) {
                     if (this.selectedCardId === id) {
