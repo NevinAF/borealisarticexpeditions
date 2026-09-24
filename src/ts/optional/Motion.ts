@@ -25,14 +25,68 @@ export function motionLayer(root: HTMLElement, under = false): HTMLElement {
   return layer;
 }
 
+export function scientistMotionLayer(root: HTMLElement): HTMLElement {
+  let layer = root.querySelector('.bae_sci_motion_layer') as HTMLElement | null;
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'bae_sci_motion_layer';
+    root.appendChild(layer);
+  }
+  return layer;
+}
+
+/** Higher on screen (and righter) stays behind; lower (and lefter) paints in front. */
+export function stackByScreenPosition(
+  items: Array<{ el: HTMLElement; top: number; left: number }>,
+): void {
+  const sorted = [...items].sort((a, b) => a.top - b.top || b.left - a.left);
+  sorted.forEach((item, i) => {
+    item.el.style.zIndex = String(i + 1);
+  });
+}
+
 export function clearMotionLayer(root: HTMLElement): void {
   root.querySelectorAll('.bae_motion_clone, .bae_invalid_bubble').forEach((el) => el.remove());
   document.querySelectorAll('body > .bae_motion_clone, body > .bae_invalid_bubble').forEach((el) => el.remove());
 }
 
-function localOffset(root: HTMLElement, r: DOMRect): { left: number; top: number } {
-  const origin = root.getBoundingClientRect();
-  return { left: r.left - origin.left, top: r.top - origin.top };
+function localOffset(parent: HTMLElement, left: number, top: number): { left: number; top: number } {
+  const origin = parent.getBoundingClientRect();
+  const cs = getComputedStyle(parent);
+  const bl = parseFloat(cs.borderLeftWidth) || 0;
+  const bt = parseFloat(cs.borderTopWidth) || 0;
+  return {
+    left: left - origin.left - bl + parent.scrollLeft,
+    top: top - origin.top - bt + parent.scrollTop,
+  };
+}
+
+function localRect(parent: HTMLElement, r: DOMRect): { left: number; top: number; width: number; height: number } {
+  const loc = localOffset(parent, r.left, r.top);
+  return { left: loc.left, top: loc.top, width: r.width, height: r.height };
+}
+
+export function offsetRect(r: DOMRect, dx: number, dy: number): DOMRect {
+  return new DOMRect(r.left + dx, r.top + dy, r.width, r.height);
+}
+
+function containingBlock(clone: HTMLElement, fallback: HTMLElement): HTMLElement {
+  const parent = clone.offsetParent;
+  return parent instanceof HTMLElement ? parent : fallback;
+}
+
+/** Move a clone into `parent` without changing its on-screen position. */
+export function adoptClone(clone: HTMLElement, parent: HTMLElement): void {
+  const r = clone.getBoundingClientRect();
+  parent.appendChild(clone);
+  const loc = localRect(parent, r);
+  clone.style.position = 'absolute';
+  clone.style.left = `${loc.left}px`;
+  clone.style.top = `${loc.top}px`;
+  clone.style.width = `${loc.width}px`;
+  clone.style.height = `${loc.height}px`;
+  clone.style.margin = '0';
+  clone.style.transform = 'none';
 }
 
 function copySpriteVars(from: HTMLElement, to: HTMLElement): void {
@@ -54,7 +108,8 @@ export function placeClone(
   root: HTMLElement,
 ): HTMLElement {
   const r = source.getBoundingClientRect();
-  const { left, top } = localOffset(root, r);
+  const layer = motionLayer(root);
+  const loc = localRect(layer, r);
   const clone = source.cloneNode(true) as HTMLElement;
   const extras = extraClass.split(/\s+/).filter(Boolean);
   clone.classList.add('bae_motion_clone', ...extras);
@@ -64,17 +119,33 @@ export function placeClone(
   copySpriteVars(root, clone);
   copySpriteVars(source, clone);
   clone.style.position = 'absolute';
-  clone.style.left = `${left}px`;
-  clone.style.top = `${top}px`;
-  clone.style.width = `${r.width}px`;
-  clone.style.height = `${r.height}px`;
+  clone.style.left = `${loc.left}px`;
+  clone.style.top = `${loc.top}px`;
+  clone.style.width = `${loc.width}px`;
+  clone.style.height = `${loc.height}px`;
   clone.style.margin = '0';
   clone.style.pointerEvents = 'none';
   clone.style.zIndex = '80';
   clone.style.opacity = '1';
   clone.style.transform = 'none';
   clone.style.transformOrigin = 'center center';
-  motionLayer(root).appendChild(clone);
+  layer.appendChild(clone);
+  return clone;
+}
+
+export function placeScientistClone(
+  source: HTMLElement,
+  extraClass: string,
+  root: HTMLElement,
+): HTMLElement {
+  const clone = placeClone(source, extraClass, root);
+  const layer = scientistMotionLayer(root);
+  const r = clone.getBoundingClientRect();
+  const loc = localRect(layer, r);
+  clone.style.zIndex = '1';
+  clone.style.left = `${loc.left}px`;
+  clone.style.top = `${loc.top}px`;
+  layer.appendChild(clone);
   return clone;
 }
 
@@ -84,8 +155,13 @@ export function placeCloneUnder(
   root: HTMLElement,
 ): HTMLElement {
   const clone = placeClone(source, extraClass, root);
+  const layer = motionLayer(root, true);
+  const r = clone.getBoundingClientRect();
+  const loc = localRect(layer, r);
   clone.style.zIndex = '1';
-  motionLayer(root, true).appendChild(clone);
+  clone.style.left = `${loc.left}px`;
+  clone.style.top = `${loc.top}px`;
+  layer.appendChild(clone);
   return clone;
 }
 
@@ -96,32 +172,30 @@ export function flyClone(
   durationMs: number,
   root: HTMLElement,
   matchSize = false,
+  destScale = 1,
+  host?: HTMLElement | null,
 ): Promise<void> {
-  const from = clone.getBoundingClientRect();
-  const dx = to.left + to.width / 2 - (from.left + from.width / 2);
-  const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-  let scale = '';
-  if (matchSize && from.width > 1 && from.height > 1) {
-    const sx = to.width / from.width;
-    const sy = to.height / from.height;
-    if (Number.isFinite(sx) && Number.isFinite(sy)) {
-      scale = ` scale(${sx}, ${sy})`;
-    }
-  }
+  if (host) adoptClone(clone, host);
+  const parent = containingBlock(clone, root);
+  const destW = to.width * destScale;
+  const destH = to.height * destScale;
+  const destLeft = to.left + (to.width - destW) / 2;
+  const destTop = to.top + (to.height - destH) / 2;
+  const parked = localOffset(parent, destLeft, destTop);
+  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+  clone.style.transform = 'none';
   void clone.offsetWidth;
-  clone.style.transition = `transform ${durationMs}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
-  clone.style.transformOrigin = 'center center';
-  clone.style.transform = `translate(${dx}px, ${dy}px)${scale}`;
+  clone.style.transition = matchSize
+    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
+    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
+  clone.style.left = `${parked.left}px`;
+  clone.style.top = `${parked.top}px`;
+  if (matchSize) {
+    clone.style.width = `${destW}px`;
+    clone.style.height = `${destH}px`;
+  }
   return wait(durationMs).then(() => {
-    const parked = localOffset(root, to);
     clone.style.transition = 'none';
-    clone.style.transform = 'none';
-    clone.style.left = `${parked.left}px`;
-    clone.style.top = `${parked.top}px`;
-    if (matchSize) {
-      clone.style.width = `${to.width}px`;
-      clone.style.height = `${to.height}px`;
-    }
   });
 }
 
@@ -201,7 +275,8 @@ export function startTrailToRect(
   extraClass = '',
 ): HTMLElement {
   const from = source.getBoundingClientRect();
-  const { left, top } = localOffset(root, from);
+  const layer = motionLayer(root);
+  const loc = localRect(layer, from);
   const clone = source.cloneNode(true) as HTMLElement;
   clone.classList.add('bae_motion_clone', 'bae_trail_ghost', ...extraClass.split(/\s+/).filter(Boolean));
   clone.removeAttribute('id');
@@ -212,18 +287,20 @@ export function startTrailToRect(
   const dx = to.left + to.width / 2 - (from.left + from.width / 2);
   const dy = to.top + to.height / 2 - (from.top + from.height / 2);
   clone.style.position = 'absolute';
-  clone.style.left = `${left}px`;
-  clone.style.top = `${top}px`;
-  clone.style.width = `${from.width}px`;
-  clone.style.height = `${from.height}px`;
+  clone.style.left = `${loc.left}px`;
+  clone.style.top = `${loc.top}px`;
+  clone.style.width = `${loc.width}px`;
+  clone.style.height = `${loc.height}px`;
   clone.style.margin = '0';
   clone.style.pointerEvents = 'none';
   clone.style.zIndex = '70';
   clone.style.transform = 'none';
-  clone.style.setProperty('--dx', `${dx}px`);
-  clone.style.setProperty('--dy', `${dy}px`);
+  clone.style.setProperty('--from-l', `${loc.left}px`);
+  clone.style.setProperty('--from-t', `${loc.top}px`);
+  clone.style.setProperty('--to-l', `${loc.left + dx}px`);
+  clone.style.setProperty('--to-t', `${loc.top + dy}px`);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-  motionLayer(root).appendChild(clone);
+  layer.appendChild(clone);
   return clone;
 }
 
@@ -235,17 +312,19 @@ export function placeCloneAt(
   at: DOMRect,
 ): HTMLElement {
   const clone = placeClone(source, extraClass, root);
-  const parked = localOffset(root, at);
+  const parked = localRect(containingBlock(clone, root), at);
   clone.style.left = `${parked.left}px`;
   clone.style.top = `${parked.top}px`;
-  clone.style.width = `${at.width}px`;
-  clone.style.height = `${at.height}px`;
+  clone.style.width = `${parked.width}px`;
+  clone.style.height = `${parked.height}px`;
   return clone;
 }
 
 /** Soft, slow discard preview: ghost only, real card stays put. */
 export function startDiscardGhost(source: HTMLElement, root: HTMLElement, cardId?: number): HTMLElement {
   const clone = placeClone(source, 'bae_discard_ghost', root);
+  clone.style.setProperty('--from-l', clone.style.left);
+  clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', '1.85s');
   clone.style.setProperty('--dx', '-10px');
   if (cardId != null) clone.dataset.previewCard = String(cardId);
@@ -260,8 +339,59 @@ export function flyDiscardAway(
 ): Promise<void> {
   const from = source.getBoundingClientRect();
   const clone = placeClone(source, 'bae_discard_resolve', root);
+  clone.style.setProperty('--from-l', clone.style.left);
+  clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   clone.style.setProperty('--dx', `${-Math.max(48, from.width * 0.4)}px`);
   source.style.visibility = 'hidden';
   return wait(durationMs).then(() => { clone.remove(); });
+}
+
+function freezeComputedMotion(el: HTMLElement, root: HTMLElement): void {
+  const cs = getComputedStyle(el);
+  const r = el.getBoundingClientRect();
+  const parent = containingBlock(el, root);
+  const { left, top } = localOffset(parent, r.left, r.top);
+  el.classList.add('bae_preview_settling');
+  el.style.animation = 'none';
+  el.style.transition = 'none';
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  el.style.transform = 'none';
+  el.style.opacity = cs.opacity;
+  void el.offsetWidth;
+}
+
+function freezeOpacityOnly(el: HTMLElement): void {
+  const cs = getComputedStyle(el);
+  el.classList.add('bae_preview_settling');
+  el.style.animation = 'none';
+  el.style.transition = 'none';
+  el.style.opacity = cs.opacity;
+  void el.offsetWidth;
+}
+
+/** Freeze looping previews at the current frame, then ease back toward rest. */
+export function freezeAndFadePreviews(root: HTMLElement, durationMs = 320): void {
+  if (!root) return;
+  const fadeMs = Math.max(1, durationMs);
+  root.querySelectorAll('.bae_trail_ghost, .bae_discard_ghost').forEach((node) => {
+    const el = node as HTMLElement;
+    freezeComputedMotion(el, root);
+    el.style.transition = `opacity ${fadeMs}ms ease`;
+    el.style.opacity = '0';
+  });
+  root.querySelectorAll('.bae_card_place_preview').forEach((node) => {
+    const el = node as HTMLElement;
+    freezeOpacityOnly(el);
+    el.style.transition = `opacity ${fadeMs}ms ease`;
+    el.style.opacity = '0';
+  });
+  root.querySelectorAll('.bae_preview_fade_left').forEach((node) => {
+    const el = node as HTMLElement;
+    freezeOpacityOnly(el);
+    el.style.transition = `opacity ${fadeMs}ms ease`;
+    el.style.opacity = '1';
+    el.classList.remove('bae_preview_fade_left');
+  });
 }

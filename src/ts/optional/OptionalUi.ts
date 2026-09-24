@@ -9,8 +9,11 @@ import {
   clearMotionLayer,
   flyClone,
   flyDiscardAway,
+  freezeAndFadePreviews,
   placeClone,
   placeCloneUnder,
+  placeScientistClone,
+  stackByScreenPosition,
   startDiscardGhost,
   startScientistTrail,
   startScientistTrailToRect,
@@ -30,6 +33,7 @@ export const PREF_ANIM_SPEED = 100;
 export const PREF_PREVIEWS = 101;
 export const PREF_CONFIRM = 102;
 export const PREF_SOUND = 103;
+export const MAX_LOCATION_CARDS = 7;
 
 export interface OptionalUiHost {
   bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
@@ -55,6 +59,8 @@ export interface OptionalUiHost {
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null): void;
   cachedActionArgs: Record<string, unknown> | null;
   renderAll(): void;
+  sendAction(action: string, args?: Record<string, unknown>): Promise<unknown>;
+  isActionBusy(): boolean;
 }
 
 /**
@@ -81,11 +87,13 @@ export class OptionalUi {
   private tooltipWasBlocked = false;
   private tooltipRetrigger = false;
   private lastHoverEl: Element | null = null;
+  private previewLocked = false;
   private static readonly TOOLTIP_CLICK_MS = 500;
 
   constructor(private host: OptionalUiHost) {}
 
   afterRender(): void {
+    this.previewLocked = false;
     this.teardown();
     if (!this.host.root) return;
     this.bindTooltipGate();
@@ -108,7 +116,16 @@ export class OptionalUi {
     this.clearPreviews();
   }
 
+  onActionSubmitted(): void {
+    this.previewLocked = true;
+    this.pendingDiscard.forEach((id) => window.clearTimeout(id));
+    this.pendingDiscard.clear();
+    this.discardLoopEpoch = 0;
+    freezeAndFadePreviews(this.host.root);
+  }
+
   onSelectionChanged(): void {
+    if (this.previewLocked) return;
     if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
       const myId = Number(this.host.bga.players.getCurrentPlayerId());
       if (this.host.selectedRegroupIds.size === 0) this.clearDiscardGhosts();
@@ -230,11 +247,11 @@ export class OptionalUi {
       const root = this.host.root;
 
       const cardEl = this.cardEl(pid, cardId);
-      const dest = this.destAboveLastPileCard(pid, loc);
+      const pileDest = this.nextPileDest(pid, loc);
       this.expandLocationOutline(pid, loc, ms);
       const slots = this.handSlotRects(pid);
       const remaining = this.handCards(pid).filter((el) => el !== cardEl);
-      if (cardEl && dest) {
+      if (cardEl && pileDest) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
         cardEl.style.visibility = 'hidden';
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
@@ -242,7 +259,7 @@ export class OptionalUi {
           ? this.crossfadeToFace(clone, cardId, ms)
           : Promise.resolve();
         await Promise.all([
-          flyClone(clone, dest, ms, root, true),
+          flyClone(clone, pileDest.rect, ms, root, true, 1, pileDest.pile),
           this.compactHandToSlots(remaining, slots, ms),
           reveal,
         ]);
@@ -265,10 +282,11 @@ export class OptionalUi {
       const flagEl = this.flagEl(pid, loc, oldFlag);
       if (flagEl) {
         if (newFlag > oldFlag) {
-          const dest = this.trackEl(pid, loc, newFlag);
+          const destCell = this.trackEl(pid, loc, newFlag);
+          const destRect = destCell ? this.flagRestRect(pid, loc, newFlag, flagEl) : null;
           const clone = placeClone(flagEl, 'bae_resolve_clone', root);
           flagEl.style.visibility = 'hidden';
-          if (dest) await flyClone(clone, dest.getBoundingClientRect(), Math.round(ms * 0.9), root);
+          if (destRect) await flyClone(clone, destRect, Math.round(ms * 0.9), root, false, 1, destCell);
         } else {
           placeClone(flagEl, 'bae_resolve_clone bae_stuck_once', root);
           await wait(Math.round(ms * 0.85));
@@ -289,18 +307,25 @@ export class OptionalUi {
     this.prepareResolution([`player:${pid}`]);
     try {
       const discarded = (args.discarded as number[] | undefined) ?? [];
-      await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
-
       const leftHold = this.ensureRegroupHold(pid, 'left');
       const rightHold = this.ensureRegroupHold(pid, 'right');
       const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
       const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`) as HTMLElement | null;
       const leftMeeples = Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
       const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
-      await Promise.all([
-        ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms)),
-        ...rightMeeples.map((el) => this.flyMeepleToHold(el, rightCamp, rightHold, ms)),
-      ]);
+      const stackItems: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }> = [];
+      const flights = [
+        ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms, stackItems)),
+        ...rightMeeples.map((el) => this.flyMeepleToHold(el, rightCamp, rightHold, ms, stackItems)),
+      ];
+      stackByScreenPosition(stackItems.map((it) => ({ el: it.clone, top: it.from.top, left: it.from.left })));
+      if (ms > 0) {
+        void wait(ms / 2).then(() => {
+          stackByScreenPosition(stackItems.map((it) => ({ el: it.clone, top: it.dest.top, left: it.dest.left })));
+        });
+      }
+      await Promise.all(flights);
+      await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
     } finally {
       this.endResolution();
     }
@@ -386,7 +411,7 @@ export class OptionalUi {
       await Promise.all(cards.map((el) => {
         const clone = placeCloneUnder(el, 'bae_resolve_clone bae_resolve_card', root);
         el.style.visibility = 'hidden';
-        return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
+        return flyClone(clone, deck.getBoundingClientRect(), ms, root, true, 0.95);
       }));
       await wait(Math.round(ms * 0.15));
       const nextPool = (args.boardState as BoardState | undefined)?.pool ?? [];
@@ -533,8 +558,8 @@ export class OptionalUi {
   }
 
   private updateActionPreviews(): void {
+    if (this.previewLocked || this.resolving) return;
     this.clearTransientPreviews();
-    if (this.resolving) return;
 
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const active = this.host.bga.players.isCurrentPlayerActive();
@@ -706,12 +731,16 @@ export class OptionalUi {
     }
     const slots = this.scientistLayout(pid, { [pid]: sci }, layoutLoc);
     const unused = [...sources];
+    const trails: Array<{ el: HTMLElement; top: number; left: number }> = [];
     for (const slot of slots) {
       const idx = unused.findIndex((el) => Number(el.dataset.scientist) === slot.color);
       if (idx < 0) continue;
       const el = unused.splice(idx, 1)[0];
-      startScientistTrailToRect(el, this.meepleSlotRectFromBox(destBox, slot, el), ms, this.host.root);
+      const dest = this.meepleSlotRectFromBox(destBox, slot, el);
+      const clone = startScientistTrailToRect(el, dest, ms, this.host.root);
+      trails.push({ el: clone, top: dest.top, left: dest.left });
     }
+    stackByScreenPosition(trails);
   }
 
   private previewCardPlacement(pid: number, cardId: number, loc: number): void {
@@ -754,6 +783,10 @@ export class OptionalUi {
       const htmlEl = el as HTMLElement;
       htmlEl.setAttribute('draggable', 'true');
       const onDragStart = (ev: DragEvent) => {
+        if (this.host.isActionBusy()) {
+          ev.preventDefault();
+          return;
+        }
         this.dragCardId = Number(htmlEl.dataset.handCard);
         ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
         htmlEl.classList.add('bae_dragging');
@@ -785,7 +818,7 @@ export class OptionalUi {
         htmlEl.classList.remove('bae_drop_target');
         const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
         const loc = Number(htmlEl.dataset.loc);
-        if (!this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+        if (this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
         this.host.campSelected = false;
         this.host.selectedRegroupIds.clear();
         this.host.selectedCardId = cardId;
@@ -816,7 +849,7 @@ export class OptionalUi {
         ev.preventDefault();
         htmlEl.classList.remove('bae_drop_target');
         const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
-        if (!this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+        if (this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
         this.host.enterRegroupMode();
         this.host.selectedRegroupIds.add(cardId);
         this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
@@ -837,11 +870,11 @@ export class OptionalUi {
         ev.preventDefault();
       };
       const onDrop = (ev: DragEvent) => {
-        if (!this.host.isReplenishLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+        if (!this.host.isReplenishLike() || this.host.isActionBusy() || !this.host.bga.players.isCurrentPlayerActive()) return;
         ev.preventDefault();
         const slotRaw = ev.dataTransfer?.getData('text/bae-pool');
         if (slotRaw === '' || slotRaw == null) return;
-        void this.host.bga.actions.performAction('actTakeAnimal', { pool_slot: Number(slotRaw) });
+        void this.host.sendAction('actTakeAnimal', { pool_slot: Number(slotRaw) });
       };
       handCol.addEventListener('dragover', onDragOver);
       handCol.addEventListener('drop', onDrop);
@@ -855,7 +888,7 @@ export class OptionalUi {
       const htmlEl = el as HTMLElement;
       htmlEl.setAttribute('draggable', 'true');
       const onDragStart = (ev: DragEvent) => {
-        if (!this.host.isReplenishLike()) {
+        if (this.host.isActionBusy() || !this.host.isReplenishLike()) {
           ev.preventDefault();
           return;
         }
@@ -1085,6 +1118,7 @@ export class OptionalUi {
     camp: HTMLElement | null,
     hold: HTMLElement | null,
     ms: number,
+    stackItems?: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }>,
   ): Promise<void> {
     const destBox = hold?.getBoundingClientRect() ?? (camp ? this.offsetRect(camp.getBoundingClientRect(), 0, -camp.getBoundingClientRect().height * 1.2) : null);
     const campBox = camp?.getBoundingClientRect();
@@ -1096,8 +1130,9 @@ export class OptionalUi {
       from.width,
       from.height,
     );
-    const clone = placeClone(el, 'bae_resolve_clone', this.host.root);
+    const clone = placeScientistClone(el, 'bae_resolve_clone', this.host.root);
     el.style.visibility = 'hidden';
+    stackItems?.push({ clone, from, dest });
     return flyClone(clone, dest, ms, this.host.root, true);
   }
 
@@ -1122,37 +1157,46 @@ export class OptionalUi {
     const boards = this.host.gamedatas.boardState.boards?.[pid] ?? [];
     const maxPlayed = boards.reduce((max, pile) => Math.max(max, pile.length), 0);
     const afterPile = (boards[loc]?.length ?? 0) + 1;
-    const oldSlots = maxPlayed + 1;
-    const newSlots = Math.max(maxPlayed, afterPile) + 1;
+    const oldSlots = Math.min(MAX_LOCATION_CARDS, maxPlayed + 1);
+    const newSlots = Math.min(MAX_LOCATION_CARDS, Math.max(maxPlayed, afterPile) + 1);
     if (newSlots <= oldSlots) return 0;
-    const shift = zone.getBoundingClientRect().height * (170 / 2494);
+    const boardH = canvas.getBoundingClientRect().height;
+    const marginDelta = boardH * (170 / 2600) * (newSlots - oldSlots);
     canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
     canvas.style.setProperty('--animal-card-slots', String(newSlots));
-    return (newSlots - oldSlots) * shift;
+    return Number.isFinite(marginDelta) ? marginDelta : 0;
   }
 
-  private destAboveLastPileCard(pid: number, loc: number, extraDown = 0): DOMRect | null {
+  private nextPileDest(pid: number, loc: number): { pile: HTMLElement; rect: DOMRect } | null {
     const zone = this.host.root.querySelector(
       `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
     ) as HTMLElement | null;
-    if (!zone) return null;
-    const zr = zone.getBoundingClientRect();
-    if (zr.width < 1 || zr.height < 1) return null;
-    const pile = zone.querySelector('.bae_anim_pile');
-    const slots = pile ? pile.querySelectorAll('.bae_pile_slot') : [];
-    const cardW = zr.width * (528 / 800);
-    const cardH = zr.height * (745 / 2494);
-    const shift = zr.height * (170 / 2494);
-    if (slots.length > 0) {
-      const last = (slots[slots.length - 1] as HTMLElement).getBoundingClientRect();
-      return new DOMRect(last.left, last.top - shift + extraDown, last.width, last.height);
-    }
-    return new DOMRect(
-      zr.left + zr.width / 2 - cardW / 2,
-      zr.top - cardH + extraDown,
-      cardW,
-      cardH,
-    );
+    const pile = zone?.querySelector('.bae_anim_pile') as HTMLElement | null;
+    if (!zone || !pile) return null;
+    const probe = document.createElement('div');
+    probe.className = 'bae_pile_slot';
+    probe.style.visibility = 'hidden';
+    probe.style.pointerEvents = 'none';
+    pile.appendChild(probe);
+    const rect = probe.getBoundingClientRect();
+    pile.removeChild(probe);
+    if (rect.width < 1 || rect.height < 1) return null;
+    return { pile, rect };
+  }
+
+  private flagRestRect(pid: number, loc: number, space: number, sample: HTMLElement): DOMRect | null {
+    const cell = this.trackEl(pid, loc, space);
+    if (!cell) return null;
+    const jitterLeft = ((pid * 3 + loc * 5 + space * 7) % 9) - 4;
+    const jitterTop = ((pid * 7 + loc * 3 + space * 11) % 9) - 4;
+    const probe = sample.cloneNode(true) as HTMLElement;
+    probe.style.visibility = 'hidden';
+    probe.style.left = `${(50 + jitterLeft).toFixed(1)}%`;
+    probe.style.top = `${(50 + jitterTop).toFixed(1)}%`;
+    cell.appendChild(probe);
+    const rect = probe.getBoundingClientRect();
+    probe.remove();
+    return rect.width < 1 || rect.height < 1 ? null : rect;
   }
 
   private bindTooltipGate(): void {
@@ -1488,18 +1532,38 @@ export class OptionalUi {
       });
     }
 
-    for (const { el, dest } of assigned) {
-      const clone = placeClone(el, 'bae_resolve_clone', root);
+    const movers = new Set(assigned.map((row) => row.el));
+    const destOf = new Map(assigned.map((row) => [row.el, row.dest] as const));
+    const stackItems: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }> = [];
+    const seen = new Set<HTMLElement>();
+    const consider = (el: HTMLElement) => {
+      if (seen.has(el)) return;
+      seen.add(el);
+      const from = el.getBoundingClientRect();
+      const dest = destOf.get(el) ?? from;
+      const clone = placeScientistClone(el, 'bae_resolve_clone', root);
       el.style.visibility = 'hidden';
-      flights.push(flyClone(clone, dest, ms, root, true));
+      stackItems.push({ clone, from, dest });
+      if (movers.has(el)) flights.push(flyClone(clone, dest, ms, root, true));
+    };
+    for (const { el } of assigned) consider(el);
+    for (let loc = 0; loc <= 4; loc++) {
+      for (const el of currentAt(loc)) consider(el);
     }
 
-    for (let loc = 0; loc <= 4; loc++) {
-      for (const el of currentAt(loc)) {
-        if (used.has(el)) continue;
-        el.style.visibility = 'hidden';
-        placeClone(el, 'bae_resolve_clone', root);
-      }
+    stackByScreenPosition(stackItems.map((it) => ({
+      el: it.clone,
+      top: it.from.top,
+      left: it.from.left,
+    })));
+    if (ms > 0) {
+      void wait(ms / 2).then(() => {
+        stackByScreenPosition(stackItems.map((it) => ({
+          el: it.clone,
+          top: it.dest.top,
+          left: it.dest.left,
+        })));
+      });
     }
 
     if (flights.length > 0) await Promise.all(flights);
@@ -1553,7 +1617,19 @@ export class OptionalUi {
     slot: { leftPct: number; topPct: number },
     sample: HTMLElement,
   ): DOMRect {
-    return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
+    const probe = sample.cloneNode(true) as HTMLElement;
+    probe.removeAttribute('id');
+    probe.style.visibility = 'hidden';
+    probe.style.pointerEvents = 'none';
+    probe.style.left = `${slot.leftPct}%`;
+    probe.style.top = `${slot.topPct}%`;
+    shelf.appendChild(probe);
+    const rect = probe.getBoundingClientRect();
+    probe.remove();
+    if (rect.width < 1 || rect.height < 1) {
+      return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
+    }
+    return rect;
   }
 
   private meepleSlotRectFromBox(

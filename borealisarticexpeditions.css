@@ -158,6 +158,7 @@ html[data-theme=dark] {
   gap: calc(30px * var(--bae-scale));
   justify-content: center;
   align-content: center;
+  position: relative;
 }
 
 .bae_pool > :last-child:nth-child(5n+1) {
@@ -219,6 +220,7 @@ html[data-theme=dark] {
   gap: calc(14px * var(--bae-scale));
   align-items: center;
   width: calc(528px * var(--bae-scale));
+  position: relative;
 }
 
 .bae_player_handcol .bae_card {
@@ -283,7 +285,7 @@ html[data-theme=dark] {
   box-sizing: border-box;
 }
 .bae_camp_zone .bae_sci_shelf {
-  position: static;
+  position: relative;
   width: 100%;
   height: 100%;
 }
@@ -316,7 +318,7 @@ html[data-theme=dark] {
   cursor: default;
 }
 .bae_regroup_hold .bae_sci_shelf {
-  position: static;
+  position: relative;
   width: 100%;
   height: 100%;
 }
@@ -1154,9 +1156,25 @@ html[data-theme=dark] .bae_opening_intro {
   z-index: 10;
 }
 
+.bae_sci_motion_layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+  overflow: visible;
+}
+
+#bae_playarea.bae_action_busy {
+  pointer-events: none;
+}
+
+#bae_playarea.bae_action_busy .bae_zoom_controls,
+#bae_playarea.bae_action_busy .bae_zoom_controls * {
+  pointer-events: auto;
+}
+
 .bae_motion_clone {
   pointer-events: none;
-  will-change: transform;
   overflow: hidden;
 }
 
@@ -1235,6 +1253,10 @@ html[data-theme=dark] .bae_opening_intro {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
+.bae_preview_settling {
+  animation: none !important;
+}
+
 .bae_previews_off .bae_trail_ghost,
 .bae_previews_off .bae_discard_ghost,
 .bae_previews_off .bae_card_place_preview,
@@ -1269,7 +1291,8 @@ html[data-theme=dark] .bae_opening_intro {
 
 @keyframes bae_trail_flow {
   0% {
-    transform: translate(0, 0);
+    left: var(--from-l);
+    top: var(--from-t);
     opacity: 0;
   }
   14% {
@@ -1279,21 +1302,25 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0.1;
   }
   100% {
-    transform: translate(var(--dx), var(--dy));
+    left: var(--to-l);
+    top: var(--to-t);
     opacity: 0;
   }
 }
 @keyframes bae_sci_trail_flow {
   0% {
-    transform: translate(0, 0);
+    left: var(--from-l);
+    top: var(--from-t);
     opacity: 1;
   }
   78% {
-    transform: translate(var(--dx), var(--dy));
+    left: var(--to-l);
+    top: var(--to-t);
     opacity: 1;
   }
   100% {
-    transform: translate(var(--dx), var(--dy));
+    left: var(--to-l);
+    top: var(--to-t);
     opacity: 0;
   }
 }
@@ -1307,14 +1334,14 @@ html[data-theme=dark] .bae_opening_intro {
 }
 @keyframes bae_trail_stuck {
   0%, 100% {
-    transform: translate(0, 0);
+    top: var(--from-t);
     opacity: 0;
   }
   22% {
     opacity: 0.28;
   }
   50% {
-    transform: translate(0, -7px);
+    top: calc(var(--from-t) - 7px);
     opacity: 0.16;
   }
   78% {
@@ -1323,24 +1350,24 @@ html[data-theme=dark] .bae_opening_intro {
 }
 @keyframes bae_discard_preview {
   0% {
-    transform: translateX(0);
+    left: var(--from-l);
     opacity: 0;
   }
   22% {
     opacity: 0.18;
   }
   100% {
-    transform: translateX(var(--dx, -60px));
+    left: calc(var(--from-l) + var(--dx, -60px));
     opacity: 0;
   }
 }
 @keyframes bae_discard_resolve {
   0% {
-    transform: translateX(0);
+    left: var(--from-l);
     opacity: 1;
   }
   100% {
-    transform: translateX(var(--dx, -60px));
+    left: calc(var(--from-l) + var(--dx, -60px));
     opacity: 0;
   }
 }

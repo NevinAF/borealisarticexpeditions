@@ -1,7 +1,7 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
-import { OptionalUi, objectiveProgressLines, scoringVpLines } from './optional/OptionalUi';
+import { OptionalUi, MAX_LOCATION_CARDS, objectiveProgressLines, scoringVpLines } from './optional/OptionalUi';
 
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
@@ -42,6 +42,7 @@ export class Game {
   private isShowingLastTurnBanner = false;
   private openingIntroPage: "objectives" | "scoring" | null = "objectives";
   private openingIntroEl: HTMLElement | null = null;
+  private actionPending = false;
   private optionalUi: OptionalUi | null = null;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
@@ -59,6 +60,7 @@ export class Game {
     area.appendChild(this.root);
     // OPTIONAL: client-only UX helpers (previews, resolution motion, DnD, sound)
     this.optionalUi = new OptionalUi(this);
+    this.openingIntroPage = this.isReplayOrSpectator() ? null : "objectives";
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
     this.zoomFactor = this.firstZoomOutFromFit();
@@ -494,7 +496,7 @@ export class Game {
     const can = (obj?.players?.[myId] ?? 'unmet') === 'meets';
     this.bga.statusBar.addActionButton(_("Claim Objective"), () => {
       if (!can) return;
-      void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+      void this.sendAction("actClaimObjective", { objective_index: idx });
     }, {
       disabled: !can,
       tooltip: _("Claim this objective now and score 5 VP."),
@@ -512,12 +514,13 @@ export class Game {
         if (!confirmed) return;
       }
     }
-    await this.bga.actions.performAction("actRegroup", {
+    await this.sendAction("actRegroup", {
       card_ids_json: JSON.stringify(cardIds),
     });
   }
 
   enterRegroupMode(): void {
+    if (this.actionPending) return;
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
@@ -528,6 +531,65 @@ export class Game {
     this.onUpdateActionButtons(this.currentStateName(), null);
     this.optionalUi?.onSelectionChanged();
     this.optionalUi?.playSound('select');
+  }
+
+  isActionBusy(): boolean {
+    return this.actionPending;
+  }
+
+  sendAction(action: string, args?: Record<string, unknown>): Promise<unknown> {
+    if (this.actionPending) return Promise.resolve();
+    if (!this.bga.actions.checkAction(action, true)) {
+      this.bga.actions.checkAction(action);
+      return Promise.resolve();
+    }
+    this.beginActionSubmit();
+    const result = this.bga.actions.performAction(action, args, { checkAction: false });
+    if (result == null || typeof (result as Promise<unknown>).then !== 'function') {
+      this.endActionSubmit();
+      return Promise.resolve();
+    }
+    return (result as Promise<unknown>).catch((err) => {
+      this.endActionSubmit();
+      throw err;
+    });
+  }
+
+  private beginActionSubmit(): void {
+    this.actionPending = true;
+    this.root?.classList.add('bae_action_busy');
+    this.optionalUi?.onActionSubmitted();
+    this.selectedCardId = null;
+    this.selectedLocation = null;
+    this.selectedPoolSlot = null;
+    this.selectedObjectiveIdx = null;
+    this.campSelected = false;
+    this.selectedRegroupIds.clear();
+    this.root?.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
+      el.classList.remove('bae_card_selected', 'bae_card_regroup');
+    });
+    this.root?.querySelectorAll('.bae_loc_selected, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_camp_selected', 'bae_obj_selected');
+    });
+    this.root?.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
+    this.bga.statusBar.removeActionButtons();
+  }
+
+  private endActionSubmit(): void {
+    this.actionPending = false;
+    this.root?.classList.remove('bae_action_busy');
+  }
+
+  private isReplayOrSpectator(): boolean {
+    try {
+      if (this.bga.players.isCurrentPlayerSpectator()) return true;
+    } catch (_) { /* gamedatas may not be ready */ }
+    const ui = this.bga.gameui;
+    if (ui?.isSpectator) return true;
+    if (ui?.instantaneousMode) return true;
+    if (typeof g_archive_mode !== 'undefined' && g_archive_mode) return true;
+    if (typeof g_replayFrom !== 'undefined') return true;
+    return false;
   }
 
   clearSelection(): void {
@@ -562,7 +624,7 @@ export class Game {
       ? _("Undo observing an animal and return to choosing your main action. Only available before drawing a replacement card.")
       : _("Undo regrouping and return to choosing your main action. Only available when no cards were discarded.");
     this.bga.statusBar.addActionButton(label, () => {
-      void this.bga.actions.performAction("actUndo", {});
+      void this.sendAction("actUndo", {});
     }, {
       disabled: false,
       tooltip,
@@ -589,13 +651,13 @@ export class Game {
   }
 
   private confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
-    if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
+    if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
     if (!this.isObserveSelectionLegal(cardId, location)) {
       this.optionalUi?.showInvalidObserveHint();
       return false;
     }
-    void this.bga.actions.performAction("actObserveAnimal", {
+    void this.sendAction("actObserveAnimal", {
       card_id: cardId,
       location,
     });
@@ -603,6 +665,7 @@ export class Game {
   }
 
   renderAll() {
+    this.endActionSubmit();
     this.syncGamedatas();
 
     let html = "";
@@ -698,7 +761,7 @@ export class Game {
       const isSelf = pid === myId;
       const maxPlayed = d.boards[pid]?.reduce((max, loc) => Math.max(max, loc.length), 0) ?? 0;
       const animal_card_slots = Math.max(1, maxPlayed);
-      const outlineSlots = maxPlayed + 1;
+      const outlineSlots = Math.min(MAX_LOCATION_CARDS, maxPlayed + 1);
       const rawPlayerColor = String(this.gamedatas.players[pid]?.color ?? "");
       const playerColor = rawPlayerColor.length > 0
         ? (rawPlayerColor.startsWith("#") ? rawPlayerColor : `#${rawPlayerColor}`)
@@ -857,7 +920,7 @@ export class Game {
     this.openingIntroEl?.remove();
     this.openingIntroEl = null;
 
-    if (!this.root || this.bga.players.isCurrentPlayerSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
+    if (!this.root || this.isReplayOrSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
       return;
     }
 
@@ -1137,7 +1200,7 @@ export class Game {
         default: return location < 3 ? [4, Math.ceil(n / 4)] : [3, Math.ceil(n / 3)];
       }
     })();
-    const out: string[] = [];
+    const out: Array<{ html: string; top: number; left: number }> = [];
     for (let i = 0; i < n; i++) {
       const col = meeples[i];
       const src = `${baseUrl}Tokens/${meepleFiles[col]}.webp`;
@@ -1150,25 +1213,16 @@ export class Game {
       const jitterY = ((i * 11 + col * 5 + 17 * location + 19 * player_id) % 5) - 2;
       const left = baseLeft + jitterX;
       const top = baseTop + jitterY;
-      out.push(`<img class="bae_meeple_img ${meepleClasses[col]}" data-scientist="${col}" src="${src}" alt="" draggable="false" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%"/>`);
+      out.push({
+        top,
+        left,
+        html: `<img class="bae_meeple_img ${meepleClasses[col]}" data-scientist="${col}" src="${src}" alt="" draggable="false" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%;z-index:`,
+      });
     }
 
-    // Deterministic shuffle using a seeded Fisher–Yates shuffle to randomize
-    // layering without the unstable Array.sort(random) pattern.
-    const seed = (n * 374761393 + location * 668265263 + player_id * 982451653) >>> 0;
-    let s = seed;
-    const rng = () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    };
-    const indices = Array.from({ length: n }, (_, i) => i);
-    for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      const tmp = indices[i];
-      indices[i] = indices[j];
-      indices[j] = tmp;
-    }
-    return indices.map((ix) => out[ix]).join("");
+    // Topmost (then rightmost) behind; bottommost (then leftmost) in front.
+    out.sort((a, b) => a.top - b.top || b.left - a.left);
+    return out.map((it, i) => `${it.html}${i + 1}"/>`).join("");
   }
 
   private formatScientists(sci: Record<number, number[]> | undefined): string {
@@ -1483,7 +1537,7 @@ export class Game {
           ev.preventDefault();
           ev.stopPropagation();
           const id = Number((ev.currentTarget as HTMLElement).dataset.handCard);
-          if (!this.bga.players.isCurrentPlayerActive()) return;
+          if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
           if (this.isOpeningMulliganLike() || this.campSelected) {
             if (this.selectedRegroupIds.has(id)) this.selectedRegroupIds.delete(id);
             else this.selectedRegroupIds.add(id);
@@ -1526,9 +1580,10 @@ export class Game {
           const pid = Number((el as HTMLElement).dataset.playerId);
           if (pid !== myId) return;
           const loc = Number((el as HTMLElement).dataset.loc);
+          if (this.actionPending) return;
           if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
             if (this.selectedLocation === loc) {
-              void this.bga.actions.performAction("actAssignScientists", { location: loc });
+              void this.sendAction("actAssignScientists", { location: loc });
               return;
             }
             this.selectedObjectiveIdx = null;
@@ -1582,9 +1637,10 @@ export class Game {
           const pid = Number(m[1]);
           const loc = Number(m[2]);
           if (pid !== myId) return;
+          if (this.actionPending) return;
           if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
             if (this.selectedLocation === loc) {
-              void this.bga.actions.performAction('actAssignScientists', { location: loc });
+              void this.sendAction('actAssignScientists', { location: loc });
               return;
             }
             this.selectedObjectiveIdx = null;
@@ -1625,7 +1681,7 @@ export class Game {
           ev.stopPropagation();
           const pid = Number((el as HTMLElement).dataset.playerId);
           if (pid !== myId) return;
-          if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return;
+          if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return;
           // Camp selection is idempotent: clicking camp again does nothing.
           if (this.campSelected) return;
           this.enterRegroupMode();
@@ -1635,11 +1691,11 @@ export class Game {
     });
     this.root.querySelectorAll("[data-pool-slot]").forEach((el) => {
       el.addEventListener("click", () => {
-        if (!this.bga.players.isCurrentPlayerActive()) return;
+        if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
         if (!this.isReplenishLike()) return;
         const slot = Number((el as HTMLElement).dataset.poolSlot);
         if (this.selectedPoolSlot === slot) {
-          void this.bga.actions.performAction("actTakeAnimal", { pool_slot: slot });
+          void this.sendAction("actTakeAnimal", { pool_slot: slot });
           return;
         }
         this.selectedObjectiveIdx = null;
@@ -1651,7 +1707,7 @@ export class Game {
     this.root.querySelectorAll("[data-obj-idx]").forEach((el) => {
       el.addEventListener("click", () => {
         const idx = Number((el as HTMLElement).dataset.objIdx);
-        if (!this.bga.players.isCurrentPlayerActive()) return;
+        if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
         // Only allow claiming when this player actually 'meets' the objective
         const obj = this.gamedatas.boardState.objectives?.[idx];
         if (!obj) return;
@@ -1661,13 +1717,13 @@ export class Game {
         if (this.isPromptClaimObjectiveLike()) {
           const promptedIdx = this.getPromptedObjectiveIndex();
           if (promptedIdx == null || idx !== promptedIdx) return;
-          void this.bga.actions.performAction("actClaimPromptObjective", { objective_index: idx });
+          void this.sendAction("actClaimPromptObjective", { objective_index: idx });
           return;
         }
 
         if (!this.canSelectObjectiveToClaim()) return;
         if (this.selectedObjectiveIdx === idx) {
-          void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+          void this.sendAction("actClaimObjective", { objective_index: idx });
           return;
         }
         this.selectedObjectiveIdx = idx;
@@ -1714,7 +1770,7 @@ export class Game {
     const effectiveArgs = args ?? this.cachedActionArgs;
 
     this.bga.statusBar.removeActionButtons();
-    if (!this.bga.players.isCurrentPlayerActive()) return;
+    if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
     const sn = stateName.toLowerCase();
     if (sn.includes("promptclaimobjective") || sn.includes("prompt_claim_objective")) {
       const myId = Number(this.bga.players.getCurrentPlayerId());
@@ -1726,7 +1782,7 @@ export class Game {
       const claimLabel = _("Claim objective");
       const skipLabel = _("Don't claim");
       this.bga.statusBar.addActionButton(`${claimLabel}: ${target.title}`, () => {
-        void this.bga.actions.performAction("actClaimPromptObjective", {
+        void this.sendAction("actClaimPromptObjective", {
           objective_index: target.index,
         });
       }, {
@@ -1735,7 +1791,7 @@ export class Game {
       });
 
       this.bga.statusBar.addActionButton(skipLabel, () => {
-        void this.bga.actions.performAction("actSkipPromptObjective", {
+        void this.sendAction("actSkipPromptObjective", {
           objective_index: target.index,
         });
       }, {
@@ -1758,7 +1814,7 @@ export class Game {
       const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(replaceCount));
       this.bga.statusBar.addActionButton(replaceLabel, () => {
         const ids = Array.from(this.selectedRegroupIds);
-        void this.bga.actions.performAction("actMulliganHand", {
+        void this.sendAction("actMulliganHand", {
           card_ids_json: JSON.stringify(ids),
         });
       }, {
@@ -1807,7 +1863,7 @@ export class Game {
           if (!observeMissingSelection) this.optionalUi?.showInvalidObserveHint();
           return;
         }
-        void this.bga.actions.performAction("actObserveAnimal", {
+        void this.sendAction("actObserveAnimal", {
           card_id: this.selectedCardId,
           location: this.selectedLocation,
         });
@@ -1841,7 +1897,7 @@ export class Game {
       const poolCardSelected = this.selectedPoolSlot != null && this.selectedPoolSlot >= 0;
       this.bga.statusBar.addActionButton(_("Draw Card"), () => {
         if (!poolCardSelected || this.selectedPoolSlot == null) return;
-        void this.bga.actions.performAction("actTakeAnimal", { pool_slot: this.selectedPoolSlot });
+        void this.sendAction("actTakeAnimal", { pool_slot: this.selectedPoolSlot });
       }, {
         disabled: !poolCardSelected,
         tooltip: poolCardSelected
@@ -1849,12 +1905,12 @@ export class Game {
           : _("Select a card from the pool to draw."),
       });
       this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
-        void this.bga.actions.performAction("actTakeAnimal", { pool_slot: -1 });
+        void this.sendAction("actTakeAnimal", { pool_slot: -1 });
       });
       const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
     //   console.log("Can mulligan?", can, args);
         this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
-          void this.bga.actions.performAction("actMulliganPool", {});
+          void this.sendAction("actMulliganPool", {});
         }, {
             disabled: !can,
             tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan once per turn, only if you have at least 1 VP."),
@@ -1870,7 +1926,7 @@ export class Game {
       const locationSelected = this.selectedLocation != null;
       this.bga.statusBar.addActionButton(_("Assign Scientists"), () => {
         if (!locationSelected || this.selectedLocation == null) return;
-        void this.bga.actions.performAction("actAssignScientists", { location: this.selectedLocation });
+        void this.sendAction("actAssignScientists", { location: this.selectedLocation });
       }, {
         disabled: !locationSelected,
         tooltip: locationSelected
