@@ -1124,6 +1124,7 @@ class Game extends \Bga\GameFramework\Table
         $claimerName = $this->getPlayerNameById($activePlayerId);
         $objectivesData = Material::getObjectivesData();
         $objectiveTitle = $objectivesData[$oid]['title'] ?? '';
+        $firstClaim = ! $this->objectiveHasBeenClaimed($obj);
 
         $objectives[$objectiveIndex]['players'][$activePlayerId] = 'claimed';
         $this->bga->playerScore->inc($activePlayerId, 5, null);
@@ -1144,21 +1145,23 @@ class Game extends \Bga\GameFramework\Table
         $this->setObjectivesState($objectives);
         $this->setPendingObjectivePrompts($pending);
 
-        foreach ($this->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'objectiveClaimed',
-                clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
-                [
-                    'player_id' => $activePlayerId,
-                    'player_name' => $claimerName,
-                    'objective_index' => $objectiveIndex,
-                    'objective_id' => $oid,
-                    'objective_title' => $objectiveTitle,
-                    'boardState' => $this->getBoardState((int)$pid),
-                ]
-            );
+        if ($firstClaim) {
+            foreach ($this->getNextPlayerTable() as $pid => $_) {
+                if ($pid === 0) continue;
+                $this->bga->notify->player(
+                    (int)$pid,
+                    'objectiveClaimed',
+                    clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
+                    [
+                        'player_id' => $activePlayerId,
+                        'player_name' => $claimerName,
+                        'objective_index' => $objectiveIndex,
+                        'objective_id' => $oid,
+                        'objective_title' => $objectiveTitle,
+                        'boardState' => $this->getBoardState((int)$pid),
+                    ]
+                );
+            }
         }
 
         foreach ($this->getNextPlayerTable() as $pid2 => $_2) {
@@ -1205,27 +1208,30 @@ class Game extends \Bga\GameFramework\Table
         $oid = (int) $obj['id'];
         $title = Material::getObjectivesData()[$oid]['title'] ?? '';
         $playerName = $this->getPlayerNameById($playerId);
+        $firstClaim = ! $this->objectiveHasBeenClaimed($obj);
 
         if ($claim) {
             $objectives[$objectiveIndex]['players'][$playerId] = 'claimed';
             $this->setObjectivesState($objectives);
             $this->bga->playerScore->inc($playerId, 5, null);
 
-            foreach ($this->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'objectiveClaimed',
-                    clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
-                    [
-                        'player_id' => $playerId,
-                        'player_name' => $playerName,
-                        'objective_index' => $objectiveIndex,
-                        'objective_id' => $oid,
-                        'objective_title' => $title,
-                        'boardState' => $this->getBoardState((int)$pid),
-                    ]
-                );
+            if ($firstClaim) {
+                foreach ($this->getNextPlayerTable() as $pid => $_) {
+                    if ($pid === 0) continue;
+                    $this->bga->notify->player(
+                        (int)$pid,
+                        'objectiveClaimed',
+                        clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
+                        [
+                            'player_id' => $playerId,
+                            'player_name' => $playerName,
+                            'objective_index' => $objectiveIndex,
+                            'objective_id' => $oid,
+                            'objective_title' => $title,
+                            'boardState' => $this->getBoardState((int)$pid),
+                        ]
+                    );
+                }
             }
 
             foreach ($this->getNextPlayerTable() as $pid => $_) {
@@ -1249,6 +1255,20 @@ class Game extends \Bga\GameFramework\Table
 
         $this->removePendingObjectivePrompt($playerId, $objectiveIndex);
 
+    }
+
+    /**
+     * @param array{players?: array<int, string>} $obj
+     */
+    private function objectiveHasBeenClaimed(array $obj): bool
+    {
+        foreach ($obj['players'] ?? [] as $st) {
+            if ($st === 'claimed') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function deactivateClaimedObjectives(): void
