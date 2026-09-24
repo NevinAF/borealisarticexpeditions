@@ -187,6 +187,50 @@ html[data-theme=dark] {
   font-weight: 700;
 }
 
+.bae_species_set_tooltip {
+  min-width: 132px;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.bae_species_set_tooltip table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  margin: 0 auto;
+}
+
+.bae_species_set_tooltip th,
+.bae_species_set_tooltip td {
+  padding: 4px 10px;
+  border-bottom: 1px solid rgba(16, 36, 58, 0.16);
+  text-align: center;
+}
+
+.bae_species_set_tooltip th {
+  padding-bottom: 6px;
+}
+
+.bae_species_set_tooltip thead .bae_text_with_icon {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.bae_species_set_tooltip .bae_tooltip_token,
+.bae_species_set_tooltip .bae_vp_inline {
+  width: 1.25em;
+  height: 1.25em;
+  display: block;
+  margin: 0 auto;
+}
+
+.bae_species_set_tooltip p {
+  margin: 10px 0 0;
+  max-width: 260px;
+}
+
 .bae_pool {
   display: grid;
   grid-template-columns: repeat(5, max-content);
@@ -340,6 +384,18 @@ html[data-theme=dark] {
 
 .bae_camp_right {
   left: 86.0084477297%;
+}
+
+.bae_animal_loc_vp_track {
+  position: absolute;
+  left: 86.0084477297%;
+  width: 11.0876451954%;
+  top: 31.25%;
+  height: 44.2307692308%;
+  background: transparent;
+  pointer-events: auto;
+  z-index: 2;
+  cursor: help;
 }
 
 .bae_regroup_hold {
@@ -1376,7 +1432,7 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0.28;
   }
   50% {
-    top: calc(var(--from-t) - 30px);
+    top: calc(var(--from-t) - calc(130px * var(--bae-scale)));
     opacity: 0.16;
   }
   78% {
@@ -1388,11 +1444,11 @@ html[data-theme=dark] .bae_opening_intro {
     left: var(--from-l);
     opacity: 0;
   }
-  22% {
+  40% {
     opacity: 0.28;
   }
   100% {
-    left: calc(var(--from-l) + var(--dx, -60px));
+    left: calc(var(--from-l) + calc(-130px * var(--bae-scale)));
     opacity: 0;
   }
 }
@@ -1402,7 +1458,7 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 1;
   }
   100% {
-    left: calc(var(--from-l) + var(--dx, -60px));
+    left: calc(var(--from-l) + calc(-260px * var(--bae-scale)));
     opacity: 0;
   }
 }

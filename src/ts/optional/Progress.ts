@@ -2,7 +2,7 @@ import { AnimalDefLite, POS_CAMP_L, POS_CAMP_R } from './Legality';
 
 const SPECIES_COUNT = 5;
 const VEHICLE_COUNT = 5;
-const SPECIES_SET_VP = [0, 0, 1, 3, 6, 10, 15, 21];
+export const SPECIES_SET_VP = [0, 0, 1, 3, 6, 10, 15, 21];
 
 function animalDef(
   materials: MaterialsClient,

@@ -2,7 +2,7 @@ const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
 import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
-import { objectiveProgress, scoreScoringCard } from './optional/Progress';
+import { objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
 
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
@@ -211,6 +211,7 @@ export class Game {
     this.root.style.setProperty('--bae-scale', String(scale));
     this.updateSpriteSheetUrls(scale);
     this.updateOpeningIntroOverlay();
+    this.optionalUi?.onBoardScaleChanged();
     this.boardScaleTimeoutAccInterval = 10;
     this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
   }
@@ -823,6 +824,7 @@ export class Game {
       html += `<div id="bae_camp_${pid}_right" class="bae_camp_zone bae_camp_right${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
       html += `<div id="bae_sci_shelf_camp_${pid}_right" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 4)}</div>`;
       html += `</div>`;
+      html += `<div id="bae_animal_loc_vp_${pid}" class="bae_animal_loc_vp_track" data-player-id="${pid}" aria-label="${this.escapeHtml(_('Animal location VP'))}"></div>`;
 
       for (let loc = 0; loc < 3; loc++) {
         const sel = isSelf && this.selectedLocation === loc && !this.campSelected ? " bae_loc_selected" : "";
@@ -1157,6 +1159,13 @@ export class Game {
         }
       }
     }
+
+    const speciesSetHtml = this.speciesSetVpTooltipHtml();
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const id = `bae_animal_loc_vp_${Number(pidStr)}`;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
+    }
   }
 
   private renderTrackColumn(player_id: number, track: TrackUiClient, location: number, flagDepth: number): string {
@@ -1358,7 +1367,31 @@ export class Game {
 
   private vpInlineIcon(): string {
     const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
-    return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+    return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="${this.escapeHtml(_('VP'))}" draggable="false"/></span>`;
+  }
+
+  private speciesSetVpTooltipHtml(): string {
+    const animalIcon = `${this.bga.images.getImgUrl()}Tokens/animal_obj.webp`;
+    const vpIcon = this.vpInlineIcon();
+    const rows = [1, 2, 3, 4, 5, 6, 7].map((count) => {
+      const vp = SPECIES_SET_VP[count] ?? 0;
+      return `<tr><td>${count}</td><td>${vp}</td></tr>`;
+    }).join('');
+    const blurb = `${vpIcon} ${this.escapeHtml(_('awarded for the set of animals of the same species you have in a single location. Each species in each location is scored independently according to the table above.'))}`;
+    return `
+      <div class="bae_species_set_tooltip">
+        <table>
+          <thead>
+            <tr>
+              <th><img class="bae_tooltip_token" src="${animalIcon}" alt="${this.escapeHtml(_('Animals'))}" draggable="false"/></th>
+              <th>${vpIcon}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p>${blurb}</p>
+      </div>
+    `;
   }
 
   private tooltipTextHtml(text: string): string {

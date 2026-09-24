@@ -79,6 +79,25 @@ function containingBlock(clone: HTMLElement, fallback: HTMLElement): HTMLElement
   return parent instanceof HTMLElement ? parent : fallback;
 }
 
+type PreviewDestFn = () => DOMRect | null;
+
+type PreviewAnchor = {
+  source: HTMLElement;
+  dest?: PreviewDestFn;
+};
+
+const previewAnchors = new WeakMap<HTMLElement, PreviewAnchor>();
+
+function baeScale(root: HTMLElement): number {
+  const n = Number.parseFloat(getComputedStyle(root).getPropertyValue('--bae-scale'));
+  return Number.isFinite(n) && n > 0 ? n : 0.12;
+}
+
+/** Pixel travel authored at --bae-scale 0.12, expressed as a scaled CSS length. */
+function animDx(pxAt012: number): string {
+  return `calc(${(pxAt012 / 0.12).toFixed(4)}px * var(--bae-scale, 0.12))`;
+}
+
 /** Move a clone into `parent` without changing its on-screen position. */
 export function adoptClone(clone: HTMLElement, parent: HTMLElement): void {
   const r = clone.getBoundingClientRect();
@@ -273,7 +292,14 @@ export function startTrail(
   root: HTMLElement,
   extraClass = '',
 ): HTMLElement {
-  return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass);
+  return startTrailToRect(
+    source,
+    dest.getBoundingClientRect(),
+    durationMs,
+    root,
+    extraClass,
+    () => dest.isConnected ? dest.getBoundingClientRect() : null,
+  );
 }
 
 /** Leave a faded scientist in place and loop an opaque copy toward the destination. */
@@ -283,7 +309,16 @@ export function startScientistTrail(
   durationMs: number,
   root: HTMLElement,
 ): HTMLElement {
-  return startScientistTrailToRect(source, dest.getBoundingClientRect(), durationMs, root);
+  source.classList.add('bae_preview_fade_left');
+  source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+  return startTrailToRect(
+    source,
+    dest.getBoundingClientRect(),
+    durationMs,
+    root,
+    'bae_sci_mover',
+    () => dest.isConnected ? dest.getBoundingClientRect() : null,
+  );
 }
 
 export function startScientistTrailToRect(
@@ -291,10 +326,11 @@ export function startScientistTrailToRect(
   to: DOMRect,
   durationMs: number,
   root: HTMLElement,
+  destFn?: PreviewDestFn,
 ): HTMLElement {
   source.classList.add('bae_preview_fade_left');
   source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-  return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover');
+  return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover', destFn);
 }
 
 export function startTrailToRect(
@@ -303,6 +339,7 @@ export function startTrailToRect(
   durationMs: number,
   root: HTMLElement,
   extraClass = '',
+  destFn?: PreviewDestFn,
 ): HTMLElement {
   const from = source.getBoundingClientRect();
   const layer = motionLayer(root);
@@ -331,6 +368,10 @@ export function startTrailToRect(
   clone.style.setProperty('--to-t', `${loc.top + dy}px`);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   layer.appendChild(clone);
+  previewAnchors.set(clone, {
+    source,
+    dest: destFn ?? (() => to),
+  });
   return clone;
 }
 
@@ -356,9 +397,36 @@ export function startDiscardGhost(source: HTMLElement, root: HTMLElement, cardId
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', '1.85s');
-  clone.style.setProperty('--dx', '-10px');
+  clone.style.setProperty('--dx', animDx(-60));
   if (cardId != null) clone.dataset.previewCard = String(cardId);
+  previewAnchors.set(clone, { source });
   return clone;
+}
+
+/** Recompute looping preview coords after layout/scale changes without restarting the loop. */
+export function retargetPreviewClones(root: HTMLElement): void {
+  if (!root) return;
+  root.querySelectorAll('.bae_discard_ghost, .bae_trail_ghost').forEach((node) => {
+    const clone = node as HTMLElement;
+    const anchor = previewAnchors.get(clone);
+    if (!anchor || !anchor.source.isConnected) return;
+    copySpriteVars(root, clone);
+    const from = anchor.source.getBoundingClientRect();
+    const parent = containingBlock(clone, root);
+    const loc = localRect(parent, from);
+    clone.style.left = `${loc.left}px`;
+    clone.style.top = `${loc.top}px`;
+    clone.style.width = `${loc.width}px`;
+    clone.style.height = `${loc.height}px`;
+    clone.style.setProperty('--from-l', `${loc.left}px`);
+    clone.style.setProperty('--from-t', `${loc.top}px`);
+    const to = anchor.dest?.() ?? null;
+    if (!to) return;
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    clone.style.setProperty('--to-l', `${loc.left + dx}px`);
+    clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+  });
 }
 
 /** One-shot slide-off used when a hand card is actually discarded. */
@@ -372,7 +440,8 @@ export function flyDiscardAway(
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-  clone.style.setProperty('--dx', `${-Math.max(48, from.width * 0.4)}px`);
+  const minDx = (48 / 0.12) * baeScale(root);
+  clone.style.setProperty('--dx', `${-Math.max(minDx, from.width * 0.4)}px`);
   source.style.visibility = 'hidden';
   return wait(durationMs).then(() => { clone.remove(); });
 }

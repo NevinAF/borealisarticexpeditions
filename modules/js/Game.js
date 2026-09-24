@@ -181,6 +181,15 @@ function containingBlock(clone, fallback) {
     const parent = clone.offsetParent;
     return parent instanceof HTMLElement ? parent : fallback;
 }
+const previewAnchors = new WeakMap();
+function baeScale(root) {
+    const n = Number.parseFloat(getComputedStyle(root).getPropertyValue('--bae-scale'));
+    return Number.isFinite(n) && n > 0 ? n : 0.12;
+}
+/** Pixel travel authored at --bae-scale 0.12, expressed as a scaled CSS length. */
+function animDx(pxAt012) {
+    return `calc(${(pxAt012 / 0.12).toFixed(4)}px * var(--bae-scale, 0.12))`;
+}
 /** Move a clone into `parent` without changing its on-screen position. */
 function adoptClone(clone, parent) {
     const r = clone.getBoundingClientRect();
@@ -333,18 +342,20 @@ function flipElements(els, apply, durationMs) {
 }
 /** Looping ghost that travels from source rect toward dest rect. */
 function startTrail(source, dest, durationMs, root, extraClass = '') {
-    return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass);
+    return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass, () => dest.isConnected ? dest.getBoundingClientRect() : null);
 }
 /** Leave a faded scientist in place and loop an opaque copy toward the destination. */
 function startScientistTrail(source, dest, durationMs, root) {
-    return startScientistTrailToRect(source, dest.getBoundingClientRect(), durationMs, root);
-}
-function startScientistTrailToRect(source, to, durationMs, root) {
     source.classList.add('bae_preview_fade_left');
     source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-    return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover');
+    return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, 'bae_sci_mover', () => dest.isConnected ? dest.getBoundingClientRect() : null);
 }
-function startTrailToRect(source, to, durationMs, root, extraClass = '') {
+function startScientistTrailToRect(source, to, durationMs, root, destFn) {
+    source.classList.add('bae_preview_fade_left');
+    source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+    return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover', destFn);
+}
+function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn) {
     const from = source.getBoundingClientRect();
     const layer = motionLayer(root);
     const loc = localRect(layer, from);
@@ -372,6 +383,10 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '') {
     clone.style.setProperty('--to-t', `${loc.top + dy}px`);
     clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
     layer.appendChild(clone);
+    previewAnchors.set(clone, {
+        source,
+        dest: destFn ?? (() => to),
+    });
     return clone;
 }
 /** Static clone parked at a destination (card placement preview). */
@@ -390,10 +405,39 @@ function startDiscardGhost(source, root, cardId) {
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
     clone.style.setProperty('--dur', '1.85s');
-    clone.style.setProperty('--dx', '-10px');
+    clone.style.setProperty('--dx', animDx(-60));
     if (cardId != null)
         clone.dataset.previewCard = String(cardId);
+    previewAnchors.set(clone, { source });
     return clone;
+}
+/** Recompute looping preview coords after layout/scale changes without restarting the loop. */
+function retargetPreviewClones(root) {
+    if (!root)
+        return;
+    root.querySelectorAll('.bae_discard_ghost, .bae_trail_ghost').forEach((node) => {
+        const clone = node;
+        const anchor = previewAnchors.get(clone);
+        if (!anchor || !anchor.source.isConnected)
+            return;
+        copySpriteVars(root, clone);
+        const from = anchor.source.getBoundingClientRect();
+        const parent = containingBlock(clone, root);
+        const loc = localRect(parent, from);
+        clone.style.left = `${loc.left}px`;
+        clone.style.top = `${loc.top}px`;
+        clone.style.width = `${loc.width}px`;
+        clone.style.height = `${loc.height}px`;
+        clone.style.setProperty('--from-l', `${loc.left}px`);
+        clone.style.setProperty('--from-t', `${loc.top}px`);
+        const to = anchor.dest?.() ?? null;
+        if (!to)
+            return;
+        const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+        const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+        clone.style.setProperty('--to-l', `${loc.left + dx}px`);
+        clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+    });
 }
 /** One-shot slide-off used when a hand card is actually discarded. */
 function flyDiscardAway(source, root, durationMs) {
@@ -402,7 +446,8 @@ function flyDiscardAway(source, root, durationMs) {
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
     clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-    clone.style.setProperty('--dx', `${-Math.max(48, from.width * 0.4)}px`);
+    const minDx = (48 / 0.12) * baeScale(root);
+    clone.style.setProperty('--dx', `${-Math.max(minDx, from.width * 0.4)}px`);
     source.style.visibility = 'hidden';
     return wait(durationMs).then(() => { clone.remove(); });
 }
@@ -791,6 +836,11 @@ class OptionalUi {
             return;
         }
         this.updateActionPreviews();
+    }
+    onBoardScaleChanged() {
+        if (this.previewLocked || this.resolving)
+            return;
+        retargetPreviewClones(this.host.root);
     }
     isObserveSelectionLegal() {
         const cardId = this.host.selectedCardId;
@@ -1310,7 +1360,7 @@ class OptionalUi {
         byDest.forEach((sources, to) => {
             const dest = this.shelfEl(pid, to);
             if (dest)
-                this.trailScientistsToEmptyGroup(sources, dest.getBoundingClientRect(), to, pid, ms);
+                this.trailScientistsToEmptyGroup(sources, () => dest.getBoundingClientRect(), to, pid, ms);
         });
         const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
         const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
@@ -1326,8 +1376,11 @@ class OptionalUi {
                 startScientistTrail(flag, dest, ms, this.host.root);
         }
         else {
-            const r = flag.getBoundingClientRect();
-            startScientistTrailToRect(flag, new DOMRect(r.left, r.top - 7, r.width, r.height), ms, this.host.root);
+            const stuckDest = () => {
+                const r = flag.getBoundingClientRect();
+                return new DOMRect(r.left, r.top - 7, r.width, r.height);
+            };
+            startScientistTrailToRect(flag, stuckDest(), ms, this.host.root, stuckDest);
         }
     }
     previewAssign(pid, loc) {
@@ -1336,7 +1389,7 @@ class OptionalUi {
             return;
         const sources = this.holdMeeples(pid);
         const from = sources.length > 0 ? sources : this.campMeeples(pid);
-        this.trailScientistsToEmptyGroup(from, dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
+        this.trailScientistsToEmptyGroup(from, () => dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
     }
     previewRegroupPickup(pid) {
         const ms = this.previewLoopMs();
@@ -1349,16 +1402,21 @@ class OptionalUi {
             return;
         const hold = this.host.root.querySelector(`#bae_regroup_hold_${pid}_${side}`);
         const camp = this.host.root.querySelector(`#bae_camp_${pid}_${side}`);
-        const destBox = hold?.getBoundingClientRect()
-            ?? (camp
-                ? new DOMRect(camp.getBoundingClientRect().left, camp.getBoundingClientRect().top - camp.getBoundingClientRect().height * 1.2, camp.getBoundingClientRect().width, camp.getBoundingClientRect().height)
-                : null);
-        if (!destBox)
+        const getDestBox = () => {
+            if (hold?.isConnected)
+                return hold.getBoundingClientRect();
+            if (!camp?.isConnected)
+                return null;
+            const r = camp.getBoundingClientRect();
+            return new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
+        };
+        if (!getDestBox())
             return;
-        this.trailScientistsToEmptyGroup(sources, destBox, campLoc, pid, ms);
+        this.trailScientistsToEmptyGroup(sources, getDestBox, campLoc, pid, ms);
     }
-    trailScientistsToEmptyGroup(sources, destBox, layoutLoc, pid, ms) {
-        if (sources.length === 0 || destBox.width < 1 || destBox.height < 1)
+    trailScientistsToEmptyGroup(sources, getDestBox, layoutLoc, pid, ms) {
+        const destBox = getDestBox();
+        if (sources.length === 0 || !destBox || destBox.width < 1 || destBox.height < 1)
             return;
         const sci = { 0: [], 1: [], 2: [] };
         for (const el of sources) {
@@ -1375,7 +1433,11 @@ class OptionalUi {
                 continue;
             const el = unused.splice(idx, 1)[0];
             const dest = this.meepleSlotRectFromBox(destBox, slot, el);
-            const clone = startScientistTrailToRect(el, dest, ms, this.host.root);
+            const destFn = () => {
+                const box = getDestBox();
+                return box ? this.meepleSlotRectFromBox(box, slot, el) : null;
+            };
+            const clone = startScientistTrailToRect(el, dest, ms, this.host.root, destFn);
             trails.push({ el: clone, top: dest.top, left: dest.left });
         }
         stackByScreenPosition(trails);
@@ -1939,6 +2001,7 @@ class OptionalUi {
             '.bae_obj',
             '.bae_score_card',
             '.bae_camp_zone',
+            '.bae_animal_loc_vp_track',
             '.bae_regroup_hold',
             '.bae_location_zone',
         ].join(','));
@@ -2456,6 +2519,7 @@ class Game {
         this.root.style.setProperty('--bae-scale', String(scale));
         this.updateSpriteSheetUrls(scale);
         this.updateOpeningIntroOverlay();
+        this.optionalUi?.onBoardScaleChanged();
         this.boardScaleTimeoutAccInterval = 10;
         this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
     }
@@ -3031,6 +3095,7 @@ class Game {
             html += `<div id="bae_camp_${pid}_right" class="bae_camp_zone bae_camp_right${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
             html += `<div id="bae_sci_shelf_camp_${pid}_right" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 4)}</div>`;
             html += `</div>`;
+            html += `<div id="bae_animal_loc_vp_${pid}" class="bae_animal_loc_vp_track" data-player-id="${pid}" aria-label="${this.escapeHtml(_('Animal location VP'))}"></div>`;
             for (let loc = 0; loc < 3; loc++) {
                 const sel = isSelf && this.selectedLocation === loc && !this.campSelected ? " bae_loc_selected" : "";
                 const posClass = loc === 0 ? " bae_slot_left" : loc === 1 ? " bae_slot_mid" : " bae_slot_right";
@@ -3328,6 +3393,15 @@ class Game {
                 }
             }
         }
+        const speciesSetHtml = this.speciesSetVpTooltipHtml();
+        for (const pidStr of Object.keys(this.gamedatas.players)) {
+            const id = `bae_animal_loc_vp_${Number(pidStr)}`;
+            try {
+                this.bga.gameui.removeTooltip(id);
+            }
+            catch (_) { }
+            this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
+        }
     }
     renderTrackColumn(player_id, track, location, flagDepth) {
         const safeDepth = Math.max(0, Math.min(7, flagDepth));
@@ -3518,7 +3592,30 @@ class Game {
     }
     vpInlineIcon() {
         const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
-        return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="" draggable="false"/></span>`;
+        return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="${this.escapeHtml(_('VP'))}" draggable="false"/></span>`;
+    }
+    speciesSetVpTooltipHtml() {
+        const animalIcon = `${this.bga.images.getImgUrl()}Tokens/animal_obj.webp`;
+        const vpIcon = this.vpInlineIcon();
+        const rows = [1, 2, 3, 4, 5, 6, 7].map((count) => {
+            const vp = SPECIES_SET_VP[count] ?? 0;
+            return `<tr><td>${count}</td><td>${vp}</td></tr>`;
+        }).join('');
+        const blurb = `${vpIcon} ${this.escapeHtml(_('awarded for the set of animals of the same species you have in a single location. Each species in each location is scored independently according to the table above.'))}`;
+        return `
+      <div class="bae_species_set_tooltip">
+        <table>
+          <thead>
+            <tr>
+              <th><img class="bae_tooltip_token" src="${animalIcon}" alt="${this.escapeHtml(_('Animals'))}" draggable="false"/></th>
+              <th>${vpIcon}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p>${blurb}</p>
+      </div>
+    `;
     }
     tooltipTextHtml(text) {
         return this.escapeHtml(text).replace(/\{VP\}/g, this.vpInlineIcon());

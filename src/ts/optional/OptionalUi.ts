@@ -19,6 +19,7 @@ import {
   startDiscardGhost,
   startScientistTrail,
   startScientistTrailToRect,
+  retargetPreviewClones,
   wait,
 } from './Motion';
 import {
@@ -134,6 +135,11 @@ export class OptionalUi {
       return;
     }
     this.updateActionPreviews();
+  }
+
+  onBoardScaleChanged(): void {
+    if (this.previewLocked || this.resolving) return;
+    retargetPreviewClones(this.host.root);
   }
 
   isObserveSelectionLegal(): boolean {
@@ -664,7 +670,7 @@ export class OptionalUi {
     }
     byDest.forEach((sources, to) => {
       const dest = this.shelfEl(pid, to);
-      if (dest) this.trailScientistsToEmptyGroup(sources, dest.getBoundingClientRect(), to, pid, ms);
+      if (dest) this.trailScientistsToEmptyGroup(sources, () => dest.getBoundingClientRect(), to, pid, ms);
     });
     const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
     const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
@@ -677,8 +683,11 @@ export class OptionalUi {
       const dest = this.trackEl(pid, loc, Math.min(7, flagDepth + 1));
       if (dest) startScientistTrail(flag, dest, ms, this.host.root);
     } else {
-      const r = flag.getBoundingClientRect();
-      startScientistTrailToRect(flag, new DOMRect(r.left, r.top - 7, r.width, r.height), ms, this.host.root);
+      const stuckDest = (): DOMRect => {
+        const r = flag.getBoundingClientRect();
+        return new DOMRect(r.left, r.top - 7, r.width, r.height);
+      };
+      startScientistTrailToRect(flag, stuckDest(), ms, this.host.root, stuckDest);
     }
   }
 
@@ -687,7 +696,7 @@ export class OptionalUi {
     if (!dest) return;
     const sources = this.holdMeeples(pid);
     const from = sources.length > 0 ? sources : this.campMeeples(pid);
-    this.trailScientistsToEmptyGroup(from, dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
+    this.trailScientistsToEmptyGroup(from, () => dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
   }
 
   private previewRegroupPickup(pid: number): void {
@@ -703,27 +712,25 @@ export class OptionalUi {
     if (sources.length === 0) return;
     const hold = this.host.root.querySelector(`#bae_regroup_hold_${pid}_${side}`) as HTMLElement | null;
     const camp = this.host.root.querySelector(`#bae_camp_${pid}_${side}`) as HTMLElement | null;
-    const destBox = hold?.getBoundingClientRect()
-      ?? (camp
-        ? new DOMRect(
-          camp.getBoundingClientRect().left,
-          camp.getBoundingClientRect().top - camp.getBoundingClientRect().height * 1.2,
-          camp.getBoundingClientRect().width,
-          camp.getBoundingClientRect().height,
-        )
-        : null);
-    if (!destBox) return;
-    this.trailScientistsToEmptyGroup(sources, destBox, campLoc, pid, ms);
+    const getDestBox = (): DOMRect | null => {
+      if (hold?.isConnected) return hold.getBoundingClientRect();
+      if (!camp?.isConnected) return null;
+      const r = camp.getBoundingClientRect();
+      return new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
+    };
+    if (!getDestBox()) return;
+    this.trailScientistsToEmptyGroup(sources, getDestBox, campLoc, pid, ms);
   }
 
   private trailScientistsToEmptyGroup(
     sources: HTMLElement[],
-    destBox: DOMRect,
+    getDestBox: () => DOMRect | null,
     layoutLoc: number,
     pid: number,
     ms: number,
   ): void {
-    if (sources.length === 0 || destBox.width < 1 || destBox.height < 1) return;
+    const destBox = getDestBox();
+    if (sources.length === 0 || !destBox || destBox.width < 1 || destBox.height < 1) return;
     const sci: Record<number, number[]> = { 0: [], 1: [], 2: [] };
     for (const el of sources) {
       const color = Number(el.dataset.scientist);
@@ -737,7 +744,11 @@ export class OptionalUi {
       if (idx < 0) continue;
       const el = unused.splice(idx, 1)[0];
       const dest = this.meepleSlotRectFromBox(destBox, slot, el);
-      const clone = startScientistTrailToRect(el, dest, ms, this.host.root);
+      const destFn = (): DOMRect | null => {
+        const box = getDestBox();
+        return box ? this.meepleSlotRectFromBox(box, slot, el) : null;
+      };
+      const clone = startScientistTrailToRect(el, dest, ms, this.host.root, destFn);
       trails.push({ el: clone, top: dest.top, left: dest.left });
     }
     stackByScreenPosition(trails);
@@ -1329,6 +1340,7 @@ export class OptionalUi {
       '.bae_obj',
       '.bae_score_card',
       '.bae_camp_zone',
+      '.bae_animal_loc_vp_track',
       '.bae_regroup_hold',
       '.bae_location_zone',
     ].join(','));
