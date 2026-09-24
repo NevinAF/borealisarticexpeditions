@@ -100,6 +100,8 @@ class OpeningMulligan extends GameState
             );
         }
 
+        $g->recordOpeningMulliganStats($currentPlayerId, count($ids));
+
         $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, Gameplay::class);
         if ($finished) {
             $this->game->gamestate->changeActivePlayer($this->game->getRoundLeaderId());

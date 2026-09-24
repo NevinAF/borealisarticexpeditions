@@ -385,6 +385,8 @@ class Game extends \Bga\GameFramework\Table
             'pending_objective_prompts' => $this->getPendingObjectivePrompts(),
             'last_returned_counts' => $this->getLastReturnedCounts(),
             'player_scores' => $scores,
+            'player_stats' => $this->captureIncrementalPlayerStats(),
+            'table_stats' => $this->captureIncrementalTableStats(),
         ];
     }
 
@@ -499,6 +501,8 @@ class Game extends \Bga\GameFramework\Table
         foreach ($snap['player_scores'] ?? [] as $pid => $score) {
             $this->bga->playerScore->set((int) $pid, (int) $score, null);
         }
+        $this->restoreIncrementalPlayerStats($snap['player_stats'] ?? []);
+        $this->restoreIncrementalTableStats($snap['table_stats'] ?? []);
 
         $undoType = (string) ($undo['type'] ?? '');
         $this->clearUndoSnapshot();
@@ -1362,6 +1366,7 @@ class Game extends \Bga\GameFramework\Table
         }
 
         $this->recomputeTieBreakScores($preEndTokenPoints);
+        $this->applyEndGameStatistics($preEndTokenPoints);
     }
 
     private function getFurthestExplorationFlagForTieBreak(int $playerId): int
@@ -1605,6 +1610,418 @@ class Game extends \Bga\GameFramework\Table
         return $vp;
     }
 
+    /** @return list<int> */
+    private function seatedPlayerIds(): array
+    {
+        $ids = [];
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ((int) $pid === 0) {
+                continue;
+            }
+            $ids[] = (int) $pid;
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Action counters that cannot be reconstructed from the final board.
+     *
+     * @return list<string>
+     */
+    private function incrementalPlayerStatNames(): array
+    {
+        return [
+            'turns_number',
+            'regroups',
+            'pool_mulligans',
+            'opening_mulligan_cards',
+            'cards_discarded_regroup',
+            'pool_cards_taken',
+            'deck_cards_drawn',
+            'scientists_returned',
+            'vp_from_regroup',
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function incrementalTableStatNames(): array
+    {
+        return [
+            'turns_number',
+            'rounds_number',
+            'regroups',
+            'pool_mulligans',
+            'opening_mulligan_cards',
+            'cards_discarded_regroup',
+            'pool_cards_taken',
+            'deck_cards_drawn',
+            'scientists_returned',
+        ];
+    }
+
+    private function claimedObjectiveStatName(int $objectiveId): ?string
+    {
+        return match ($objectiveId) {
+            Material::OBJECTIVE_SPECIALISTS_RETREAT => 'claimed_specialists_retreat',
+            Material::OBJECTIVE_COMPARING_NOTES => 'claimed_comparing_notes',
+            Material::OBJECTIVE_MORNING_SHIFT => 'claimed_morning_shift',
+            Material::OBJECTIVE_SPLITTING_UP => 'claimed_splitting_up',
+            Material::OBJECTIVE_BALANCED_ECOSYSTEM => 'claimed_balanced_ecosystem',
+            Material::OBJECTIVE_RICHNESS_OF_NATURE => 'claimed_richness_of_nature',
+            Material::OBJECTIVE_SPOTTING_LIST => 'claimed_spotting_list',
+            Material::OBJECTIVE_FAVORITE_RESEARCH_OBJECT => 'claimed_favorite_research_object',
+            Material::OBJECTIVE_ORGANIZED_EXPEDITION => 'claimed_organized_expedition',
+            Material::OBJECTIVE_CLIMBING_THE_AREA => 'claimed_climbing_the_area',
+            Material::OBJECTIVE_BOLD_EXPLORERS => 'claimed_bold_explorers',
+            Material::OBJECTIVE_PROMISING_DIRECTION => 'claimed_promising_direction',
+            default => null,
+        };
+    }
+
+    private function scoringCardVpStatName(int $scoringId): ?string
+    {
+        return match ($scoringId) {
+            Material::SCORE_COMMON_DESTINATION => 'vp_scoring_common_destination',
+            Material::SCORE_EXPANSIVE_SPECIES => 'vp_scoring_expansive_species',
+            Material::SCORE_FAREWELL_PARTY => 'vp_scoring_farewell_party',
+            Material::SCORE_INTERSPECIES => 'vp_scoring_interspecies',
+            Material::SCORE_MATING_SEASON => 'vp_scoring_mating_season',
+            Material::SCORE_OUTER_LANDS => 'vp_scoring_outer_lands',
+            Material::SCORE_POPULAR_VEHICLE => 'vp_scoring_popular_vehicle',
+            Material::SCORE_SAFE_RETURN => 'vp_scoring_safe_return',
+            Material::SCORE_UNTRODDEN_PATH => 'vp_scoring_untrodden_path',
+            Material::SCORE_TERRITORIAL_ANIMALS => 'vp_scoring_territorial_animals',
+            default => null,
+        };
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function speciesStatNames(): array
+    {
+        return [
+            Material::SPECIES_POLAR_BEAR => 'polar_bears',
+            Material::SPECIES_ARCTIC_FOX => 'arctic_foxes',
+            Material::SPECIES_SNOWY_OWL => 'snowy_owls',
+            Material::SPECIES_HARP_SEAL => 'harp_seals',
+            Material::SPECIES_PUFFIN => 'puffins',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function vehicleStatNames(): array
+    {
+        return [
+            Material::VEHICLE_SLEIGH => 'sleighs',
+            Material::VEHICLE_ZEPPELIN => 'zeppelins',
+            Material::VEHICLE_SUBMARINE => 'submarines',
+            Material::VEHICLE_KAYAK => 'kayaks',
+            Material::VEHICLE_SKIS => 'skis',
+        ];
+    }
+
+    private function initGameStatistics(): void
+    {
+        $this->bga->tableStats->init([
+            'turns_number',
+            'rounds_number',
+            'objectives_claimed',
+            'animals_observed',
+            'regroups',
+            'pool_mulligans',
+            'opening_mulligan_cards',
+            'cards_discarded_regroup',
+            'pool_cards_taken',
+            'deck_cards_drawn',
+            'scientists_returned',
+            'scoring_card_1',
+            'scoring_card_2',
+            'animal_objective',
+            'scientist_objective',
+            'vehicle_objective',
+        ], 0);
+        $this->bga->playerStats->init([
+            'turns_number',
+            'animals_observed',
+            'regroups',
+            'pool_mulligans',
+            'opening_mulligan_cards',
+            'cards_discarded_regroup',
+            'pool_cards_taken',
+            'deck_cards_drawn',
+            'scientists_returned',
+            'scientists_in_camps',
+            'objectives_claimed',
+            'vp_from_tokens',
+            'vp_from_objectives',
+            'vp_from_regroup',
+            'vp_from_species_sets',
+            'vp_from_exploration',
+            'vp_from_animal_bonuses',
+            'vp_from_scoring_cards',
+            'animals_left',
+            'animals_middle',
+            'animals_right',
+            'max_location_animals',
+            'polar_bears',
+            'arctic_foxes',
+            'snowy_owls',
+            'harp_seals',
+            'puffins',
+            'sleighs',
+            'zeppelins',
+            'submarines',
+            'kayaks',
+            'skis',
+            'flag_left',
+            'flag_middle',
+            'flag_right',
+            'deepest_flag',
+            'flag_movement',
+        ], 0);
+
+        $scoringIds = $this->getScoringCardIds();
+        $this->bga->tableStats->set('scoring_card_1', (int) ($scoringIds[0] ?? 0));
+        $this->bga->tableStats->set('scoring_card_2', (int) ($scoringIds[1] ?? 0));
+        foreach ($scoringIds as $sid) {
+            $stat = $this->scoringCardVpStatName((int) $sid);
+            if ($stat !== null) {
+                $this->bga->playerStats->init($stat, 0);
+            }
+        }
+
+        $objectives = $this->getObjectivesState();
+        $typeKeys = ['animal_objective', 'scientist_objective', 'vehicle_objective'];
+        foreach ($objectives as $index => $obj) {
+            $oid = (int) ($obj['id'] ?? 0);
+            if (isset($typeKeys[$index])) {
+                $this->bga->tableStats->set($typeKeys[$index], $oid);
+            }
+            $claimedStat = $this->claimedObjectiveStatName($oid);
+            if ($claimedStat !== null) {
+                $this->bga->playerStats->init($claimedStat, false);
+            }
+        }
+    }
+
+    /**
+     * @return array<int, array<string, int|float|bool>>
+     */
+    private function captureIncrementalPlayerStats(): array
+    {
+        $out = [];
+        foreach ($this->seatedPlayerIds() as $pid) {
+            foreach ($this->incrementalPlayerStatNames() as $name) {
+                $out[$pid][$name] = $this->bga->playerStats->get($name, $pid);
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, int|float|bool>
+     */
+    private function captureIncrementalTableStats(): array
+    {
+        $out = [];
+        foreach ($this->incrementalTableStatNames() as $name) {
+            $out[$name] = $this->bga->tableStats->get($name);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int, array<string, int|float|bool>> $stats
+     */
+    private function restoreIncrementalPlayerStats(array $stats): void
+    {
+        foreach ($stats as $pid => $values) {
+            if (! is_array($values)) {
+                continue;
+            }
+            $pid = (int) $pid;
+            foreach ($values as $name => $value) {
+                $this->bga->playerStats->set((string) $name, $value, $pid);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, int|float|bool> $stats
+     */
+    private function restoreIncrementalTableStats(array $stats): void
+    {
+        foreach ($stats as $name => $value) {
+            $this->bga->tableStats->set((string) $name, $value);
+        }
+    }
+
+    public function recordPlayerTurn(int $playerId): void
+    {
+        $this->bga->playerStats->inc('turns_number', 1, $playerId, true);
+    }
+
+    public function recordRegroupStats(int $playerId, int $discarded, int $scientistsReturned): void
+    {
+        $this->recordPlayerTurn($playerId);
+        $this->bga->playerStats->inc('regroups', 1, $playerId, true);
+        if ($discarded > 0) {
+            $this->bga->playerStats->inc('cards_discarded_regroup', $discarded, $playerId, true);
+            $this->recordDeckCardsDrawn($playerId, $discarded);
+        }
+        if ($scientistsReturned > 0) {
+            $this->bga->playerStats->inc('scientists_returned', $scientistsReturned, $playerId, true);
+            $this->bga->playerStats->inc('vp_from_regroup', $scientistsReturned, $playerId);
+        }
+    }
+
+    public function recordPoolMulliganStats(int $playerId): void
+    {
+        $this->bga->playerStats->inc('pool_mulligans', 1, $playerId, true);
+    }
+
+    public function recordOpeningMulliganStats(int $playerId, int $discarded): void
+    {
+        if ($discarded <= 0) {
+            return;
+        }
+        $this->bga->playerStats->inc('opening_mulligan_cards', $discarded, $playerId, true);
+        $this->recordDeckCardsDrawn($playerId, $discarded);
+    }
+
+    public function recordPoolCardTaken(int $playerId): void
+    {
+        $this->bga->playerStats->inc('pool_cards_taken', 1, $playerId, true);
+    }
+
+    public function recordDeckCardsDrawn(int $playerId, int $count = 1): void
+    {
+        if ($count <= 0) {
+            return;
+        }
+        $this->bga->playerStats->inc('deck_cards_drawn', $count, $playerId, true);
+    }
+
+    public function recordRoundEnded(): void
+    {
+        $this->bga->tableStats->inc('rounds_number', 1);
+    }
+
+    /**
+     * @param array<int, int> $preEndTokenPoints
+     */
+    private function applyEndGameStatistics(array $preEndTokenPoints): void
+    {
+        $boards = $this->getBoards();
+        $publicBoards = $this->getPublicBoards();
+        $flags = $this->getFlags();
+        $sci = $this->getScientists();
+        $scoringIds = $this->getScoringCardIds();
+        $objectives = $this->getObjectivesState();
+        $speciesStats = $this->speciesStatNames();
+        $vehicleStats = $this->vehicleStatNames();
+        $locationStats = ['animals_left', 'animals_middle', 'animals_right'];
+        $flagStats = ['flag_left', 'flag_middle', 'flag_right'];
+        $tableAnimals = 0;
+        $tableClaimed = 0;
+
+        foreach ($this->seatedPlayerIds() as $pid) {
+            $this->bga->playerStats->set('vp_from_tokens', (int) ($preEndTokenPoints[$pid] ?? 0), $pid);
+
+            $speciesCounts = array_fill(0, Material::SPECIES_COUNT, 0);
+            $vehicleCounts = array_fill(0, Material::VEHICLE_COUNT, 0);
+            $locCounts = [0, 0, 0];
+            $setVp = 0;
+            $bonusVp = 0;
+            foreach ([0, 1, 2] as $loc) {
+                $pile = $boards[$pid][$loc] ?? [];
+                $locCounts[$loc] = count($pile);
+                foreach ($pile as $cid) {
+                    $def = self::animalDefById((int) $cid);
+                    $speciesCounts[(int) $def['species']]++;
+                    $vehicleCounts[(int) $def['vehicle']]++;
+                    $bonusVp += (int) ($def['bonus_vp'] ?? 0);
+                }
+                $setVp += $this->scoreSpeciesSets($publicBoards[$pid][$loc] ?? []);
+            }
+            $animals = array_sum($locCounts);
+            $tableAnimals += $animals;
+            $this->bga->playerStats->set('animals_observed', $animals, $pid);
+            $this->bga->playerStats->set('max_location_animals', max($locCounts), $pid);
+            foreach ($locCounts as $loc => $count) {
+                $this->bga->playerStats->set($locationStats[$loc], $count, $pid);
+            }
+            foreach ($speciesCounts as $sid => $count) {
+                $this->bga->playerStats->set($speciesStats[$sid], $count, $pid);
+            }
+            foreach ($vehicleCounts as $vid => $count) {
+                $this->bga->playerStats->set($vehicleStats[$vid], $count, $pid);
+            }
+            $this->bga->playerStats->set('vp_from_species_sets', $setVp, $pid);
+            $this->bga->playerStats->set('vp_from_animal_bonuses', $bonusVp, $pid);
+
+            $pflags = $flags[$pid] ?? [0, 0, 0];
+            $trackVp = 0;
+            $flagSum = 0;
+            foreach ([0, 1, 2] as $loc) {
+                $space = (int) ($pflags[$loc] ?? 0);
+                $flagSum += $space;
+                $this->bga->playerStats->set($flagStats[$loc], $space, $pid);
+                $trackVp += (Material::TRACK_SPACE_VP[$loc] ?? [])[$space] ?? 0;
+            }
+            $this->bga->playerStats->set('deepest_flag', max(
+                (int) ($pflags[0] ?? 0),
+                (int) ($pflags[1] ?? 0),
+                (int) ($pflags[2] ?? 0)
+            ), $pid);
+            $this->bga->playerStats->set('flag_movement', $flagSum, $pid);
+            $this->bga->playerStats->set('vp_from_exploration', $trackVp, $pid);
+            $this->bga->playerStats->set(
+                'scientists_in_camps',
+                BoardModel::countScientistsInCamps($sci, $pid),
+                $pid
+            );
+
+            $scoringTotal = 0;
+            foreach ($scoringIds as $sid) {
+                $sid = (int) $sid;
+                $delta = $this->scoreEndCard($sid, $pid, $publicBoards, $flags, $sci);
+                $scoringTotal += $delta;
+                $stat = $this->scoringCardVpStatName($sid);
+                if ($stat !== null) {
+                    $this->bga->playerStats->set($stat, $delta, $pid);
+                }
+            }
+            $this->bga->playerStats->set('vp_from_scoring_cards', $scoringTotal, $pid);
+
+            $claimed = 0;
+            foreach ($objectives as $obj) {
+                $oid = (int) ($obj['id'] ?? -1);
+                $wasClaimed = (($obj['players'][$pid] ?? '') === 'claimed');
+                if ($wasClaimed) {
+                    $claimed++;
+                }
+                $claimedStat = $this->claimedObjectiveStatName($oid);
+                if ($claimedStat !== null) {
+                    $this->bga->playerStats->set($claimedStat, $wasClaimed, $pid);
+                }
+            }
+            $tableClaimed += $claimed;
+            $this->bga->playerStats->set('objectives_claimed', $claimed, $pid);
+            $this->bga->playerStats->set('vp_from_objectives', $claimed * 5, $pid);
+        }
+
+        $this->bga->tableStats->set('animals_observed', $tableAnimals);
+        $this->bga->tableStats->set('objectives_claimed', $tableClaimed);
+    }
 
     protected function setupNewGame($players, $options = [])
     {
@@ -1697,6 +2114,7 @@ class Game extends \Bga\GameFramework\Table
         $this->setRoundNumber(1);
         $this->updateObjectiveConditions();
         $this->recomputeTieBreakScores();
+        $this->initGameStatistics();
 
         return OpeningMulligan::class;
     }

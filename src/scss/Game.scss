@@ -1444,7 +1444,7 @@ html[data-theme="dark"] .bae_opening_intro {
   object-fit: contain;
 }
 
-/* ========== OPTIONAL: round badge, subtle motion previews, stats ========== */
+/* ========== OPTIONAL: round badge, subtle motion previews ========== */
 
 .bae_round_badge {
   position: absolute;
@@ -1458,49 +1458,6 @@ html[data-theme="dark"] .bae_opening_intro {
   font-size: 13px;
   font-weight: 700;
   color: #0e2944;
-}
-
-.bae_stats_panel {
-  position: absolute;
-  top: 36px;
-  left: 5px;
-  z-index: 35;
-  width: min(380px, calc(100% - 20px));
-  max-height: 70vh;
-  overflow: auto;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: rgba(248, 252, 255, 0.97);
-  border: 1px solid rgba(16, 36, 58, 0.35);
-  box-shadow: 0 8px 24px rgba(10, 25, 50, 0.18);
-  color: #0e2944;
-}
-
-.bae_stats_panel h3 {
-  margin: 0 0 8px;
-  font-size: 16px;
-}
-
-.bae_stats_panel h4 {
-  margin: 10px 0 4px;
-  font-size: 14px;
-}
-
-.bae_stats_panel ul {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.bae_stats_meta {
-  margin: 0 0 8px;
-  font-size: 13px;
-}
-
-.bae_stats_close {
-  margin-top: 8px;
-  cursor: pointer;
 }
 
 .bae_dragging {

@@ -24,13 +24,6 @@ import {
   wait,
 } from './Motion';
 import {
-  animalBonusVp,
-  flagTrackVp,
-  locationSetVp,
-  scoreScoringCard,
-  speciesCounts,
-} from './Progress';
-import {
   animalCardVpOrigin,
   optimalTokens,
   scoringStepAmount,
@@ -75,7 +68,7 @@ export interface OptionalUiHost {
 }
 
 /**
- * OPTIONAL: Client-only UX (subtle previews, resolution motion, invalid-action hints, DnD, sound, stats).
+ * OPTIONAL: Client-only UX (subtle previews, resolution motion, invalid-action hints, DnD, sound).
  * Never mutates server state. Server remains source of truth.
  */
 export class OptionalUi {
@@ -617,66 +610,6 @@ export class OptionalUi {
       `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
     ) as HTMLElement | null;
     return rectOf(zone);
-  }
-
-  showEndGameStats(): void {
-    const existing = document.getElementById('bae_stats_panel');
-    if (existing) existing.remove();
-    const d = this.host.gamedatas.boardState;
-    const materials = this.host.gamedatas.materials;
-    const names = this.host.gamedatas.players;
-    const locNames = materials.location_names ?? [_('Left'), _('Middle'), _('Right')];
-    const speciesNames = materials.species_names ?? [];
-    const blocks: string[] = [];
-    blocks.push(`<p class="bae_stats_meta">${_('Rounds played')}: ${d.round ?? '?'}</p>`);
-    for (const pidStr of Object.keys(names)) {
-      const pid = Number(pidStr);
-      const claimed = (d.objectives ?? []).filter((o) => o.players[pid] === 'claimed').length;
-      const flags = d.flags?.[pid] ?? [0, 0, 0];
-      const deepest = Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0));
-      const movement = [0, 1, 2].reduce((sum, loc) => sum + Number(flags[loc] ?? 0), 0);
-      const piles = d.boards?.[pid] ?? [[], [], []];
-      const setVp = [0, 1, 2].reduce((sum, loc) => sum + locationSetVp(piles[loc] ?? [], materials), 0);
-      const scoringVp = (d.scoring_cards ?? []).reduce(
-        (sum, sid) => sum + scoreScoringCard(sid, pid, d, materials),
-        0,
-      );
-      const animals = [0, 1, 2].map((loc) => `${locNames[loc] ?? loc} ${piles[loc]?.length ?? 0}`).join(' · ');
-      const bySpecies = speciesCounts(piles, materials)
-        .map((n, i) => n > 0 ? `${speciesNames[i] ?? i} ${n}` : '')
-        .filter(Boolean)
-        .join(', ');
-      const rawVp = (d.vps as Record<string, { score?: number } | number> | undefined)?.[pid]
-        ?? (d.vps as Record<string, { score?: number } | number> | undefined)?.[pidStr];
-      const score = Number((rawVp as { score?: number })?.score ?? rawVp ?? names[pid]?.score ?? 0);
-      blocks.push(
-        `<section class="bae_stats_player">`
-        + `<h4>${this.escape(names[pid]?.name ?? String(pid))}</h4>`
-        + `<ul>`
-        + `<li>${_('Score')}: ${score}</li>`
-        + `<li>${_('Species sets')}: ${setVp} ${_('VP')}</li>`
-        + `<li>${_('Exploration flags')}: ${flagTrackVp(pid, d, materials)} ${_('VP')}</li>`
-        + `<li>${_('Animal cards')}: ${animalBonusVp(pid, d, materials)} ${_('VP')}</li>`
-        + `<li>${_('Objectives')}: ${claimed * 5} ${_('VP')} (${claimed})</li>`
-        + `<li>${_('Scoring cards')}: ${scoringVp} ${_('VP')}</li>`
-        + `<li>${_('Deepest flag')}: ${deepest}</li>`
-        + `<li>${_('Flag movement')}: ${movement}</li>`
-        + `<li>${_('Animals')}: ${animals}</li>`
-        + (bySpecies ? `<li>${_('Species')}: ${bySpecies}</li>` : '')
-        + `</ul></section>`,
-      );
-    }
-    const panel = document.createElement('div');
-    panel.id = 'bae_stats_panel';
-    panel.className = 'bae_stats_panel';
-    panel.innerHTML = `<h3>${_('Game statistics')}</h3>${blocks.join('')}`
-      + `<button type="button" class="bae_stats_close">${_('Close')}</button>`;
-    panel.querySelector('.bae_stats_close')?.addEventListener('click', () => panel.remove());
-    this.host.root.appendChild(panel);
-  }
-
-  private escape(s: string): string {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
   private applyPreferenceCss(): void {

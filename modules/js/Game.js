@@ -536,264 +536,6 @@ function freezeAndFadePreviews(root, durationMs = 320) {
     });
 }
 
-const SPECIES_COUNT = 5;
-const VEHICLE_COUNT = 5;
-const SPECIES_SET_VP = [0, 0, 1, 3, 6, 10, 15, 21];
-function animalDef(materials, cardId) {
-    const raw = materials.animal_cards;
-    if (Array.isArray(raw))
-        return raw[cardId];
-    return raw?.[cardId];
-}
-function cardIdOf(c) {
-    return typeof c === 'number' ? c : Number(c.id);
-}
-function pilesFor(boards, playerId) {
-    return boards[playerId] ?? [[], [], []];
-}
-function sciCountAt(sci, location) {
-    if (!sci)
-        return 0;
-    let n = 0;
-    for (let c = 0; c < 3; c++) {
-        n += (sci[c] ?? []).filter((p) => p === location).length;
-    }
-    return n;
-}
-function campCount(sci) {
-    return sciCountAt(sci, POS_CAMP_L) + sciCountAt(sci, POS_CAMP_R);
-}
-function speciesCounts(piles, materials) {
-    const counts = Array(SPECIES_COUNT).fill(0);
-    for (const pile of piles) {
-        for (const c of pile) {
-            const def = animalDef(materials, cardIdOf(c));
-            if (def)
-                counts[def.species]++;
-        }
-    }
-    return counts;
-}
-function vehicleCounts(piles, materials) {
-    const counts = Array(VEHICLE_COUNT).fill(0);
-    for (const pile of piles) {
-        for (const c of pile) {
-            const def = animalDef(materials, cardIdOf(c));
-            if (def)
-                counts[def.vehicle]++;
-        }
-    }
-    return counts;
-}
-/** { count, required } progress toward an objective. */
-function objectiveProgress(objectiveId, playerId, state, materials) {
-    const piles = pilesFor(state.boards, playerId);
-    const sci = state.scientists?.[playerId];
-    const flags = state.flags?.[playerId] ?? [0, 0, 0];
-    switch (objectiveId) {
-        case 0: { // Specialists' Retreat: all 3 of one color in camps
-            let best = 0;
-            for (let c = 0; c < 3; c++) {
-                const poses = sci?.[c] ?? [];
-                const inCamp = poses.filter((p) => p === POS_CAMP_L || p === POS_CAMP_R).length;
-                best = Math.max(best, inCamp);
-            }
-            return { count: best, required: 3 };
-        }
-        case 1: { // Comparing Notes: 3 in a single camp
-            return { count: Math.max(sciCountAt(sci, POS_CAMP_L), sciCountAt(sci, POS_CAMP_R)), required: 3 };
-        }
-        case 2: { // Morning Shift: 5 returned last regroup, else current camp count
-            const last = Number((state.last_returned_counts ?? {})[playerId] ?? 0);
-            const current = campCount(sci);
-            return { count: last >= 5 ? last : current, required: 5 };
-        }
-        case 3: { // Splitting Up: max 2 per location (3 locations ok)
-            let ok = 0;
-            for (let loc = 0; loc < 3; loc++) {
-                if (sciCountAt(sci, loc) <= 2)
-                    ok++;
-            }
-            return { count: ok, required: 3 };
-        }
-        case 4: { // Balanced Ecosystem: 3 animals each location
-            const min = Math.min(...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
-            return { count: min, required: 3 };
-        }
-        case 5: { // Richness of Nature: 6 in one location
-            const max = Math.max(0, ...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
-            return { count: max, required: 6 };
-        }
-        case 6: { // Spotting List: 5 species
-            const n = speciesCounts(piles, materials).filter((n) => n > 0).length;
-            return { count: n, required: 5 };
-        }
-        case 7: { // Favorite Research: 6 of one species
-            return { count: Math.max(0, ...speciesCounts(piles, materials)), required: 6 };
-        }
-        case 8: { // Organized Expedition: 4 identical vehicles
-            return { count: Math.max(0, ...vehicleCounts(piles, materials)), required: 4 };
-        }
-        case 9: { // Climbing the Area: all flags >= 2
-            const n = [0, 1, 2].filter((l) => Number(flags[l] ?? 0) >= 2).length;
-            return { count: n, required: 3 };
-        }
-        case 10: { // Bold Explorers: a flag at 5
-            return { count: Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0)), required: 5 };
-        }
-        case 11: { // Promising Direction: 4 ahead of another
-            const vals = [0, 1, 2].map((l) => Number(flags[l] ?? 0));
-            let best = 0;
-            for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                    if (i !== j)
-                        best = Math.max(best, vals[i] - vals[j]);
-                }
-            }
-            return { count: best, required: 4 };
-        }
-        default:
-            return { count: 0, required: 1 };
-    }
-}
-function scoreScoringCard(scoringId, playerId, state, materials) {
-    const piles = pilesFor(state.boards, playerId);
-    const sci = state.scientists?.[playerId];
-    const flags = state.flags?.[playerId] ?? [0, 0, 0];
-    switch (scoringId) {
-        case 0: { // Common Destination
-            const a = Number(flags[0] ?? 0);
-            const b = Number(flags[1] ?? 0);
-            const c = Number(flags[2] ?? 0);
-            if (a === b && b === c)
-                return 12;
-            if (a === b || a === c || b === c)
-                return 5;
-            return 0;
-        }
-        case 1: { // Expansive Species
-            const maxDepth = Math.min(piles[0]?.length ?? 0, piles[1]?.length ?? 0, piles[2]?.length ?? 0);
-            let vp = 0;
-            for (let d = 0; d < maxDepth; d++) {
-                const ls = animalDef(materials, cardIdOf(piles[0][d]))?.species;
-                const ms = animalDef(materials, cardIdOf(piles[1][d]))?.species;
-                const rs = animalDef(materials, cardIdOf(piles[2][d]))?.species;
-                if (ls != null && ls === ms && ms === rs)
-                    vp += 5;
-            }
-            return vp;
-        }
-        case 2: { // Farewell Party
-            const counts = [sciCountAt(sci, 0), sciCountAt(sci, 1), sciCountAt(sci, 2)];
-            return Math.max(...counts) * 2;
-        }
-        case 3: { // Interspecies
-            let vp = 0;
-            for (const pile of piles) {
-                const sp = new Set();
-                for (const c of pile) {
-                    const def = animalDef(materials, cardIdOf(c));
-                    if (def)
-                        sp.add(def.species);
-                }
-                if (sp.size === 2)
-                    vp += 3;
-            }
-            return vp;
-        }
-        case 4: { // Mating Season
-            let vp = 0;
-            for (const pile of piles) {
-                const seq = pile.map((c) => animalDef(materials, cardIdOf(c))?.species ?? -1);
-                let i = 0;
-                while (i < seq.length) {
-                    let j = i + 1;
-                    while (j < seq.length && seq[j] === seq[i])
-                        j++;
-                    if (j - i === 2)
-                        vp += 2;
-                    i = j;
-                }
-            }
-            return vp;
-        }
-        case 5: { // Outer Lands
-            const counts = [piles[0]?.length ?? 0, piles[1]?.length ?? 0, piles[2]?.length ?? 0];
-            let vp = 0;
-            if (counts[0] > counts[1])
-                vp += 7;
-            if (counts[2] > counts[1])
-                vp += 7;
-            return vp;
-        }
-        case 6: { // Popular Vehicle
-            return Math.max(0, ...vehicleCounts(piles, materials)) * 2;
-        }
-        case 7: { // Safe Return
-            return campCount(sci) * 3;
-        }
-        case 8: { // Untrodden Path
-            const vpTrack = materials.track_space_vp ?? [];
-            const values = [0, 1, 2].map((loc) => (vpTrack[loc] ?? [])[Number(flags[loc] ?? 0)] ?? 0);
-            return Math.min(...values) * 2;
-        }
-        case 9: { // Territorial Animals
-            let vp = 0;
-            for (const pile of piles) {
-                let ok = true;
-                let prev = null;
-                for (const c of pile) {
-                    const sp = animalDef(materials, cardIdOf(c))?.species;
-                    if (sp == null)
-                        continue;
-                    if (prev !== null && prev === sp) {
-                        ok = false;
-                        break;
-                    }
-                    prev = sp;
-                }
-                if (ok)
-                    vp += 6;
-            }
-            return vp;
-        }
-        default:
-            return 0;
-    }
-}
-function locationSetVp(pile, materials) {
-    const by = Array(SPECIES_COUNT).fill(0);
-    for (const c of pile) {
-        const def = animalDef(materials, cardIdOf(c));
-        if (def)
-            by[def.species]++;
-    }
-    let vp = 0;
-    for (const cnt of by) {
-        if (cnt > 0)
-            vp += SPECIES_SET_VP[Math.min(cnt, SPECIES_SET_VP.length - 1)] ?? 0;
-    }
-    return vp;
-}
-function flagTrackVp(playerId, state, materials) {
-    const flags = state.flags?.[playerId] ?? [0, 0, 0];
-    const vpTrack = materials.track_space_vp ?? [];
-    let vp = 0;
-    for (let loc = 0; loc < 3; loc++) {
-        vp += (vpTrack[loc] ?? [])[Number(flags[loc] ?? 0)] ?? 0;
-    }
-    return vp;
-}
-function animalBonusVp(playerId, state, materials) {
-    let vp = 0;
-    for (const pile of pilesFor(state.boards, playerId)) {
-        for (const c of pile) {
-            vp += animalDef(materials, cardIdOf(c))?.bonus_vp ?? 0;
-        }
-    }
-    return vp;
-}
-
 /** OPTIONAL: VP token mix, shelf layout, and flights into the player VP zone. */
 const TOKEN_REF_W = { 1: 233, 3: 257, 5: 292 };
 const ZONE_REF_W = 528;
@@ -1230,7 +972,7 @@ const PREF_CONFIRM = 102;
 const PREF_SOUND = 103;
 const MAX_LOCATION_CARDS = 7;
 /**
- * OPTIONAL: Client-only UX (subtle previews, resolution motion, invalid-action hints, DnD, sound, stats).
+ * OPTIONAL: Client-only UX (subtle previews, resolution motion, invalid-action hints, DnD, sound).
  * Never mutates server state. Server remains source of truth.
  */
 class OptionalUi {
@@ -1758,60 +1500,6 @@ class OptionalUi {
     locationZoneRect(pid, loc) {
         const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
         return rectOf(zone);
-    }
-    showEndGameStats() {
-        const existing = document.getElementById('bae_stats_panel');
-        if (existing)
-            existing.remove();
-        const d = this.host.gamedatas.boardState;
-        const materials = this.host.gamedatas.materials;
-        const names = this.host.gamedatas.players;
-        const locNames = materials.location_names ?? [_('Left'), _('Middle'), _('Right')];
-        const speciesNames = materials.species_names ?? [];
-        const blocks = [];
-        blocks.push(`<p class="bae_stats_meta">${_('Rounds played')}: ${d.round ?? '?'}</p>`);
-        for (const pidStr of Object.keys(names)) {
-            const pid = Number(pidStr);
-            const claimed = (d.objectives ?? []).filter((o) => o.players[pid] === 'claimed').length;
-            const flags = d.flags?.[pid] ?? [0, 0, 0];
-            const deepest = Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0));
-            const movement = [0, 1, 2].reduce((sum, loc) => sum + Number(flags[loc] ?? 0), 0);
-            const piles = d.boards?.[pid] ?? [[], [], []];
-            const setVp = [0, 1, 2].reduce((sum, loc) => sum + locationSetVp(piles[loc] ?? [], materials), 0);
-            const scoringVp = (d.scoring_cards ?? []).reduce((sum, sid) => sum + scoreScoringCard(sid, pid, d, materials), 0);
-            const animals = [0, 1, 2].map((loc) => `${locNames[loc] ?? loc} ${piles[loc]?.length ?? 0}`).join(' · ');
-            const bySpecies = speciesCounts(piles, materials)
-                .map((n, i) => n > 0 ? `${speciesNames[i] ?? i} ${n}` : '')
-                .filter(Boolean)
-                .join(', ');
-            const rawVp = d.vps?.[pid]
-                ?? d.vps?.[pidStr];
-            const score = Number(rawVp?.score ?? rawVp ?? names[pid]?.score ?? 0);
-            blocks.push(`<section class="bae_stats_player">`
-                + `<h4>${this.escape(names[pid]?.name ?? String(pid))}</h4>`
-                + `<ul>`
-                + `<li>${_('Score')}: ${score}</li>`
-                + `<li>${_('Species sets')}: ${setVp} ${_('VP')}</li>`
-                + `<li>${_('Exploration flags')}: ${flagTrackVp(pid, d, materials)} ${_('VP')}</li>`
-                + `<li>${_('Animal cards')}: ${animalBonusVp(pid, d, materials)} ${_('VP')}</li>`
-                + `<li>${_('Objectives')}: ${claimed * 5} ${_('VP')} (${claimed})</li>`
-                + `<li>${_('Scoring cards')}: ${scoringVp} ${_('VP')}</li>`
-                + `<li>${_('Deepest flag')}: ${deepest}</li>`
-                + `<li>${_('Flag movement')}: ${movement}</li>`
-                + `<li>${_('Animals')}: ${animals}</li>`
-                + (bySpecies ? `<li>${_('Species')}: ${bySpecies}</li>` : '')
-                + `</ul></section>`);
-        }
-        const panel = document.createElement('div');
-        panel.id = 'bae_stats_panel';
-        panel.className = 'bae_stats_panel';
-        panel.innerHTML = `<h3>${_('Game statistics')}</h3>${blocks.join('')}`
-            + `<button type="button" class="bae_stats_close">${_('Close')}</button>`;
-        panel.querySelector('.bae_stats_close')?.addEventListener('click', () => panel.remove());
-        this.host.root.appendChild(panel);
-    }
-    escape(s) {
-        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
     applyPreferenceCss() {
         const root = this.host.root;
@@ -2965,6 +2653,264 @@ class OptionalUi {
 }
 OptionalUi.DISCARD_LOOP_MS = 1850;
 OptionalUi.TOOLTIP_CLICK_MS = 500;
+
+const SPECIES_COUNT = 5;
+const VEHICLE_COUNT = 5;
+const SPECIES_SET_VP = [0, 0, 1, 3, 6, 10, 15, 21];
+function animalDef(materials, cardId) {
+    const raw = materials.animal_cards;
+    if (Array.isArray(raw))
+        return raw[cardId];
+    return raw?.[cardId];
+}
+function cardIdOf(c) {
+    return typeof c === 'number' ? c : Number(c.id);
+}
+function pilesFor(boards, playerId) {
+    return boards[playerId] ?? [[], [], []];
+}
+function sciCountAt(sci, location) {
+    if (!sci)
+        return 0;
+    let n = 0;
+    for (let c = 0; c < 3; c++) {
+        n += (sci[c] ?? []).filter((p) => p === location).length;
+    }
+    return n;
+}
+function campCount(sci) {
+    return sciCountAt(sci, POS_CAMP_L) + sciCountAt(sci, POS_CAMP_R);
+}
+function speciesCounts(piles, materials) {
+    const counts = Array(SPECIES_COUNT).fill(0);
+    for (const pile of piles) {
+        for (const c of pile) {
+            const def = animalDef(materials, cardIdOf(c));
+            if (def)
+                counts[def.species]++;
+        }
+    }
+    return counts;
+}
+function vehicleCounts(piles, materials) {
+    const counts = Array(VEHICLE_COUNT).fill(0);
+    for (const pile of piles) {
+        for (const c of pile) {
+            const def = animalDef(materials, cardIdOf(c));
+            if (def)
+                counts[def.vehicle]++;
+        }
+    }
+    return counts;
+}
+/** { count, required } progress toward an objective. */
+function objectiveProgress(objectiveId, playerId, state, materials) {
+    const piles = pilesFor(state.boards, playerId);
+    const sci = state.scientists?.[playerId];
+    const flags = state.flags?.[playerId] ?? [0, 0, 0];
+    switch (objectiveId) {
+        case 0: { // Specialists' Retreat: all 3 of one color in camps
+            let best = 0;
+            for (let c = 0; c < 3; c++) {
+                const poses = sci?.[c] ?? [];
+                const inCamp = poses.filter((p) => p === POS_CAMP_L || p === POS_CAMP_R).length;
+                best = Math.max(best, inCamp);
+            }
+            return { count: best, required: 3 };
+        }
+        case 1: { // Comparing Notes: 3 in a single camp
+            return { count: Math.max(sciCountAt(sci, POS_CAMP_L), sciCountAt(sci, POS_CAMP_R)), required: 3 };
+        }
+        case 2: { // Morning Shift: 5 returned last regroup, else current camp count
+            const last = Number((state.last_returned_counts ?? {})[playerId] ?? 0);
+            const current = campCount(sci);
+            return { count: last >= 5 ? last : current, required: 5 };
+        }
+        case 3: { // Splitting Up: max 2 per location (3 locations ok)
+            let ok = 0;
+            for (let loc = 0; loc < 3; loc++) {
+                if (sciCountAt(sci, loc) <= 2)
+                    ok++;
+            }
+            return { count: ok, required: 3 };
+        }
+        case 4: { // Balanced Ecosystem: 3 animals each location
+            const min = Math.min(...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
+            return { count: min, required: 3 };
+        }
+        case 5: { // Richness of Nature: 6 in one location
+            const max = Math.max(0, ...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
+            return { count: max, required: 6 };
+        }
+        case 6: { // Spotting List: 5 species
+            const n = speciesCounts(piles, materials).filter((n) => n > 0).length;
+            return { count: n, required: 5 };
+        }
+        case 7: { // Favorite Research: 6 of one species
+            return { count: Math.max(0, ...speciesCounts(piles, materials)), required: 6 };
+        }
+        case 8: { // Organized Expedition: 4 identical vehicles
+            return { count: Math.max(0, ...vehicleCounts(piles, materials)), required: 4 };
+        }
+        case 9: { // Climbing the Area: all flags >= 2
+            const n = [0, 1, 2].filter((l) => Number(flags[l] ?? 0) >= 2).length;
+            return { count: n, required: 3 };
+        }
+        case 10: { // Bold Explorers: a flag at 5
+            return { count: Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0)), required: 5 };
+        }
+        case 11: { // Promising Direction: 4 ahead of another
+            const vals = [0, 1, 2].map((l) => Number(flags[l] ?? 0));
+            let best = 0;
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (i !== j)
+                        best = Math.max(best, vals[i] - vals[j]);
+                }
+            }
+            return { count: best, required: 4 };
+        }
+        default:
+            return { count: 0, required: 1 };
+    }
+}
+function scoreScoringCard(scoringId, playerId, state, materials) {
+    const piles = pilesFor(state.boards, playerId);
+    const sci = state.scientists?.[playerId];
+    const flags = state.flags?.[playerId] ?? [0, 0, 0];
+    switch (scoringId) {
+        case 0: { // Common Destination
+            const a = Number(flags[0] ?? 0);
+            const b = Number(flags[1] ?? 0);
+            const c = Number(flags[2] ?? 0);
+            if (a === b && b === c)
+                return 12;
+            if (a === b || a === c || b === c)
+                return 5;
+            return 0;
+        }
+        case 1: { // Expansive Species
+            const maxDepth = Math.min(piles[0]?.length ?? 0, piles[1]?.length ?? 0, piles[2]?.length ?? 0);
+            let vp = 0;
+            for (let d = 0; d < maxDepth; d++) {
+                const ls = animalDef(materials, cardIdOf(piles[0][d]))?.species;
+                const ms = animalDef(materials, cardIdOf(piles[1][d]))?.species;
+                const rs = animalDef(materials, cardIdOf(piles[2][d]))?.species;
+                if (ls != null && ls === ms && ms === rs)
+                    vp += 5;
+            }
+            return vp;
+        }
+        case 2: { // Farewell Party
+            const counts = [sciCountAt(sci, 0), sciCountAt(sci, 1), sciCountAt(sci, 2)];
+            return Math.max(...counts) * 2;
+        }
+        case 3: { // Interspecies
+            let vp = 0;
+            for (const pile of piles) {
+                const sp = new Set();
+                for (const c of pile) {
+                    const def = animalDef(materials, cardIdOf(c));
+                    if (def)
+                        sp.add(def.species);
+                }
+                if (sp.size === 2)
+                    vp += 3;
+            }
+            return vp;
+        }
+        case 4: { // Mating Season
+            let vp = 0;
+            for (const pile of piles) {
+                const seq = pile.map((c) => animalDef(materials, cardIdOf(c))?.species ?? -1);
+                let i = 0;
+                while (i < seq.length) {
+                    let j = i + 1;
+                    while (j < seq.length && seq[j] === seq[i])
+                        j++;
+                    if (j - i === 2)
+                        vp += 2;
+                    i = j;
+                }
+            }
+            return vp;
+        }
+        case 5: { // Outer Lands
+            const counts = [piles[0]?.length ?? 0, piles[1]?.length ?? 0, piles[2]?.length ?? 0];
+            let vp = 0;
+            if (counts[0] > counts[1])
+                vp += 7;
+            if (counts[2] > counts[1])
+                vp += 7;
+            return vp;
+        }
+        case 6: { // Popular Vehicle
+            return Math.max(0, ...vehicleCounts(piles, materials)) * 2;
+        }
+        case 7: { // Safe Return
+            return campCount(sci) * 3;
+        }
+        case 8: { // Untrodden Path
+            const vpTrack = materials.track_space_vp ?? [];
+            const values = [0, 1, 2].map((loc) => (vpTrack[loc] ?? [])[Number(flags[loc] ?? 0)] ?? 0);
+            return Math.min(...values) * 2;
+        }
+        case 9: { // Territorial Animals
+            let vp = 0;
+            for (const pile of piles) {
+                let ok = true;
+                let prev = null;
+                for (const c of pile) {
+                    const sp = animalDef(materials, cardIdOf(c))?.species;
+                    if (sp == null)
+                        continue;
+                    if (prev !== null && prev === sp) {
+                        ok = false;
+                        break;
+                    }
+                    prev = sp;
+                }
+                if (ok)
+                    vp += 6;
+            }
+            return vp;
+        }
+        default:
+            return 0;
+    }
+}
+function locationSetVp(pile, materials) {
+    const by = Array(SPECIES_COUNT).fill(0);
+    for (const c of pile) {
+        const def = animalDef(materials, cardIdOf(c));
+        if (def)
+            by[def.species]++;
+    }
+    let vp = 0;
+    for (const cnt of by) {
+        if (cnt > 0)
+            vp += SPECIES_SET_VP[Math.min(cnt, SPECIES_SET_VP.length - 1)] ?? 0;
+    }
+    return vp;
+}
+function flagTrackVp(playerId, state, materials) {
+    const flags = state.flags?.[playerId] ?? [0, 0, 0];
+    const vpTrack = materials.track_space_vp ?? [];
+    let vp = 0;
+    for (let loc = 0; loc < 3; loc++) {
+        vp += (vpTrack[loc] ?? [])[Number(flags[loc] ?? 0)] ?? 0;
+    }
+    return vp;
+}
+function animalBonusVp(playerId, state, materials) {
+    let vp = 0;
+    for (const pile of pilesFor(state.boards, playerId)) {
+        for (const c of pile) {
+            vp += animalDef(materials, cardIdOf(c))?.bonus_vp ?? 0;
+        }
+    }
+    return vp;
+}
 
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 class Game {
@@ -5049,8 +4995,6 @@ class Game {
             this.gamedatas.boardState = _args.boardState;
         }
         this.renderAll();
-        // OPTIONAL: end-of-game statistics panel (client-side from public data)
-        this.optionalUi?.showEndGameStats();
     }
     async notif_scoringStep(_args) {
         const args = _args?.args ?? _args;

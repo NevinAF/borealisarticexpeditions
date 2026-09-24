@@ -119,6 +119,7 @@ class Gameplay extends GameState
             'observe_triggered_prompt' => ! empty($newPending),
         ]);
         $g->setReplenishUndoBlocked(false);
+        $g->recordPlayerTurn($activePlayerId);
 
         return ReplenishAnimalCard::class;
     }
@@ -195,6 +196,8 @@ class Gameplay extends GameState
                 'observe_triggered_prompt' => false,
             ]);
         }
+
+        $g->recordRegroupStats($activePlayerId, count($ids), $camp);
 
         if ($camp > 0) {
             return AssignCampScientists::class;

@@ -42,6 +42,7 @@ class EndOfRound extends GameState
             );
         }
 
+        $g->recordRoundEnded();
         $g->incrementRoundNumber();
 
         $mull = [];

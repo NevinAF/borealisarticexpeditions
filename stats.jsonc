@@ -1,26 +1,453 @@
 {
+  // Table statistics: one value per game. Player statistics: one value per player.
+  // IDs must be >= 10 and unique within table / within player. Matching IDs across
+  // table and player are used only when the statistic is the same concept.
+  // Labeled IDs 50-54 are table-only (value_labels apply to both categories).
   "table": {
-    "rounds_number": {
+    "turns_number": {
       "id": 10,
+      "name": "Number of turns",
+      "type": "int"
+    },
+    "rounds_number": {
+      "id": 11,
       "name": "Number of rounds",
       "type": "int"
-    }
-  },
-  "player": {
+    },
     "objectives_claimed": {
-      "id": 10,
+      "id": 12,
       "name": "Objectives claimed",
       "type": "int"
     },
     "animals_observed": {
-      "id": 11,
+      "id": 13,
       "name": "Animals observed",
       "type": "int"
     },
-    "deepest_flag": {
-      "id": 12,
-      "name": "Deepest flag position",
+    "regroups": {
+      "id": 14,
+      "name": "Regroups",
+      "type": "int"
+    },
+    "pool_mulligans": {
+      "id": 15,
+      "name": "Pool mulligans",
+      "type": "int"
+    },
+    "opening_mulligan_cards": {
+      "id": 16,
+      "name": "Opening mulligan cards",
+      "type": "int"
+    },
+    "cards_discarded_regroup": {
+      "id": 17,
+      "name": "Cards discarded while regrouping",
+      "type": "int"
+    },
+    "pool_cards_taken": {
+      "id": 18,
+      "name": "Cards taken from the pool",
+      "type": "int"
+    },
+    "deck_cards_drawn": {
+      "id": 19,
+      "name": "Cards drawn from the deck",
+      "type": "int"
+    },
+    "scientists_returned": {
+      "id": 20,
+      "name": "Scientists returned from camps",
+      "type": "int"
+    },
+    "scoring_card_1": {
+      "id": 50,
+      "name": "First scoring card",
+      "type": "int"
+    },
+    "scoring_card_2": {
+      "id": 51,
+      "name": "Second scoring card",
+      "type": "int"
+    },
+    "animal_objective": {
+      "id": 52,
+      "name": "Animal objective",
+      "type": "int"
+    },
+    "scientist_objective": {
+      "id": 53,
+      "name": "Scientist objective",
+      "type": "int"
+    },
+    "vehicle_objective": {
+      "id": 54,
+      "name": "Vehicle objective",
       "type": "int"
     }
+  },
+  "player": {
+    "turns_number": {
+      "id": 10,
+      "name": "Number of turns",
+      "type": "int"
+    },
+    "animals_observed": {
+      "id": 13,
+      "name": "Animals observed",
+      "type": "int"
+    },
+    "regroups": {
+      "id": 14,
+      "name": "Regroups",
+      "type": "int"
+    },
+    "pool_mulligans": {
+      "id": 15,
+      "name": "Pool mulligans",
+      "type": "int"
+    },
+    "opening_mulligan_cards": {
+      "id": 16,
+      "name": "Opening mulligan cards",
+      "type": "int"
+    },
+    "cards_discarded_regroup": {
+      "id": 17,
+      "name": "Cards discarded while regrouping",
+      "type": "int"
+    },
+    "pool_cards_taken": {
+      "id": 18,
+      "name": "Cards taken from the pool",
+      "type": "int"
+    },
+    "deck_cards_drawn": {
+      "id": 19,
+      "name": "Cards drawn from the deck",
+      "type": "int"
+    },
+    "scientists_returned": {
+      "id": 20,
+      "name": "Scientists returned from camps",
+      "type": "int"
+    },
+    "scientists_in_camps": {
+      "id": 21,
+      "name": "Scientists in camps at game end",
+      "type": "int"
+    },
+    "objectives_claimed": {
+      "id": 12,
+      "name": "Objectives claimed",
+      "type": "int"
+    },
+    "claimed_specialists_retreat": {
+      "id": 60,
+      "name": "Claimed Specialists' Retreat",
+      "type": "bool"
+    },
+    "claimed_comparing_notes": {
+      "id": 61,
+      "name": "Claimed Comparing Notes",
+      "type": "bool"
+    },
+    "claimed_morning_shift": {
+      "id": 62,
+      "name": "Claimed Morning Shift",
+      "type": "bool"
+    },
+    "claimed_splitting_up": {
+      "id": 63,
+      "name": "Claimed Splitting Up",
+      "type": "bool"
+    },
+    "claimed_balanced_ecosystem": {
+      "id": 64,
+      "name": "Claimed Balanced Ecosystem",
+      "type": "bool"
+    },
+    "claimed_richness_of_nature": {
+      "id": 65,
+      "name": "Claimed Richness of Nature",
+      "type": "bool"
+    },
+    "claimed_spotting_list": {
+      "id": 66,
+      "name": "Claimed Spotting List",
+      "type": "bool"
+    },
+    "claimed_favorite_research_object": {
+      "id": 67,
+      "name": "Claimed Favorite Research Object",
+      "type": "bool"
+    },
+    "claimed_organized_expedition": {
+      "id": 68,
+      "name": "Claimed Organized Expedition",
+      "type": "bool"
+    },
+    "claimed_climbing_the_area": {
+      "id": 69,
+      "name": "Claimed Climbing the Area",
+      "type": "bool"
+    },
+    "claimed_bold_explorers": {
+      "id": 70,
+      "name": "Claimed Bold Explorers",
+      "type": "bool"
+    },
+    "claimed_promising_direction": {
+      "id": 71,
+      "name": "Claimed Promising Direction",
+      "type": "bool"
+    },
+    "vp_from_tokens": {
+      "id": 22,
+      "name": "VP from tokens (before end-game scoring)",
+      "type": "int"
+    },
+    "vp_from_objectives": {
+      "id": 23,
+      "name": "VP from objectives",
+      "type": "int"
+    },
+    "vp_from_regroup": {
+      "id": 24,
+      "name": "VP from regrouping scientists",
+      "type": "int"
+    },
+    "vp_from_species_sets": {
+      "id": 25,
+      "name": "VP from species sets",
+      "type": "int"
+    },
+    "vp_from_exploration": {
+      "id": 26,
+      "name": "VP from the exploration track",
+      "type": "int"
+    },
+    "vp_from_animal_bonuses": {
+      "id": 27,
+      "name": "VP from animal cards",
+      "type": "int"
+    },
+    "vp_from_scoring_cards": {
+      "id": 28,
+      "name": "VP from scoring cards",
+      "type": "int"
+    },
+    "vp_scoring_common_destination": {
+      "id": 80,
+      "name": "VP from Common Destination",
+      "type": "int"
+    },
+    "vp_scoring_expansive_species": {
+      "id": 81,
+      "name": "VP from Expansive Species",
+      "type": "int"
+    },
+    "vp_scoring_farewell_party": {
+      "id": 82,
+      "name": "VP from Farewell Party",
+      "type": "int"
+    },
+    "vp_scoring_interspecies": {
+      "id": 83,
+      "name": "VP from Interspecies Relationships",
+      "type": "int"
+    },
+    "vp_scoring_mating_season": {
+      "id": 84,
+      "name": "VP from Mating Season",
+      "type": "int"
+    },
+    "vp_scoring_outer_lands": {
+      "id": 85,
+      "name": "VP from Outer Lands",
+      "type": "int"
+    },
+    "vp_scoring_popular_vehicle": {
+      "id": 86,
+      "name": "VP from Popular Vehicle",
+      "type": "int"
+    },
+    "vp_scoring_safe_return": {
+      "id": 87,
+      "name": "VP from Safe Return",
+      "type": "int"
+    },
+    "vp_scoring_untrodden_path": {
+      "id": 88,
+      "name": "VP from Untrodden Path",
+      "type": "int"
+    },
+    "vp_scoring_territorial_animals": {
+      "id": 89,
+      "name": "VP from Territorial Animals",
+      "type": "int"
+    },
+    "animals_left": {
+      "id": 29,
+      "name": "Animals in the left location",
+      "type": "int"
+    },
+    "animals_middle": {
+      "id": 30,
+      "name": "Animals in the middle location",
+      "type": "int"
+    },
+    "animals_right": {
+      "id": 31,
+      "name": "Animals in the right location",
+      "type": "int"
+    },
+    "max_location_animals": {
+      "id": 32,
+      "name": "Most animals in one location",
+      "type": "int"
+    },
+    "polar_bears": {
+      "id": 33,
+      "name": "Polar Bears observed",
+      "type": "int"
+    },
+    "arctic_foxes": {
+      "id": 34,
+      "name": "Arctic Foxes observed",
+      "type": "int"
+    },
+    "snowy_owls": {
+      "id": 35,
+      "name": "Snowy Owls observed",
+      "type": "int"
+    },
+    "harp_seals": {
+      "id": 36,
+      "name": "Harp Seals observed",
+      "type": "int"
+    },
+    "puffins": {
+      "id": 37,
+      "name": "Puffins observed",
+      "type": "int"
+    },
+    "sleighs": {
+      "id": 38,
+      "name": "Sleighs observed",
+      "type": "int"
+    },
+    "zeppelins": {
+      "id": 39,
+      "name": "Zeppelins observed",
+      "type": "int"
+    },
+    "submarines": {
+      "id": 40,
+      "name": "Submarines observed",
+      "type": "int"
+    },
+    "kayaks": {
+      "id": 41,
+      "name": "Kayaks observed",
+      "type": "int"
+    },
+    "skis": {
+      "id": 42,
+      "name": "Skis observed",
+      "type": "int"
+    },
+    "flag_left": {
+      "id": 43,
+      "name": "Left flag position",
+      "type": "int"
+    },
+    "flag_middle": {
+      "id": 44,
+      "name": "Middle flag position",
+      "type": "int"
+    },
+    "flag_right": {
+      "id": 45,
+      "name": "Right flag position",
+      "type": "int"
+    },
+    "deepest_flag": {
+      "id": 46,
+      "name": "Deepest flag position",
+      "type": "int"
+    },
+    "flag_movement": {
+      "id": 47,
+      "name": "Total flag movement",
+      "type": "int"
+    }
+  },
+  "value_labels": {
+    "50": [
+      "Common Destination",
+      "Expansive Species",
+      "Farewell Party",
+      "Interspecies Relationships",
+      "Mating Season",
+      "Outer Lands",
+      "Popular Vehicle",
+      "Safe Return",
+      "Untrodden Path",
+      "Territorial Animals"
+    ],
+    "51": [
+      "Common Destination",
+      "Expansive Species",
+      "Farewell Party",
+      "Interspecies Relationships",
+      "Mating Season",
+      "Outer Lands",
+      "Popular Vehicle",
+      "Safe Return",
+      "Untrodden Path",
+      "Territorial Animals"
+    ],
+    "52": [
+      "Specialists' Retreat",
+      "Comparing Notes",
+      "Morning Shift",
+      "Splitting Up",
+      "Balanced Ecosystem",
+      "Richness of Nature",
+      "Spotting List",
+      "Favorite Research Object",
+      "Organized Expedition",
+      "Climbing the Area",
+      "Bold Explorers",
+      "Promising Direction"
+    ],
+    "53": [
+      "Specialists' Retreat",
+      "Comparing Notes",
+      "Morning Shift",
+      "Splitting Up",
+      "Balanced Ecosystem",
+      "Richness of Nature",
+      "Spotting List",
+      "Favorite Research Object",
+      "Organized Expedition",
+      "Climbing the Area",
+      "Bold Explorers",
+      "Promising Direction"
+    ],
+    "54": [
+      "Specialists' Retreat",
+      "Comparing Notes",
+      "Morning Shift",
+      "Splitting Up",
+      "Balanced Ecosystem",
+      "Richness of Nature",
+      "Spotting List",
+      "Favorite Research Object",
+      "Organized Expedition",
+      "Climbing the Area",
+      "Bold Explorers",
+      "Promising Direction"
+    ]
   }
 }

@@ -2237,8 +2237,6 @@ export class Game {
         this.gamedatas.boardState = _args.boardState;
     }
     this.renderAll();
-    // OPTIONAL: end-of-game statistics panel (client-side from public data)
-    this.optionalUi?.showEndGameStats();
   }
   async notif_scoringStep(_args: any) {
     const args = _args?.args ?? _args;

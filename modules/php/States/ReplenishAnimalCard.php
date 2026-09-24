@@ -51,6 +51,7 @@ class ReplenishAnimalCard extends GameState
         $g = $this->game;
         if ($pool_slot === -1) {
             $g->drawFromAnimalDeckFor($activePlayerId);
+            $g->recordDeckCardsDrawn($activePlayerId);
             foreach ($g->getNextPlayerTable() as $pid => $_) {
                 if ($pid === 0) continue;
                 $this->bga->notify->player(
@@ -77,6 +78,7 @@ class ReplenishAnimalCard extends GameState
             $hands[$activePlayerId][] = $cardId;
             $g->setHands($hands);
             $g->drawFromAnimalDeckToPool($pool_slot);
+            $g->recordPoolCardTaken($activePlayerId);
             foreach ($g->getNextPlayerTable() as $pid => $_) {
                 if ($pid === 0) continue;
                 $this->bga->notify->player(
@@ -125,6 +127,7 @@ class ReplenishAnimalCard extends GameState
         $mull[$pid] = true;
         $g->setMulliganUsed($mull);
         $g->clearUndoSnapshot();
+        $g->recordPoolMulliganStats($pid);
 
         foreach ($g->getNextPlayerTable() as $otherPid => $_) {
             if ($otherPid === 0) continue;
