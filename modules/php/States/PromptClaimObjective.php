@@ -31,15 +31,9 @@ class PromptClaimObjective extends GameState
     public function onEnteringState(?int $activePlayerId = null): mixed
     {
         $returnState = $this->game->getPromptClaimReturnState();
-        $players = array_keys($this->getEligiblePendingByPlayer());
+        $players = array_keys($this->game->getEligiblePendingObjectivePromptsByPlayer());
         if (empty($players)) {
-            $this->game->clearPendingObjectivePrompts();
-            $this->game->clearPromptClaimReturnState();
-            if ($returnState === ReplenishAnimalCard::class) {
-                $this->game->setReplenishUndoBlocked(true);
-            }
-
-            return $returnState;
+            return $this->leavePromptState($returnState);
         }
 
         $this->game->gamestate->setPlayersMultiactive(array_map('intval', $players), $returnState, true);
@@ -48,7 +42,7 @@ class PromptClaimObjective extends GameState
 
     public function getArgs(): array
     {
-        $eligible = $this->getEligiblePendingByPlayer();
+        $eligible = $this->game->getEligiblePendingObjectivePromptsByPlayer();
         $objectivesData = Material::getObjectivesData();
         $pendingByPlayer = [];
         foreach ($eligible as $pid => $indices) {
@@ -74,38 +68,9 @@ class PromptClaimObjective extends GameState
         ];
     }
 
-    /**
-     * @return array<int, list<int>>
-     */
-    private function getEligiblePendingByPlayer(): array
-    {
-        $objectives = $this->game->getObjectivesState();
-        $pending = $this->game->getPendingObjectivePrompts();
-        $eligible = [];
-        foreach ($pending as $pid => $indices) {
-            $pid = (int) $pid;
-            foreach ($indices as $idx) {
-                $idx = (int) $idx;
-                if (! isset($objectives[$idx])) {
-                    continue;
-                }
-                $obj = $objectives[$idx];
-                $status = $obj['players'][$pid] ?? 'unmet';
-                if ($obj['active'] && $status === 'meets') {
-                    $eligible[$pid][] = $idx;
-                }
-            }
-            if (! empty($eligible[$pid])) {
-                $eligible[$pid] = array_values(array_unique($eligible[$pid]));
-            }
-        }
-
-        return $eligible;
-    }
-
     private function ensurePlayerCanResolveObjective(int $playerId, int $objectiveIndex): void
     {
-        $eligible = $this->getEligiblePendingByPlayer();
+        $eligible = $this->game->getEligiblePendingObjectivePromptsByPlayer();
         if (! in_array($objectiveIndex, $eligible[$playerId] ?? [], true)) {
             throw new UserException(clienttranslate('This objective cannot be claimed at this time. You may only claim the current pending objective.'));
         }
@@ -117,17 +82,16 @@ class PromptClaimObjective extends GameState
         int $currentPlayerId,
         array $args,
     ): mixed {
-        $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
         $this->game->clearUndoSnapshot();
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, true);
 
-        $remaining = $this->getEligiblePendingByPlayer()[$currentPlayerId] ?? [];
+        $remaining = $this->game->getEligiblePendingObjectivePromptsByPlayer()[$currentPlayerId] ?? [];
         if (! empty($remaining)) {
             return null;
         }
 
-        return $this->finishPromptReturn($returnState, $currentPlayerId);
+        return $this->finishPromptReturn($currentPlayerId);
     }
 
     #[PossibleAction]
@@ -136,17 +100,16 @@ class PromptClaimObjective extends GameState
         int $currentPlayerId,
         array $args,
     ): mixed {
-        $returnState = $this->game->getPromptClaimReturnState();
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
         $this->game->clearUndoSnapshot();
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, false);
 
-        $remaining = $this->getEligiblePendingByPlayer()[$currentPlayerId] ?? [];
+        $remaining = $this->game->getEligiblePendingObjectivePromptsByPlayer()[$currentPlayerId] ?? [];
         if (! empty($remaining)) {
             return null;
         }
 
-        return $this->finishPromptReturn($returnState, $currentPlayerId);
+        return $this->finishPromptReturn($currentPlayerId);
     }
 
     #[PossibleAction]
@@ -158,27 +121,51 @@ class PromptClaimObjective extends GameState
     /**
      * @param class-string $returnState
      */
-    private function finishPromptReturn(string $returnState, int $playerId): mixed
+    private function leavePromptState(string $returnState): mixed
     {
+        $this->game->clearPendingObjectivePrompts();
+        $this->prepareReturnTo($returnState, true);
+        $this->game->clearPromptClaimReturnState();
+
+        return $returnState;
+    }
+
+    private function finishPromptReturn(int $playerId): mixed
+    {
+        $returnState = $this->game->getPromptClaimReturnState();
+        if ($returnState === ReplenishAnimalCard::class) {
+            $this->game->setReplenishUndoBlocked(true);
+        }
+        // setPlayerNonMultiactive already transitions when this was the last player.
+        // Returning the same state would enter nextPlayer a second time and skip the round leader.
         $finished = $this->game->gamestate->setPlayerNonMultiactive($playerId, $returnState);
         if ($finished) {
+            $this->prepareReturnTo($returnState, false);
             $this->game->clearPromptClaimReturnState();
-            if ($returnState === ReplenishAnimalCard::class) {
-                $this->game->setReplenishUndoBlocked(true);
-            }
-
-            return $returnState;
         }
 
         return null;
     }
 
+    /**
+     * @param class-string $returnState
+     */
+    private function prepareReturnTo(string $returnState, bool $leavingByStateReturn): void
+    {
+        if ($returnState === ReplenishAnimalCard::class && $leavingByStateReturn) {
+            $this->game->setReplenishUndoBlocked(true);
+        }
+        if ($returnState !== NextPlayer::class) {
+            $this->game->restorePromptClaimResumePlayer();
+            $this->game->clearPromptClaimResumePlayerId();
+        }
+    }
+
     public function zombie(int $playerId)
     {
-        $returnState = $this->game->getPromptClaimReturnState();
-        $pending = $this->getEligiblePendingByPlayer()[$playerId] ?? [];
+        $pending = $this->game->getEligiblePendingObjectivePromptsByPlayer()[$playerId] ?? [];
         if (empty($pending)) {
-            return $this->finishPromptReturn($returnState, $playerId);
+            return $this->finishPromptReturn($playerId);
         }
 
         return $this->actSkipPromptObjective((int) $pending[0], $playerId, $this->getArgs());

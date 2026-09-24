@@ -48,6 +48,8 @@ class Game extends \Bga\GameFramework\Table
 
     public const GLOBAL_PROMPT_CLAIM_RETURN_STATE = 'prompt_claim_return_state';
 
+    public const GLOBAL_PROMPT_CLAIM_RESUME_PLAYER = 'prompt_claim_resume_player';
+
     public const GLOBAL_UNDO_SNAPSHOT = 'undo_snapshot';
 
     public const GLOBAL_REPLENISH_UNDO_BLOCKED = 'replenish_undo_blocked';
@@ -328,6 +330,7 @@ class Game extends \Bga\GameFramework\Table
     public function enterPromptClaimObjectiveFrom(string $stateName): string
     {
         $this->setPromptClaimReturnState($stateName);
+        $this->setPromptClaimResumePlayerId((int) $this->getActivePlayerId());
         return PromptClaimObjective::class;
     }
 
@@ -351,15 +354,62 @@ class Game extends \Bga\GameFramework\Table
         $this->setPendingObjectivePrompts($pending);
     }
 
-    public function hasPendingObjectivePrompts(): bool
+    /**
+     * Players who still need to answer a claim prompt, keyed by player id.
+     *
+     * @return array<int, list<int>>
+     */
+    public function getEligiblePendingObjectivePromptsByPlayer(): array
     {
-        foreach ($this->getPendingObjectivePrompts() as $indices) {
-            if (! empty($indices)) {
-                return true;
+        $objectives = $this->getObjectivesState();
+        $eligible = [];
+        foreach ($this->getPendingObjectivePrompts() as $pid => $indices) {
+            $pid = (int) $pid;
+            foreach ($indices as $idx) {
+                $idx = (int) $idx;
+                if (! isset($objectives[$idx])) {
+                    continue;
+                }
+                $obj = $objectives[$idx];
+                $status = $obj['players'][$pid] ?? 'unmet';
+                if (! empty($obj['active']) && $status === 'meets') {
+                    $eligible[$pid][] = $idx;
+                }
+            }
+            if (! empty($eligible[$pid])) {
+                $eligible[$pid] = array_values(array_unique($eligible[$pid]));
             }
         }
 
-        return false;
+        return $eligible;
+    }
+
+    public function hasPendingObjectivePrompts(): bool
+    {
+        return $this->getEligiblePendingObjectivePromptsByPlayer() !== [];
+    }
+
+    public function setPromptClaimResumePlayerId(int $playerId): void
+    {
+        $this->bga->globals->set(self::GLOBAL_PROMPT_CLAIM_RESUME_PLAYER, $playerId);
+    }
+
+    public function getPromptClaimResumePlayerId(): int
+    {
+        return (int) $this->bga->globals->get(self::GLOBAL_PROMPT_CLAIM_RESUME_PLAYER, 0);
+    }
+
+    public function clearPromptClaimResumePlayerId(): void
+    {
+        $this->bga->globals->set(self::GLOBAL_PROMPT_CLAIM_RESUME_PLAYER, 0);
+    }
+
+    public function restorePromptClaimResumePlayer(): void
+    {
+        $pid = $this->getPromptClaimResumePlayerId();
+        if ($pid > 0) {
+            $this->gamestate->changeActivePlayer($pid);
+        }
     }
 
     /**

@@ -7,7 +7,6 @@ namespace Bga\Games\BorealisArticExpeditions\States;
 use Bga\GameFramework\StateType;
 use Bga\GameFramework\States\GameState;
 use Bga\Games\BorealisArticExpeditions\Game;
-use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
 
 class NextPlayer extends GameState
 {
@@ -25,16 +24,28 @@ class NextPlayer extends GameState
 
     public function onEnteringState(int $activePlayerId)
     {
-        $this->game->giveExtraTime($activePlayerId);
-        if ($this->game->hasPendingObjectivePrompts()) {
-            return $this->game->enterPromptClaimObjectiveFrom(Game::PROMPT_RETURN_NEXT_PLAYER);
+        $g = $this->game;
+        $resumePlayer = $g->getPromptClaimResumePlayerId();
+        $turnPlayer = $resumePlayer > 0 ? $resumePlayer : $activePlayerId;
+
+        if ($g->hasPendingObjectivePrompts()) {
+            $g->setPromptClaimReturnState(Game::PROMPT_RETURN_NEXT_PLAYER);
+            if ($g->getPromptClaimResumePlayerId() <= 0) {
+                $g->setPromptClaimResumePlayerId($turnPlayer);
+            }
+
+            return PromptClaimObjective::class;
         }
-        $leader = $this->game->getRoundLeaderId();
-        $next = $this->game->getPlayerAfter($activePlayerId);
+
+        $g->clearPromptClaimResumePlayerId();
+        $g->giveExtraTime($turnPlayer);
+
+        $leader = $g->getRoundLeaderId();
+        $next = $g->getPlayerAfter($turnPlayer);
         if ($next === $leader) {
             return EndOfRound::class;
         }
-        $this->game->activeNextPlayer();
+        $g->gamestate->changeActivePlayer($next);
 
         return Gameplay::class;
     }

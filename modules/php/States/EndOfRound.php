@@ -55,6 +55,7 @@ class EndOfRound extends GameState
         if (count($g->playersWithLocationSevenPlusCards()) > 0) {
             return EndScore::class;
         }
+        $g->clearPromptClaimResumePlayerId();
         $leader = $g->getRoundLeaderId();
         $g->gamestate->changeActivePlayer($leader);
         $g->updateObjectiveConditions();
