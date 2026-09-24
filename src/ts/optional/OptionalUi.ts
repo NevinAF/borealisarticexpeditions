@@ -8,8 +8,10 @@ import {
   animMs,
   clearMotionLayer,
   flyClone,
+  flyCloneToLocal,
   flyDiscardAway,
   freezeAndFadePreviews,
+  coordsInParent,
   placeClone,
   placeCloneUnder,
   placeScientistClone,
@@ -248,8 +250,7 @@ export class OptionalUi {
 
       const cardEl = this.cardEl(pid, cardId);
       const pileDest = this.nextPileDest(pid, loc);
-      this.expandLocationOutline(pid, loc, ms);
-      const slots = this.handSlotRects(pid);
+      const slots = this.expandLocationOutline(pid, loc, ms);
       const remaining = this.handCards(pid).filter((el) => el !== cardEl);
       if (cardEl && pileDest) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
@@ -259,7 +260,7 @@ export class OptionalUi {
           ? this.crossfadeToFace(clone, cardId, ms)
           : Promise.resolve();
         await Promise.all([
-          flyClone(clone, pileDest.rect, ms, root, true, 1, pileDest.pile),
+          flyCloneToLocal(clone, pileDest.local, ms, pileDest.pile, true),
           this.compactHandToSlots(remaining, slots, ms),
           reveal,
         ]);
@@ -1148,26 +1149,35 @@ export class OptionalUi {
     return Array.from(nodes).flatMap((hold) => Array.from(hold.querySelectorAll('.bae_meeple_img'))) as HTMLElement[];
   }
 
-  private expandLocationOutline(pid: number, loc: number, ms: number): number {
+  private expandLocationOutline(pid: number, loc: number, ms: number): DOMRect[] {
+    const current = this.handSlotRects(pid);
     const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`) as HTMLElement | null;
     const zone = this.host.root.querySelector(
       `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
     ) as HTMLElement | null;
-    if (!canvas || !zone) return 0;
+    if (!canvas || !zone) return current;
     const boards = this.host.gamedatas.boardState.boards?.[pid] ?? [];
     const maxPlayed = boards.reduce((max, pile) => Math.max(max, pile.length), 0);
     const afterPile = (boards[loc]?.length ?? 0) + 1;
     const oldSlots = Math.min(MAX_LOCATION_CARDS, maxPlayed + 1);
     const newSlots = Math.min(MAX_LOCATION_CARDS, Math.max(maxPlayed, afterPile) + 1);
-    if (newSlots <= oldSlots) return 0;
-    const boardH = canvas.getBoundingClientRect().height;
-    const marginDelta = boardH * (170 / 2600) * (newSlots - oldSlots);
-    canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
+    if (newSlots <= oldSlots) return current;
+    canvas.style.transition = 'none';
+    canvas.style.setProperty('--bae-outline-dur', '0s');
     canvas.style.setProperty('--animal-card-slots', String(newSlots));
-    return Number.isFinite(marginDelta) ? marginDelta : 0;
+    void canvas.offsetWidth;
+    const dests = this.handSlotRects(pid);
+    canvas.style.setProperty('--animal-card-slots', String(oldSlots));
+    void canvas.offsetWidth;
+    const ease = `${ms}ms cubic-bezier(0.22, 0.61, 0.36, 1)`;
+    canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
+    canvas.style.transition = `margin ${ease}`;
+    void canvas.offsetWidth;
+    canvas.style.setProperty('--animal-card-slots', String(newSlots));
+    return dests;
   }
 
-  private nextPileDest(pid: number, loc: number): { pile: HTMLElement; rect: DOMRect } | null {
+  private nextPileDest(pid: number, loc: number): { pile: HTMLElement; local: { left: number; top: number; width: number; height: number } } | null {
     const zone = this.host.root.querySelector(
       `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
     ) as HTMLElement | null;
@@ -1179,9 +1189,10 @@ export class OptionalUi {
     probe.style.pointerEvents = 'none';
     pile.appendChild(probe);
     const rect = probe.getBoundingClientRect();
+    const local = coordsInParent(pile, rect);
     pile.removeChild(probe);
     if (rect.width < 1 || rect.height < 1) return null;
-    return { pile, rect };
+    return { pile, local };
   }
 
   private flagRestRect(pid: number, loc: number, space: number, sample: HTMLElement): DOMRect | null {

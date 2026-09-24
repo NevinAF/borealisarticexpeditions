@@ -66,6 +66,10 @@ function localRect(parent: HTMLElement, r: DOMRect): { left: number; top: number
   return { left: loc.left, top: loc.top, width: r.width, height: r.height };
 }
 
+export function coordsInParent(parent: HTMLElement, r: DOMRect): { left: number; top: number; width: number; height: number } {
+  return localRect(parent, r);
+}
+
 export function offsetRect(r: DOMRect, dx: number, dy: number): DOMRect {
   return new DOMRect(r.left + dx, r.top + dy, r.width, r.height);
 }
@@ -193,6 +197,32 @@ export function flyClone(
   if (matchSize) {
     clone.style.width = `${destW}px`;
     clone.style.height = `${destH}px`;
+  }
+  return wait(durationMs).then(() => {
+    clone.style.transition = 'none';
+  });
+}
+
+/** Fly using destination coordinates already expressed in `host`'s local space. */
+export function flyCloneToLocal(
+  clone: HTMLElement,
+  dest: { left: number; top: number; width: number; height: number },
+  durationMs: number,
+  host: HTMLElement,
+  matchSize = false,
+): Promise<void> {
+  adoptClone(clone, host);
+  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+  clone.style.transform = 'none';
+  void clone.offsetWidth;
+  clone.style.transition = matchSize
+    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
+    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
+  clone.style.left = `${dest.left}px`;
+  clone.style.top = `${dest.top}px`;
+  if (matchSize) {
+    clone.style.width = `${dest.width}px`;
+    clone.style.height = `${dest.height}px`;
   }
   return wait(durationMs).then(() => {
     clone.style.transition = 'none';
