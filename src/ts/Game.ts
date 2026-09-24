@@ -27,6 +27,7 @@ export class Game {
   selectedCardId: number | null = null;
   selectedLocation: number | null = null;
   selectedPoolSlot: number | null = null;
+  selectedObjectiveIdx: number | null = null;
   campSelected = false;
   selectedRegroupIds = new Set<number>();
   cachedActionArgs: Record<string, unknown> | null = null;
@@ -60,6 +61,7 @@ export class Game {
     this.optionalUi = new OptionalUi(this);
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
+    this.zoomFactor = this.firstZoomOutFromFit();
     this.renderAll();
   }
 
@@ -245,6 +247,16 @@ export class Game {
       return this.getScaleForZoomFactor(this.zoomFactor);
     }
 
+    private firstZoomOutFromFit(): number {
+      const fit = this.getScaleForZoomFactor(1);
+      let nextZoom = 1;
+      while (nextZoom > Game.ZOOM_MIN + 0.0001) {
+        nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
+        if (fit - this.getScaleForZoomFactor(nextZoom) > 0.0001) return nextZoom;
+      }
+      return 1;
+    }
+
     private canZoomInAtCurrentViewport(): boolean {
       const current = this.getScaleForZoomFactor(this.zoomFactor);
       const nextZoom = this.zoomFactor + Game.ZOOM_STEP;
@@ -311,8 +323,9 @@ export class Game {
 
     resetBtn?.addEventListener('click', (ev) => {
       ev.preventDefault();
-      if (Math.abs(this.zoomFactor - 1) <= 0.0001) return;
-      this.zoomFactor = 1;
+      const resetZoom = this.firstZoomOutFromFit();
+      if (Math.abs(this.zoomFactor - resetZoom) <= 0.0001) return;
+      this.zoomFactor = resetZoom;
       this.renderAll();
     });
   }
@@ -460,6 +473,34 @@ export class Game {
     return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
   }
 
+  private wrapTooltipGrid(cells: string[]): string {
+    if (cells.length === 0) return '';
+    if (cells.length === 1) return cells[0];
+    return `<div class="bae_tooltip_grid">${cells.map((cell) => `<div>${cell}</div>`).join('')}</div>`;
+  }
+
+  private canSelectObjectiveToClaim(): boolean {
+    return this.bga.players.isCurrentPlayerActive()
+      && !this.isPromptClaimObjectiveLike()
+      && !this.isOpeningMulliganLike()
+      && (this.isGameplayLike() || this.isReplenishLike() || this.isAssignCampLike());
+  }
+
+  private addClaimObjectiveButton(): void {
+    if (!this.canSelectObjectiveToClaim() || this.selectedObjectiveIdx == null) return;
+    const idx = this.selectedObjectiveIdx;
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    const obj = this.gamedatas.boardState.objectives?.[idx];
+    const can = (obj?.players?.[myId] ?? 'unmet') === 'meets';
+    this.bga.statusBar.addActionButton(_("Claim Objective"), () => {
+      if (!can) return;
+      void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+    }, {
+      disabled: !can,
+      tooltip: _("Claim this objective now and score 5 VP."),
+    });
+  }
+
   private async confirmRegroupDiscard(cardIds: number[]): Promise<void> {
     const myId = Number(this.bga.players.getCurrentPlayerId());
     if (this.countScientistsInCamps(myId) === 0) {
@@ -480,6 +521,7 @@ export class Game {
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
+    this.selectedObjectiveIdx = null;
     this.campSelected = true;
     this.selectedRegroupIds.clear();
     this.renderAll();
@@ -492,6 +534,7 @@ export class Game {
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
+    this.selectedObjectiveIdx = null;
     this.campSelected = false;
     this.selectedRegroupIds.clear();
     this.renderAll();
@@ -574,7 +617,7 @@ export class Game {
     const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
     const canZoomOut = this.canZoomOutAtCurrentViewport();
     const canZoomIn = this.canZoomInAtCurrentViewport();
-    const canResetZoom = Math.abs(this.zoomFactor - 1) > 0.0001;
+    const canResetZoom = Math.abs(this.zoomFactor - this.firstZoomOutFromFit()) > 0.0001;
     const canConfirmObserve = this.isGameplayLike() && this.isObserveSelectionLegal();
     const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
     const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
@@ -605,11 +648,15 @@ export class Game {
       if (anyClaimed && playerState !== "claimed") extraClass += " bae_obj_claimed_round";
       if (promptedObjectiveIdx === idx) extraClass += " bae_obj_prompt_target";
       const disabledAttr = obj.active ? "" : "disabled";
+      const canConfirmClaim = this.canSelectObjectiveToClaim()
+        && this.selectedObjectiveIdx === idx
+        && playerState === "meets";
       const promptConfirmBlurb = promptedObjectiveIdx === idx
         ? `<span class="bae_confirm_blurb">${this.escapeHtml(confirmObserveBlurb)}</span>`
-        : "";
+        : (canConfirmClaim ? `<span class="bae_confirm_blurb">${this.escapeHtml(confirmObserveBlurb)}</span>` : "");
+      const selectedClass = canConfirmClaim ? " bae_obj_selected" : "";
       // give each objective an ID so we can attach the BGA tooltip API instead of title attributes
-      html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(
+      html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}${selectedClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(
         obj.id,
       )}${promptConfirmBlurb}</button>`;
     });
@@ -934,58 +981,91 @@ export class Game {
 
     const d = this.gamedatas.boardState;
 
-    // Pool slots
+    // Pool slots: all four face-up pool cards share one grouped tooltip
+    const poolCells = (d.pool || []).slice().sort((a, b) => a.slot - b.slot).map((slot) => (
+      this.buildCardTooltipSpriteHtml(
+        'animal',
+        slot.id,
+        _('Pool card'),
+        [_('Click to take this card')],
+      )
+    ));
+    const poolGroupHtml = this.wrapTooltipGrid(poolCells);
     (d.pool || []).forEach((slot) => {
       const id = `bae_pool_slot_${slot.slot}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-        const html = this.buildCardTooltipSpriteHtml(
-          'animal',
-          slot.id,
-          _('Pool card'),
-          [_('Click to take this card')],
-        );
-        this.bga.gameui.addTooltipHtml(id, html);
+      this.bga.gameui.addTooltipHtml(id, poolGroupHtml);
     });
     try { this.bga.gameui.removeTooltip('bae_pool_slot_deck'); } catch (_) {}
     this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
 
-    // Objectives
-    (d.objectives || []).forEach((obj, idx) => {
-      const id = `bae_obj_${idx}`;
-      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+    // Objectives: hovering any one shows all of them in the top-row layout
+    const objectiveCells = (d.objectives || []).map((obj) => {
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
       const progressLines = objectiveProgressLines(obj, d, this.gamedatas.materials, this.gamedatas.players);
       const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
-        const html = this.buildCardTooltipSpriteHtml(
-          'objective',
-          obj.id,
-          objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-          [objectiveMat?.description ?? '', ...progressLines, action],
-        );
-        this.bga.gameui.addTooltipHtml(id, html);
+      return this.buildCardTooltipSpriteHtml(
+        'objective',
+        obj.id,
+        objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
+        [objectiveMat?.description ?? '', ...progressLines, action],
+      );
+    });
+    const objectiveGroupHtml = this.wrapTooltipGrid(objectiveCells);
+    (d.objectives || []).forEach((_obj, idx) => {
+      const id = `bae_obj_${idx}`;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml);
     });
 
-    // Scoring cards
-    (d.scoring_cards || []).forEach((scoringId, idx) => {
-      const id = `bae_score_${idx}`;
-      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-
+    // Scoring cards: hovering any one shows all of them in the top-row layout
+    const scoringCells = (d.scoring_cards || []).map((scoringId) => {
       const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
       const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
       const description = scoringMat?.description ?? '';
       const explanation = scoringMat?.explanation ?? '';
       const vpLines = scoringVpLines(scoringId, d, this.gamedatas.materials, this.gamedatas.players);
-        const html = this.buildCardTooltipSpriteHtml(
-          'scoring',
-          scoringId,
-          title,
-          [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines],
-        );
-        this.bga.gameui.addTooltipHtml(id, html);
+      return this.buildCardTooltipSpriteHtml(
+        'scoring',
+        scoringId,
+        title,
+        [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines],
+      );
+    });
+    const scoringGroupHtml = this.wrapTooltipGrid(scoringCells);
+    (d.scoring_cards || []).forEach((_scoringId, idx) => {
+      const id = `bae_score_${idx}`;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      this.bga.gameui.addTooltipHtml(id, scoringGroupHtml);
     });
 
     // Camps, holds, and scientist shelves
     this.registerScientistTooltips();
+
+    // Played animal cards on locations
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const pid = Number(pidStr);
+      (d.boards[pid] ?? []).forEach((pile, loc) => {
+        pile.forEach((card, si) => {
+          const id = `bae_pile_${pid}_${loc}_${si}`;
+          try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+          const def = this.animalDef(card.id);
+          const species = this.gamedatas.materials.species_names?.[def?.species ?? 0] ?? '';
+          const vehicle = this.gamedatas.materials.vehicle_names?.[def?.vehicle ?? 0] ?? '';
+          const sci = this.gamedatas.materials.scientist_names ?? [];
+          const effect = def
+            ? `${_('Moves')} ${sci[def.left_move] ?? def.left_move} ${_('left')} · ${sci[def.right_move] ?? def.right_move} ${_('right')}. ${_('Vehicle')}: ${vehicle}. ${_('Bonus VP')}: ${def.bonus_vp}.`
+            : '';
+          const html = this.buildCardTooltipSpriteHtml(
+            'animal',
+            card.id,
+            `${species || _('Animal card')} #${card.id}`,
+            [effect],
+          );
+          this.bga.gameui.addTooltipHtml(id, html);
+        });
+      });
+    }
 
     // console.log(d, this.gamedatas.materials);
 
@@ -1417,6 +1497,7 @@ export class Game {
               return;
             }
             this.selectedCardId = id;
+            this.selectedObjectiveIdx = null;
           } else {
             return;
           }
@@ -1450,6 +1531,7 @@ export class Game {
               void this.bga.actions.performAction("actAssignScientists", { location: loc });
               return;
             }
+            this.selectedObjectiveIdx = null;
             this.selectedLocation = loc;
             this.renderAll();
             this.onUpdateActionButtons(this.currentStateName(), null);
@@ -1462,7 +1544,8 @@ export class Game {
               this.campSelected = false;
               this.selectedRegroupIds.clear();
               this.selectedCardId = null;
-              this.selectedLocation = loc;
+              this.selectedObjectiveIdx = null;
+            this.selectedLocation = loc;
               this.renderAll();
               this.onUpdateActionButtons(this.currentStateName(), null);
             } else {
@@ -1470,7 +1553,8 @@ export class Game {
                 if (this.confirmObserveIfReady(this.selectedCardId, loc)) return;
                 return;
               }
-              this.selectedLocation = loc;
+              this.selectedObjectiveIdx = null;
+            this.selectedLocation = loc;
               this.renderAll();
               // Update action row when selecting/deselecting a location
               this.onUpdateActionButtons(this.currentStateName(), null);
@@ -1503,6 +1587,7 @@ export class Game {
               void this.bga.actions.performAction('actAssignScientists', { location: loc });
               return;
             }
+            this.selectedObjectiveIdx = null;
             this.selectedLocation = loc;
             this.renderAll();
             this.onUpdateActionButtons(this.currentStateName(), null);
@@ -1513,7 +1598,8 @@ export class Game {
               this.campSelected = false;
               this.selectedRegroupIds.clear();
               this.selectedCardId = null;
-              this.selectedLocation = loc;
+              this.selectedObjectiveIdx = null;
+            this.selectedLocation = loc;
               this.renderAll();
               this.onUpdateActionButtons(this.currentStateName(), null);
             } else {
@@ -1521,7 +1607,8 @@ export class Game {
                 if (this.confirmObserveIfReady(this.selectedCardId, loc)) return;
                 return;
               }
-              this.selectedLocation = loc;
+              this.selectedObjectiveIdx = null;
+            this.selectedLocation = loc;
               this.renderAll();
               this.onUpdateActionButtons(this.currentStateName(), null);
             }
@@ -1555,6 +1642,7 @@ export class Game {
           void this.bga.actions.performAction("actTakeAnimal", { pool_slot: slot });
           return;
         }
+        this.selectedObjectiveIdx = null;
         this.selectedPoolSlot = slot;
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
@@ -1577,7 +1665,20 @@ export class Game {
           return;
         }
 
-        void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+        if (!this.canSelectObjectiveToClaim()) return;
+        if (this.selectedObjectiveIdx === idx) {
+          void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+          return;
+        }
+        this.selectedObjectiveIdx = idx;
+        this.selectedCardId = null;
+        this.selectedLocation = null;
+        this.selectedPoolSlot = null;
+        this.campSelected = false;
+        this.selectedRegroupIds.clear();
+        this.renderAll();
+        this.onUpdateActionButtons(this.currentStateName(), null);
+        this.optionalUi?.playSound('select');
       });
     });
   }
@@ -1587,6 +1688,7 @@ export class Game {
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
+    this.selectedObjectiveIdx = null;
     this.campSelected = false;
     this.selectedRegroupIds.clear();
     const n = stateName.toLowerCase();
@@ -1677,6 +1779,7 @@ export class Game {
     }
 
     if (sn.includes("gameplay")) {
+      this.addClaimObjectiveButton();
       if (this.campSelected) {
         const regroupCount = this.selectedRegroupIds.size;
         const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
@@ -1724,7 +1827,7 @@ export class Game {
         tooltip: _("Start choosing cards to discard and select a camp to regroup."),
       });
 
-      const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0;
+      const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0 && this.selectedObjectiveIdx == null;
       this.bga.statusBar.addActionButton(_('Clear selection'), () => {
          this.clearSelection();
       }, {
@@ -1733,6 +1836,7 @@ export class Game {
       });
     }
     if (sn.includes("replenish")) {
+      this.addClaimObjectiveButton();
       const replenishArgs = effectiveArgs as unknown as ReplenishArgs | null;
       const poolCardSelected = this.selectedPoolSlot != null && this.selectedPoolSlot >= 0;
       this.bga.statusBar.addActionButton(_("Draw Card"), () => {
@@ -1761,6 +1865,7 @@ export class Game {
       );
     }
     if (sn.includes("assigncamp") || sn.includes("assign_camp")) {
+      this.addClaimObjectiveButton();
       const assignArgs = effectiveArgs as unknown as AssignCampArgs | null;
       const locationSelected = this.selectedLocation != null;
       this.bga.statusBar.addActionButton(_("Assign Scientists"), () => {

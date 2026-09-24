@@ -8,7 +8,9 @@ import {
   animMs,
   clearMotionLayer,
   flyClone,
+  flyDiscardAway,
   placeClone,
+  placeCloneUnder,
   startDiscardGhost,
   startScientistTrail,
   startScientistTrailToRect,
@@ -38,6 +40,7 @@ export interface OptionalUiHost {
   campSelected: boolean;
   selectedRegroupIds: Set<number>;
   selectedPoolSlot: number | null;
+  selectedObjectiveIdx: number | null;
   isGameplayLike(): boolean;
   isReplenishLike(): boolean;
   isAssignCampLike(): boolean;
@@ -70,10 +73,15 @@ export class OptionalUi {
   private discardLoopEpoch = 0;
   private static readonly DISCARD_LOOP_MS = 1850;
   private tooltipBound = false;
-  private tooltipBlockNew = false;
-  private tooltipWaitForMove = false;
+  private tooltipLeaveSelector: string | null = null;
   private tooltipQuietUntil = 0;
+  private tooltipNeedMove = false;
+  private tooltipClickX = 0;
+  private tooltipClickY = 0;
+  private tooltipWasBlocked = false;
+  private tooltipRetrigger = false;
   private lastHoverEl: Element | null = null;
+  private static readonly TOOLTIP_CLICK_MS = 500;
 
   constructor(private host: OptionalUiHost) {}
 
@@ -84,8 +92,10 @@ export class OptionalUi {
     this.applyPreferenceCss();
     this.renderRoundBadge();
     this.bindDragAndDrop();
+    this.restoreHoldingFromState();
     this.renderRegroupHold();
     this.host.refreshScientistTooltips();
+    if (this.isTooltipBlocked()) this.cancelDojoTooltips();
     this.updateActionPreviews();
     this.bindPreferenceListener();
   }
@@ -192,6 +202,7 @@ export class OptionalUi {
     this.host.selectedCardId = null;
     this.host.selectedLocation = null;
     this.host.selectedPoolSlot = null;
+    this.host.selectedObjectiveIdx = null;
     this.host.campSelected = false;
     this.host.selectedRegroupIds.clear();
     this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
@@ -219,16 +230,21 @@ export class OptionalUi {
       const root = this.host.root;
 
       const cardEl = this.cardEl(pid, cardId);
-      const pileRect = this.nextPileRect(pid, loc);
+      const dest = this.destAboveLastPileCard(pid, loc);
+      this.expandLocationOutline(pid, loc, ms);
       const slots = this.handSlotRects(pid);
       const remaining = this.handCards(pid).filter((el) => el !== cardEl);
-      if (cardEl && pileRect) {
+      if (cardEl && dest) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
         cardEl.style.visibility = 'hidden';
-        this.expandLocationOutline(pid, loc, ms);
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const reveal = pid !== myId
+          ? this.crossfadeToFace(clone, cardId, ms)
+          : Promise.resolve();
         await Promise.all([
-          flyClone(clone, pileRect, ms, root, true),
+          flyClone(clone, dest, ms, root, true),
           this.compactHandToSlots(remaining, slots, ms),
+          reveal,
         ]);
       } else {
         await this.compactHandToSlots(remaining, slots, ms);
@@ -336,6 +352,10 @@ export class OptionalUi {
       const clone = this.cloneForHandDraw(src, faceId);
       if (!fromDeck) src.style.visibility = 'hidden';
       await flyClone(clone, destRect, ms, root, true);
+      const myId = Number(this.host.bga.players.getCurrentPlayerId());
+      if (!fromDeck && pid !== myId) {
+        await this.crossfadeToCardBack(clone, ms);
+      }
       if (fromDeck) return;
       await wait(Math.round(ms * 0.2));
       if (deck) {
@@ -364,7 +384,7 @@ export class OptionalUi {
       }));
       if (!deck) return;
       await Promise.all(cards.map((el) => {
-        const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
+        const clone = placeCloneUnder(el, 'bae_resolve_clone bae_resolve_card', root);
         el.style.visibility = 'hidden';
         return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
       }));
@@ -609,11 +629,18 @@ export class OptionalUi {
     if (!def) return;
     const ms = this.previewLoopMs();
     const used = new Set<HTMLElement>();
+    const byDest = new Map<number, HTMLElement[]>();
     for (const m of previewObserveMoves(this.host.gamedatas.boardState.scientists, pid, loc, def)) {
       const src = this.meepleAt(pid, m.from, m.color, used);
-      const dest = this.shelfEl(pid, m.to);
-      if (src && dest) startScientistTrail(src, dest, ms, this.host.root);
+      if (!src) continue;
+      const group = byDest.get(m.to) ?? [];
+      group.push(src);
+      byDest.set(m.to, group);
     }
+    byDest.forEach((sources, to) => {
+      const dest = this.shelfEl(pid, to);
+      if (dest) this.trailScientistsToEmptyGroup(sources, dest.getBoundingClientRect(), to, pid, ms);
+    });
     const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
     const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
     const board = this.host.gamedatas.materials.player_boards?.[boardId];
@@ -633,31 +660,57 @@ export class OptionalUi {
   private previewAssign(pid: number, loc: number): void {
     const dest = this.shelfEl(pid, loc);
     if (!dest) return;
-    const ms = this.previewLoopMs();
     const sources = this.holdMeeples(pid);
     const from = sources.length > 0 ? sources : this.campMeeples(pid);
-    for (const src of from) {
-      startScientistTrail(src, dest, ms, this.host.root);
-    }
+    this.trailScientistsToEmptyGroup(from, dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
   }
 
   private previewRegroupPickup(pid: number): void {
     const ms = this.previewLoopMs();
-    const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
-    const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`) as HTMLElement | null;
-    if (leftCamp) {
-      const r = leftCamp.getBoundingClientRect();
-      const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
-      for (const src of Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[]) {
-        startScientistTrailToRect(src, dest, ms, this.host.root);
-      }
+    this.previewRegroupPickupSide(pid, 3, 'left', ms);
+    this.previewRegroupPickupSide(pid, 4, 'right', ms);
+  }
+
+  private previewRegroupPickupSide(pid: number, campLoc: number, side: 'left' | 'right', ms: number): void {
+    const sources = Array.from(
+      this.shelfEl(pid, campLoc)?.querySelectorAll('.bae_meeple_img') ?? [],
+    ) as HTMLElement[];
+    if (sources.length === 0) return;
+    const hold = this.host.root.querySelector(`#bae_regroup_hold_${pid}_${side}`) as HTMLElement | null;
+    const camp = this.host.root.querySelector(`#bae_camp_${pid}_${side}`) as HTMLElement | null;
+    const destBox = hold?.getBoundingClientRect()
+      ?? (camp
+        ? new DOMRect(
+          camp.getBoundingClientRect().left,
+          camp.getBoundingClientRect().top - camp.getBoundingClientRect().height * 1.2,
+          camp.getBoundingClientRect().width,
+          camp.getBoundingClientRect().height,
+        )
+        : null);
+    if (!destBox) return;
+    this.trailScientistsToEmptyGroup(sources, destBox, campLoc, pid, ms);
+  }
+
+  private trailScientistsToEmptyGroup(
+    sources: HTMLElement[],
+    destBox: DOMRect,
+    layoutLoc: number,
+    pid: number,
+    ms: number,
+  ): void {
+    if (sources.length === 0 || destBox.width < 1 || destBox.height < 1) return;
+    const sci: Record<number, number[]> = { 0: [], 1: [], 2: [] };
+    for (const el of sources) {
+      const color = Number(el.dataset.scientist);
+      if (color >= 0 && color < 3) sci[color].push(layoutLoc);
     }
-    if (rightCamp) {
-      const r = rightCamp.getBoundingClientRect();
-      const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
-      for (const src of Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[]) {
-        startScientistTrailToRect(src, dest, ms, this.host.root);
-      }
+    const slots = this.scientistLayout(pid, { [pid]: sci }, layoutLoc);
+    const unused = [...sources];
+    for (const slot of slots) {
+      const idx = unused.findIndex((el) => Number(el.dataset.scientist) === slot.color);
+      if (idx < 0) continue;
+      const el = unused.splice(idx, 1)[0];
+      startScientistTrailToRect(el, this.meepleSlotRectFromBox(destBox, slot, el), ms, this.host.root);
     }
   }
 
@@ -826,14 +879,10 @@ export class OptionalUi {
     if (slots.length === 0) return;
     const leaving = this.leavingHandCards(pid, discarded);
     const remaining = this.handCards(pid).filter((el) => !leaving.includes(el));
-    leaving.forEach((el) => { el.style.visibility = 'hidden'; });
-    if (deck && leaving.length > 0) {
-      await Promise.all(leaving.map((el) => {
-        const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
-        return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
-      }));
-    }
-    await this.compactHandToSlots(remaining, slots, ms);
+    await Promise.all([
+      ...leaving.map((el) => flyDiscardAway(el, root, ms)),
+      this.compactHandToSlots(remaining, slots, ms),
+    ]);
 
     const drawCount = this.handDrawCount(pid, discarded, prev, next);
     if (!deck || drawCount <= 0) return;
@@ -949,6 +998,33 @@ export class OptionalUi {
     return clone;
   }
 
+  private async crossfadeToCardBack(clone: HTMLElement, ms: number): Promise<void> {
+    return this.crossfadeCard(clone, 9999, ms);
+  }
+
+  private async crossfadeToFace(clone: HTMLElement, cardId: number, ms: number): Promise<void> {
+    return this.crossfadeCard(clone, cardId, ms);
+  }
+
+  private async crossfadeCard(clone: HTMLElement, cardId: number, ms: number): Promise<void> {
+    const fade = Math.max(180, Math.round(ms * 0.7));
+    clone.style.overflow = 'hidden';
+    const overlay = document.createElement('div');
+    overlay.className = 'bae_card_back_fade';
+    overlay.style.position = 'absolute';
+    overlay.style.inset = '0';
+    overlay.style.opacity = '0';
+    overlay.style.transition = `opacity ${fade}ms ease`;
+    overlay.innerHTML = this.host.animalCardHtml(cardId);
+    const current = clone.querySelector('.bae_card_img, .bae_pile_card_img') as HTMLElement | null;
+    if (current) current.style.transition = `opacity ${fade}ms ease`;
+    clone.appendChild(overlay);
+    void overlay.offsetWidth;
+    overlay.style.opacity = '1';
+    if (current) current.style.opacity = '0';
+    await wait(fade);
+  }
+
   private renderRegroupHold(): void {
     const pid = this.holdingPid;
     if (pid == null) {
@@ -962,6 +1038,32 @@ export class OptionalUi {
     if (leftHold) leftHold.innerHTML = `<div class="bae_sci_shelf">${left?.innerHTML ?? ''}</div>`;
     if (rightHold) rightHold.innerHTML = `<div class="bae_sci_shelf">${right?.innerHTML ?? ''}</div>`;
     this.campMeeples(pid).forEach((el) => { el.style.visibility = 'hidden'; });
+  }
+
+  private restoreHoldingFromState(): void {
+    if (this.host.isAssignCampLike()) {
+      if (this.holdingPid != null && this.playerHasCampScientists(this.holdingPid)) return;
+      const active = Number(this.host.bga.players.getActivePlayerId() ?? 0);
+      const pids = [active, ...Object.keys(this.host.gamedatas.players).map(Number)];
+      for (const pid of pids) {
+        if (pid && this.playerHasCampScientists(pid)) {
+          this.holdingPid = pid;
+          return;
+        }
+      }
+      return;
+    }
+    if (!this.resolving) this.holdingPid = null;
+  }
+
+  private playerHasCampScientists(pid: number): boolean {
+    if (this.campMeeples(pid).length > 0) return true;
+    const sci = this.host.gamedatas.boardState.scientists?.[pid];
+    if (!sci) return false;
+    for (let color = 0; color < 3; color++) {
+      if ((sci[color] ?? []).some((pos) => pos === 3 || pos === 4)) return true;
+    }
+    return false;
   }
 
   private ensureRegroupHold(pid: number, side: 'left' | 'right'): HTMLElement | null {
@@ -1011,56 +1113,185 @@ export class OptionalUi {
     return Array.from(nodes).flatMap((hold) => Array.from(hold.querySelectorAll('.bae_meeple_img'))) as HTMLElement[];
   }
 
-  private expandLocationOutline(pid: number, loc: number, ms: number): void {
+  private expandLocationOutline(pid: number, loc: number, ms: number): number {
     const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`) as HTMLElement | null;
-    if (!canvas) return;
+    const zone = this.host.root.querySelector(
+      `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
+    ) as HTMLElement | null;
+    if (!canvas || !zone) return 0;
     const boards = this.host.gamedatas.boardState.boards?.[pid] ?? [];
     const maxPlayed = boards.reduce((max, pile) => Math.max(max, pile.length), 0);
     const afterPile = (boards[loc]?.length ?? 0) + 1;
     const oldSlots = maxPlayed + 1;
     const newSlots = Math.max(maxPlayed, afterPile) + 1;
-    if (newSlots <= oldSlots) return;
+    if (newSlots <= oldSlots) return 0;
+    const shift = zone.getBoundingClientRect().height * (170 / 2494);
     canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
     canvas.style.setProperty('--animal-card-slots', String(newSlots));
+    return (newSlots - oldSlots) * shift;
+  }
+
+  private destAboveLastPileCard(pid: number, loc: number, extraDown = 0): DOMRect | null {
+    const zone = this.host.root.querySelector(
+      `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
+    ) as HTMLElement | null;
+    if (!zone) return null;
+    const zr = zone.getBoundingClientRect();
+    if (zr.width < 1 || zr.height < 1) return null;
+    const pile = zone.querySelector('.bae_anim_pile');
+    const slots = pile ? pile.querySelectorAll('.bae_pile_slot') : [];
+    const cardW = zr.width * (528 / 800);
+    const cardH = zr.height * (745 / 2494);
+    const shift = zr.height * (170 / 2494);
+    if (slots.length > 0) {
+      const last = (slots[slots.length - 1] as HTMLElement).getBoundingClientRect();
+      return new DOMRect(last.left, last.top - shift + extraDown, last.width, last.height);
+    }
+    return new DOMRect(
+      zr.left + zr.width / 2 - cardW / 2,
+      zr.top - cardH + extraDown,
+      cardW,
+      cardH,
+    );
   }
 
   private bindTooltipGate(): void {
     if (this.tooltipBound) return;
     this.tooltipBound = true;
+    this.repairTooltipNodes();
+    document.body.classList.remove('bae_block_tooltips');
+    document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
+
+    const onHover = (ev: Event) => {
+      const target = ev.target as Element | null;
+      this.lastHoverEl = target;
+      if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
+        this.tooltipLeaveSelector = null;
+      }
+      if (this.tooltipRetrigger) {
+        this.tooltipRetrigger = false;
+        return;
+      }
+      if (this.isTooltipBlocked()) {
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
+        this.cancelDojoTooltips();
+      }
+    };
+    const onClick = (ev: Event) => {
+      const mouse = ev as MouseEvent;
+      this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+      this.tooltipNeedMove = true;
+      this.tooltipClickX = mouse.clientX ?? 0;
+      this.tooltipClickY = mouse.clientY ?? 0;
+      this.tooltipWasBlocked = true;
+      const target = ev.target as Element | null;
+      if (target && typeof target.closest === 'function') {
+        const interacted = this.interactiveTooltipTarget(target) ?? target;
+        this.tooltipLeaveSelector = this.selectorFor(interacted);
+      }
+      this.cancelDojoTooltips();
+      this.dismissTooltipFrom(this.lastHoverEl);
+    };
     const onMove = (ev: Event) => {
-      this.lastHoverEl = ev.target as Element | null;
-      if (Date.now() < this.tooltipQuietUntil) return;
-      if (!this.tooltipWaitForMove && !this.tooltipBlockNew) return;
-      this.tooltipWaitForMove = false;
-      this.setTooltipBlock(this.resolving);
-      this.clearTooltipKeeper();
+      const mouse = ev as MouseEvent;
+      const target = ev.target as Element | null;
+      this.lastHoverEl = target;
+      if (this.tooltipNeedMove) {
+        const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
+        const dy = (mouse.clientY ?? 0) - this.tooltipClickY;
+        if (dx * dx + dy * dy >= 16) this.tooltipNeedMove = false;
+      }
+      if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
+        this.tooltipLeaveSelector = null;
+      }
+      const blocked = this.isTooltipBlocked();
+      if (this.tooltipWasBlocked && !blocked) this.retriggerTooltipHover();
+      this.tooltipWasBlocked = blocked;
     };
-    const onClick = () => {
-      this.tooltipQuietUntil = Date.now() + 500;
-      this.tooltipWaitForMove = true;
-      this.setTooltipBlock(true);
-    };
-    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('mouseover', onHover, true);
+    document.addEventListener('mouseenter', onHover, true);
     document.addEventListener('click', onClick, true);
+    document.addEventListener('mousemove', onMove, true);
   }
 
   private beginTooltipGuard(zones: string[]): void {
-    this.tooltipBlockNew = true;
     const hoverZone = this.hoverTooltipZone();
     const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
-    if (affected) this.closeOpenTooltips();
-    else this.parkOpenTooltip();
-    this.setTooltipBlock(true);
+    const hover = this.lastHoverEl;
+    this.tooltipNeedMove = true;
+    this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+    this.tooltipWasBlocked = true;
+    if (hover && typeof hover.closest === 'function') {
+      this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
+    }
+    if (affected) this.dismissTooltipFrom(hover);
+    this.cancelDojoTooltips();
   }
 
   private endTooltipGuard(): void {
-    this.tooltipWaitForMove = true;
-    this.setTooltipBlock(true);
+    this.tooltipNeedMove = true;
+    this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+    this.tooltipWasBlocked = true;
+    const hover = this.lastHoverEl;
+    if (hover && typeof hover.closest === 'function') {
+      this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
+    }
+    this.cancelDojoTooltips();
   }
 
-  private setTooltipBlock(on: boolean): void {
-    this.tooltipBlockNew = on;
-    document.body.classList.toggle('bae_block_tooltips', on);
+  private isTooltipBlocked(): boolean {
+    if (this.resolving) return true;
+    if (Date.now() < this.tooltipQuietUntil) return true;
+    if (this.tooltipNeedMove) return true;
+    return this.isHoveringLeaveTarget(this.lastHoverEl);
+  }
+
+  private isHoveringLeaveTarget(hover: Element | null): boolean {
+    if (!hover || !this.tooltipLeaveSelector || typeof hover.closest !== 'function') return false;
+    try {
+      return !!hover.closest(this.tooltipLeaveSelector);
+    } catch {
+      return false;
+    }
+  }
+
+  private retriggerTooltipHover(): void {
+    const hover = this.lastHoverEl;
+    if (!hover || typeof hover.dispatchEvent !== 'function') return;
+    this.tooltipRetrigger = true;
+    hover.dispatchEvent(new MouseEvent('mouseover', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    }));
+  }
+
+  private interactiveTooltipTarget(el: Element): Element | null {
+    return el.closest([
+      '.bae_card',
+      '.bae_pile_slot',
+      '.bae_pool_slot',
+      '.bae_obj',
+      '.bae_score_card',
+      '.bae_camp_zone',
+      '.bae_regroup_hold',
+      '.bae_location_zone',
+    ].join(','));
+  }
+
+  private selectorFor(el: Element): string | null {
+    const host = el as HTMLElement;
+    if (host.id) return `#${host.id}`;
+    const loc = host.closest?.('.bae_location_zone') as HTMLElement | null;
+    if (loc?.dataset.playerId != null && loc.dataset.loc != null) {
+      return `.bae_location_zone[data-player-id="${loc.dataset.playerId}"][data-loc="${loc.dataset.loc}"]`;
+    }
+    const camp = host.closest?.('.bae_camp_zone') as HTMLElement | null;
+    if (camp?.id) return `#${camp.id}`;
+    const card = host.closest?.('.bae_card') as HTMLElement | null;
+    if (card?.id) return `#${card.id}`;
+    return null;
   }
 
   private hoverTooltipZone(): string | null {
@@ -1074,38 +1305,74 @@ export class OptionalUi {
 
   private tooltipNodes(): HTMLElement[] {
     return Array.from(document.querySelectorAll(
-      '.dijitTooltip, .dijitTooltipPopup, .bga-tooltip, .tooltip',
+      '.dijitTooltip, .dijitTooltipPopup, .bga-tooltip',
     )) as HTMLElement[];
   }
 
-  private closeOpenTooltips(): void {
-    this.clearTooltipKeeper();
+  private repairTooltipNodes(): void {
     this.tooltipNodes().forEach((node) => {
-      node.style.display = 'none';
-      node.style.visibility = 'hidden';
+      node.style.removeProperty('display');
+      node.style.removeProperty('visibility');
+      node.style.removeProperty('width');
+      node.style.removeProperty('height');
+      node.style.removeProperty('overflow');
     });
-  }
-
-  private parkOpenTooltip(): void {
-    this.clearTooltipKeeper();
-    const open = this.tooltipNodes().find((node) => {
-      const cs = getComputedStyle(node);
-      return cs.display !== 'none' && cs.visibility !== 'hidden' && node.offsetHeight > 0;
-    });
-    if (!open) return;
-    const keeper = document.createElement('div');
-    keeper.className = 'bae_tooltip_keeper';
-    keeper.innerHTML = open.innerHTML;
-    const r = open.getBoundingClientRect();
-    keeper.style.left = `${r.left}px`;
-    keeper.style.top = `${r.top}px`;
-    keeper.style.width = `${Math.max(r.width, 40)}px`;
-    document.body.appendChild(keeper);
-    open.style.visibility = 'hidden';
-  }
-
-  private clearTooltipKeeper(): void {
     document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
+    document.body.classList.remove('bae_block_tooltips');
+  }
+
+  private dismissTooltipFrom(from: Element | null): void {
+    this.repairTooltipNodes();
+    if (from && typeof from.dispatchEvent === 'function') {
+      const related = document.body;
+      const bubble = { bubbles: true, cancelable: true, view: window, relatedTarget: related } as MouseEventInit;
+      from.dispatchEvent(new MouseEvent('pointerout', bubble));
+      from.dispatchEvent(new MouseEvent('mouseout', bubble));
+      from.dispatchEvent(new MouseEvent('mouseleave', {
+        bubbles: false,
+        cancelable: true,
+        view: window,
+        relatedTarget: related,
+      }));
+    }
+    this.cancelDojoTooltips();
+  }
+
+  private cancelDojoTooltips(): void {
+    this.repairTooltipNodes();
+    const hideWidget = (tip: unknown): void => {
+      if (!tip || typeof tip !== 'object') return;
+      const t = tip as {
+        _showTimer?: number | null;
+        close?: () => void;
+        _onUnHover?: () => void;
+      };
+      try {
+        if (t._showTimer) {
+          window.clearTimeout(t._showTimer);
+          t._showTimer = null;
+        }
+        t.close?.();
+        t._onUnHover?.();
+      } catch { /* ignore */ }
+    };
+    const ui = this.host.bga?.gameui as unknown as Record<string, unknown> | undefined;
+    if (ui) {
+      for (const key of ['tooltips', '_tooltips']) {
+        const map = ui[key];
+        if (map && typeof map === 'object') {
+          for (const tip of Object.values(map as Record<string, unknown>)) hideWidget(tip);
+        }
+      }
+    }
+    const w = window as unknown as {
+      dijit?: { hideTooltip?: () => void; _masterTT?: unknown };
+    };
+    try { w.dijit?.hideTooltip?.(); } catch { /* ignore */ }
+    hideWidget(w.dijit?._masterTT);
+    document.querySelectorAll('.dijitTooltip, .dijitTooltipPopup').forEach((node) => {
+      node.classList.add('dijitTooltipHidden');
+    });
   }
 
   private deckEl(): HTMLElement | null {
@@ -1124,23 +1391,6 @@ export class OptionalUi {
     const col = this.handCol(pid);
     if (!col) return [];
     return Array.from(col.querySelectorAll('.bae_handcard, .bae_handcard_hidden')) as HTMLElement[];
-  }
-
-  private nextPileRect(pid: number, loc: number): DOMRect | null {
-    const zone = this.host.root.querySelector(
-      `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
-    ) as HTMLElement | null;
-    if (!zone) return null;
-    const zr = zone.getBoundingClientRect();
-    if (zr.width < 1 || zr.height < 1) return null;
-    const pile = zone.querySelector('.bae_anim_pile');
-    const index = pile ? pile.querySelectorAll('.bae_pile_slot').length : 0;
-    const cardW = zr.width * (528 / 800);
-    const cardH = zr.height * (745 / 2494);
-    const shift = zr.height * (170 / 2494);
-    const left = zr.left + zr.width / 2 - cardW / 2;
-    const top = zr.top - index * shift - cardH;
-    return new DOMRect(left, top, cardW, cardH);
   }
 
   private handDestEl(pid: number): HTMLElement | null {
@@ -1171,9 +1421,19 @@ export class OptionalUi {
       return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
     };
 
-    const takeColor = (els: HTMLElement[], color: number): HTMLElement | null => {
-      const el = els.find((node) => !used.has(node) && Number(node.dataset.scientist) === color) ?? null;
-      if (el) used.add(el);
+    const dist2 = (el: HTMLElement, dest: DOMRect): number => {
+      const r = el.getBoundingClientRect();
+      const dx = (r.left + r.width / 2) - (dest.left + dest.width / 2);
+      const dy = (r.top + r.height / 2) - (dest.top + dest.height / 2);
+      return dx * dx + dy * dy;
+    };
+
+    const takeNearest = (els: HTMLElement[], color: number, dest: DOMRect): HTMLElement | null => {
+      const candidates = els.filter((node) => !used.has(node) && Number(node.dataset.scientist) === color);
+      if (candidates.length === 0) return null;
+      candidates.sort((a, b) => dist2(a, dest) - dist2(b, dest));
+      const el = candidates[0];
+      used.add(el);
       return el;
     };
 
@@ -1185,9 +1445,13 @@ export class OptionalUi {
     const filled: Array<Array<HTMLElement | null>> = slotsByLoc.map((row) => row.slots.map(() => null));
 
     for (const row of slotsByLoc) {
+      if (!row.shelf) continue;
       const staying = currentAt(row.loc);
       row.slots.forEach((slot, i) => {
-        const el = takeColor(staying, slot.color);
+        const sample = staying[0];
+        if (!sample) return;
+        const dest = this.meepleSlotRect(row.shelf!, slot, sample);
+        const el = takeNearest(staying, slot.color, dest);
         if (el) filled[row.loc][i] = el;
       });
     }
@@ -1196,8 +1460,17 @@ export class OptionalUi {
       row.slots.forEach((slot, i) => {
         if (filled[row.loc][i]) return;
         let el: HTMLElement | null = null;
+        const sample = row.shelf?.querySelector('.bae_meeple_img') as HTMLElement | null
+          ?? currentAt(0)[0]
+          ?? currentAt(1)[0]
+          ?? currentAt(2)[0]
+          ?? currentAt(3)[0]
+          ?? currentAt(4)[0];
+        const dest = row.shelf && sample
+          ? this.meepleSlotRect(row.shelf, slot, sample)
+          : new DOMRect(0, 0, 1, 1);
         for (let from = 0; from <= 4 && !el; from++) {
-          el = takeColor(currentAt(from), slot.color);
+          el = takeNearest(currentAt(from), slot.color, dest);
         }
         if (el) filled[row.loc][i] = el;
       });
@@ -1208,7 +1481,10 @@ export class OptionalUi {
       row.slots.forEach((slot, i) => {
         const el = filled[row.loc][i];
         if (!el) return;
-        assigned.push({ el, dest: this.meepleSlotRect(row.shelf!, slot, el) });
+        const dest = this.meepleSlotRect(row.shelf!, slot, el);
+        const r = el.getBoundingClientRect();
+        if (Math.abs(r.left - dest.left) < 3 && Math.abs(r.top - dest.top) < 3) return;
+        assigned.push({ el, dest });
       });
     }
 
@@ -1277,10 +1553,17 @@ export class OptionalUi {
     slot: { leftPct: number; topPct: number },
     sample: HTMLElement,
   ): DOMRect {
-    const shelfR = shelf.getBoundingClientRect();
+    return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
+  }
+
+  private meepleSlotRectFromBox(
+    box: DOMRect,
+    slot: { leftPct: number; topPct: number },
+    sample: HTMLElement,
+  ): DOMRect {
     const size = sample.getBoundingClientRect();
-    const cx = shelfR.left + shelfR.width * slot.leftPct / 100;
-    const cy = shelfR.top + shelfR.height * slot.topPct / 100;
+    const cx = box.left + box.width * slot.leftPct / 100;
+    const cy = box.top + box.height * slot.topPct / 100;
     return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);
   }
 

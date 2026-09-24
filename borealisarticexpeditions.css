@@ -43,6 +43,8 @@ html[data-theme=dark] {
   margin-bottom: calc(40px * var(--bae-scale));
   margin-left: auto;
   margin-right: auto;
+  position: relative;
+  z-index: 20;
 }
 
 .bae {
@@ -136,9 +138,18 @@ html[data-theme=dark] {
 }
 
 .bae_objectives > :last-child:nth-child(odd),
-.bae_scoring > :last-child:nth-child(odd) {
+.bae_scoring > :last-child:nth-child(odd),
+.bae_tooltip_grid > :last-child:nth-child(odd) {
   grid-column: 1/3;
   justify-self: center;
+}
+
+.bae_tooltip_grid {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 8px;
+  justify-content: center;
+  align-content: center;
 }
 
 .bae_pool {
@@ -359,6 +370,8 @@ html[data-theme=dark] {
   left: 5%;
   width: 89.75%;
   height: 15.797914996%;
+  z-index: 3;
+  pointer-events: auto;
 }
 .bae_location_zone .bae_meeple_yellow {
   width: 29.8050139276%;
@@ -572,7 +585,7 @@ html[data-theme=dark] {
   border-radius: 0;
   background: transparent;
   overflow: hidden;
-  pointer-events: none; /* slots themselves are decorative; clicks go to location */
+  pointer-events: auto;
 }
 
 .bae_pile_card_img {
@@ -594,6 +607,7 @@ html[data-theme=dark] {
   width: 100%;
   height: 100%;
   z-index: 2;
+  pointer-events: none;
 }
 .bae_location_zone .bae_anim_pile .bae_pile_slot {
   top: calc((sibling-index() - 1) * -0.0681635926 * 100%);
@@ -609,10 +623,14 @@ html[data-theme=dark] {
   left: 0;
   width: 100%;
   height: 100%;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .bae_track_position {
   position: absolute;
+  pointer-events: auto;
+  z-index: 1;
   top: calc(20.5693664796% + (sibling-index() - 1) * 0.0992381716 * 100%);
   height: 8.8461538462%;
   width: 19.2713833157%;
@@ -724,7 +742,8 @@ html[data-theme=dark] {
 .bae_location_zone:hover > .bae_confirm_blurb,
 .bae_location_zone:focus-within > .bae_confirm_blurb,
 .bae_obj:hover > .bae_confirm_blurb,
-.bae_obj:focus-visible > .bae_confirm_blurb {
+.bae_obj:focus-visible > .bae_confirm_blurb,
+.bae_obj_selected:not(:disabled) > .bae_confirm_blurb {
   opacity: 1;
   visibility: visible;
 }
@@ -1131,6 +1150,10 @@ html[data-theme=dark] .bae_opening_intro {
   overflow: visible;
 }
 
+.bae_motion_layer_under {
+  z-index: 10;
+}
+
 .bae_motion_clone {
   pointer-events: none;
   will-change: transform;
@@ -1147,6 +1170,12 @@ html[data-theme=dark] .bae_opening_intro {
   width: 100%;
   height: 100%;
   max-width: none;
+}
+
+.bae_card_back_fade,
+.bae_card_back_fade .bae_card_img {
+  width: 100%;
+  height: 100%;
 }
 
 .bae_preview_fade_left {
@@ -1178,6 +1207,10 @@ html[data-theme=dark] .bae_opening_intro {
 
 .bae_discard_ghost {
   animation: bae_discard_preview var(--dur, 900ms) ease-in-out infinite;
+}
+
+.bae_discard_resolve {
+  animation: bae_discard_resolve var(--dur, 560ms) ease-in forwards;
 }
 
 .bae_stuck_once {
@@ -1301,21 +1334,18 @@ html[data-theme=dark] .bae_opening_intro {
     opacity: 0;
   }
 }
+@keyframes bae_discard_resolve {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--dx, -60px));
+    opacity: 0;
+  }
+}
 .bae_anim_normal .bae_card,
 .bae_anim_slow .bae_card,
 .bae_anim_fast .bae_card {
   transition: transform 160ms ease, opacity 160ms ease;
-}
-
-body.bae_block_tooltips .dijitTooltip,
-body.bae_block_tooltips .dijitTooltipPopup,
-body.bae_block_tooltips .bga-tooltip {
-  display: none !important;
-  visibility: hidden !important;
-}
-
-.bae_tooltip_keeper {
-  position: fixed;
-  z-index: 2000;
-  pointer-events: none;
 }

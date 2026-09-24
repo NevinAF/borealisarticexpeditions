@@ -127,11 +127,12 @@ function rectOf(el) {
         return null;
     return r;
 }
-function motionLayer(root) {
-    let layer = root.querySelector('.bae_motion_layer');
+function motionLayer(root, under = false) {
+    const sel = under ? '.bae_motion_layer_under' : '.bae_motion_layer:not(.bae_motion_layer_under)';
+    let layer = root.querySelector(sel);
     if (!layer) {
         layer = document.createElement('div');
-        layer.className = 'bae_motion_layer';
+        layer.className = under ? 'bae_motion_layer bae_motion_layer_under' : 'bae_motion_layer';
         root.appendChild(layer);
     }
     return layer;
@@ -179,6 +180,12 @@ function placeClone(source, extraClass, root) {
     clone.style.transform = 'none';
     clone.style.transformOrigin = 'center center';
     motionLayer(root).appendChild(clone);
+    return clone;
+}
+function placeCloneUnder(source, extraClass, root) {
+    const clone = placeClone(source, extraClass, root);
+    clone.style.zIndex = '1';
+    motionLayer(root, true).appendChild(clone);
     return clone;
 }
 /** Fly a clone and leave it parked at the destination until the board re-renders. */
@@ -300,6 +307,15 @@ function startDiscardGhost(source, root, cardId) {
     if (cardId != null)
         clone.dataset.previewCard = String(cardId);
     return clone;
+}
+/** One-shot slide-off used when a hand card is actually discarded. */
+function flyDiscardAway(source, root, durationMs) {
+    const from = source.getBoundingClientRect();
+    const clone = placeClone(source, 'bae_discard_resolve', root);
+    clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+    clone.style.setProperty('--dx', `${-Math.max(48, from.width * 0.4)}px`);
+    source.style.visibility = 'hidden';
+    return wait(durationMs).then(() => { clone.remove(); });
 }
 
 const SPECIES_COUNT = 5;
@@ -582,9 +598,13 @@ class OptionalUi {
         this.pendingDiscard = new Map();
         this.discardLoopEpoch = 0;
         this.tooltipBound = false;
-        this.tooltipBlockNew = false;
-        this.tooltipWaitForMove = false;
+        this.tooltipLeaveSelector = null;
         this.tooltipQuietUntil = 0;
+        this.tooltipNeedMove = false;
+        this.tooltipClickX = 0;
+        this.tooltipClickY = 0;
+        this.tooltipWasBlocked = false;
+        this.tooltipRetrigger = false;
         this.lastHoverEl = null;
     }
     afterRender() {
@@ -595,8 +615,11 @@ class OptionalUi {
         this.applyPreferenceCss();
         this.renderRoundBadge();
         this.bindDragAndDrop();
+        this.restoreHoldingFromState();
         this.renderRegroupHold();
         this.host.refreshScientistTooltips();
+        if (this.isTooltipBlocked())
+            this.cancelDojoTooltips();
         this.updateActionPreviews();
         this.bindPreferenceListener();
     }
@@ -697,6 +720,7 @@ class OptionalUi {
         this.host.selectedCardId = null;
         this.host.selectedLocation = null;
         this.host.selectedPoolSlot = null;
+        this.host.selectedObjectiveIdx = null;
         this.host.campSelected = false;
         this.host.selectedRegroupIds.clear();
         this.host.root.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
@@ -723,16 +747,21 @@ class OptionalUi {
                 return;
             const root = this.host.root;
             const cardEl = this.cardEl(pid, cardId);
-            const pileRect = this.nextPileRect(pid, loc);
+            const dest = this.destAboveLastPileCard(pid, loc);
+            this.expandLocationOutline(pid, loc, ms);
             const slots = this.handSlotRects(pid);
             const remaining = this.handCards(pid).filter((el) => el !== cardEl);
-            if (cardEl && pileRect) {
+            if (cardEl && dest) {
                 const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
                 cardEl.style.visibility = 'hidden';
-                this.expandLocationOutline(pid, loc, ms);
+                const myId = Number(this.host.bga.players.getCurrentPlayerId());
+                const reveal = pid !== myId
+                    ? this.crossfadeToFace(clone, cardId, ms)
+                    : Promise.resolve();
                 await Promise.all([
-                    flyClone(clone, pileRect, ms, root, true),
+                    flyClone(clone, dest, ms, root, true),
                     this.compactHandToSlots(remaining, slots, ms),
+                    reveal,
                 ]);
             }
             else {
@@ -843,6 +872,10 @@ class OptionalUi {
             if (!fromDeck)
                 src.style.visibility = 'hidden';
             await flyClone(clone, destRect, ms, root, true);
+            const myId = Number(this.host.bga.players.getCurrentPlayerId());
+            if (!fromDeck && pid !== myId) {
+                await this.crossfadeToCardBack(clone, ms);
+            }
             if (fromDeck)
                 return;
             await wait(Math.round(ms * 0.2));
@@ -874,7 +907,7 @@ class OptionalUi {
             if (!deck)
                 return;
             await Promise.all(cards.map((el) => {
-                const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
+                const clone = placeCloneUnder(el, 'bae_resolve_clone bae_resolve_card', root);
                 el.style.visibility = 'hidden';
                 return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
             }));
@@ -1109,12 +1142,20 @@ class OptionalUi {
             return;
         const ms = this.previewLoopMs();
         const used = new Set();
+        const byDest = new Map();
         for (const m of previewObserveMoves(this.host.gamedatas.boardState.scientists, pid, loc, def)) {
             const src = this.meepleAt(pid, m.from, m.color, used);
-            const dest = this.shelfEl(pid, m.to);
-            if (src && dest)
-                startScientistTrail(src, dest, ms, this.host.root);
+            if (!src)
+                continue;
+            const group = byDest.get(m.to) ?? [];
+            group.push(src);
+            byDest.set(m.to, group);
         }
+        byDest.forEach((sources, to) => {
+            const dest = this.shelfEl(pid, to);
+            if (dest)
+                this.trailScientistsToEmptyGroup(sources, dest.getBoundingClientRect(), to, pid, ms);
+        });
         const flagDepth = Number(this.host.gamedatas.boardState.flags?.[pid]?.[loc] ?? 0);
         const boardId = this.host.gamedatas.boardState.board_for_players?.[pid] ?? 0;
         const board = this.host.gamedatas.materials.player_boards?.[boardId];
@@ -1137,30 +1178,46 @@ class OptionalUi {
         const dest = this.shelfEl(pid, loc);
         if (!dest)
             return;
-        const ms = this.previewLoopMs();
         const sources = this.holdMeeples(pid);
         const from = sources.length > 0 ? sources : this.campMeeples(pid);
-        for (const src of from) {
-            startScientistTrail(src, dest, ms, this.host.root);
-        }
+        this.trailScientistsToEmptyGroup(from, dest.getBoundingClientRect(), loc, pid, this.previewLoopMs());
     }
     previewRegroupPickup(pid) {
         const ms = this.previewLoopMs();
-        const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`);
-        const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`);
-        if (leftCamp) {
-            const r = leftCamp.getBoundingClientRect();
-            const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
-            for (const src of Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? [])) {
-                startScientistTrailToRect(src, dest, ms, this.host.root);
-            }
+        this.previewRegroupPickupSide(pid, 3, 'left', ms);
+        this.previewRegroupPickupSide(pid, 4, 'right', ms);
+    }
+    previewRegroupPickupSide(pid, campLoc, side, ms) {
+        const sources = Array.from(this.shelfEl(pid, campLoc)?.querySelectorAll('.bae_meeple_img') ?? []);
+        if (sources.length === 0)
+            return;
+        const hold = this.host.root.querySelector(`#bae_regroup_hold_${pid}_${side}`);
+        const camp = this.host.root.querySelector(`#bae_camp_${pid}_${side}`);
+        const destBox = hold?.getBoundingClientRect()
+            ?? (camp
+                ? new DOMRect(camp.getBoundingClientRect().left, camp.getBoundingClientRect().top - camp.getBoundingClientRect().height * 1.2, camp.getBoundingClientRect().width, camp.getBoundingClientRect().height)
+                : null);
+        if (!destBox)
+            return;
+        this.trailScientistsToEmptyGroup(sources, destBox, campLoc, pid, ms);
+    }
+    trailScientistsToEmptyGroup(sources, destBox, layoutLoc, pid, ms) {
+        if (sources.length === 0 || destBox.width < 1 || destBox.height < 1)
+            return;
+        const sci = { 0: [], 1: [], 2: [] };
+        for (const el of sources) {
+            const color = Number(el.dataset.scientist);
+            if (color >= 0 && color < 3)
+                sci[color].push(layoutLoc);
         }
-        if (rightCamp) {
-            const r = rightCamp.getBoundingClientRect();
-            const dest = new DOMRect(r.left, r.top - r.height * 1.2, r.width, r.height);
-            for (const src of Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? [])) {
-                startScientistTrailToRect(src, dest, ms, this.host.root);
-            }
+        const slots = this.scientistLayout(pid, { [pid]: sci }, layoutLoc);
+        const unused = [...sources];
+        for (const slot of slots) {
+            const idx = unused.findIndex((el) => Number(el.dataset.scientist) === slot.color);
+            if (idx < 0)
+                continue;
+            const el = unused.splice(idx, 1)[0];
+            startScientistTrailToRect(el, this.meepleSlotRectFromBox(destBox, slot, el), ms, this.host.root);
         }
     }
     previewCardPlacement(pid, cardId, loc) {
@@ -1323,14 +1380,10 @@ class OptionalUi {
             return;
         const leaving = this.leavingHandCards(pid, discarded);
         const remaining = this.handCards(pid).filter((el) => !leaving.includes(el));
-        leaving.forEach((el) => { el.style.visibility = 'hidden'; });
-        if (deck && leaving.length > 0) {
-            await Promise.all(leaving.map((el) => {
-                const clone = placeClone(el, 'bae_resolve_clone bae_resolve_card', root);
-                return flyClone(clone, deck.getBoundingClientRect(), ms, root, true);
-            }));
-        }
-        await this.compactHandToSlots(remaining, slots, ms);
+        await Promise.all([
+            ...leaving.map((el) => flyDiscardAway(el, root, ms)),
+            this.compactHandToSlots(remaining, slots, ms),
+        ]);
         const drawCount = this.handDrawCount(pid, discarded, prev, next);
         if (!deck || drawCount <= 0)
             return;
@@ -1433,6 +1486,32 @@ class OptionalUi {
         }
         return clone;
     }
+    async crossfadeToCardBack(clone, ms) {
+        return this.crossfadeCard(clone, 9999, ms);
+    }
+    async crossfadeToFace(clone, cardId, ms) {
+        return this.crossfadeCard(clone, cardId, ms);
+    }
+    async crossfadeCard(clone, cardId, ms) {
+        const fade = Math.max(180, Math.round(ms * 0.7));
+        clone.style.overflow = 'hidden';
+        const overlay = document.createElement('div');
+        overlay.className = 'bae_card_back_fade';
+        overlay.style.position = 'absolute';
+        overlay.style.inset = '0';
+        overlay.style.opacity = '0';
+        overlay.style.transition = `opacity ${fade}ms ease`;
+        overlay.innerHTML = this.host.animalCardHtml(cardId);
+        const current = clone.querySelector('.bae_card_img, .bae_pile_card_img');
+        if (current)
+            current.style.transition = `opacity ${fade}ms ease`;
+        clone.appendChild(overlay);
+        void overlay.offsetWidth;
+        overlay.style.opacity = '1';
+        if (current)
+            current.style.opacity = '0';
+        await wait(fade);
+    }
     renderRegroupHold() {
         const pid = this.holdingPid;
         if (pid == null) {
@@ -1448,6 +1527,35 @@ class OptionalUi {
         if (rightHold)
             rightHold.innerHTML = `<div class="bae_sci_shelf">${right?.innerHTML ?? ''}</div>`;
         this.campMeeples(pid).forEach((el) => { el.style.visibility = 'hidden'; });
+    }
+    restoreHoldingFromState() {
+        if (this.host.isAssignCampLike()) {
+            if (this.holdingPid != null && this.playerHasCampScientists(this.holdingPid))
+                return;
+            const active = Number(this.host.bga.players.getActivePlayerId() ?? 0);
+            const pids = [active, ...Object.keys(this.host.gamedatas.players).map(Number)];
+            for (const pid of pids) {
+                if (pid && this.playerHasCampScientists(pid)) {
+                    this.holdingPid = pid;
+                    return;
+                }
+            }
+            return;
+        }
+        if (!this.resolving)
+            this.holdingPid = null;
+    }
+    playerHasCampScientists(pid) {
+        if (this.campMeeples(pid).length > 0)
+            return true;
+        const sci = this.host.gamedatas.boardState.scientists?.[pid];
+        if (!sci)
+            return false;
+        for (let color = 0; color < 3; color++) {
+            if ((sci[color] ?? []).some((pos) => pos === 3 || pos === 4))
+                return true;
+        }
+        return false;
     }
     ensureRegroupHold(pid, side) {
         const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`);
@@ -1486,57 +1594,181 @@ class OptionalUi {
     }
     expandLocationOutline(pid, loc, ms) {
         const canvas = this.host.root.querySelector(`#bae_playerboard_${pid} .bae_board_canvas`);
-        if (!canvas)
-            return;
+        const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
+        if (!canvas || !zone)
+            return 0;
         const boards = this.host.gamedatas.boardState.boards?.[pid] ?? [];
         const maxPlayed = boards.reduce((max, pile) => Math.max(max, pile.length), 0);
         const afterPile = (boards[loc]?.length ?? 0) + 1;
         const oldSlots = maxPlayed + 1;
         const newSlots = Math.max(maxPlayed, afterPile) + 1;
         if (newSlots <= oldSlots)
-            return;
+            return 0;
+        const shift = zone.getBoundingClientRect().height * (170 / 2494);
         canvas.style.setProperty('--bae-outline-dur', `${ms}ms`);
         canvas.style.setProperty('--animal-card-slots', String(newSlots));
+        return (newSlots - oldSlots) * shift;
+    }
+    destAboveLastPileCard(pid, loc, extraDown = 0) {
+        const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
+        if (!zone)
+            return null;
+        const zr = zone.getBoundingClientRect();
+        if (zr.width < 1 || zr.height < 1)
+            return null;
+        const pile = zone.querySelector('.bae_anim_pile');
+        const slots = pile ? pile.querySelectorAll('.bae_pile_slot') : [];
+        const cardW = zr.width * (528 / 800);
+        const cardH = zr.height * (745 / 2494);
+        const shift = zr.height * (170 / 2494);
+        if (slots.length > 0) {
+            const last = slots[slots.length - 1].getBoundingClientRect();
+            return new DOMRect(last.left, last.top - shift + extraDown, last.width, last.height);
+        }
+        return new DOMRect(zr.left + zr.width / 2 - cardW / 2, zr.top - cardH + extraDown, cardW, cardH);
     }
     bindTooltipGate() {
         if (this.tooltipBound)
             return;
         this.tooltipBound = true;
+        this.repairTooltipNodes();
+        document.body.classList.remove('bae_block_tooltips');
+        document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
+        const onHover = (ev) => {
+            const target = ev.target;
+            this.lastHoverEl = target;
+            if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
+                this.tooltipLeaveSelector = null;
+            }
+            if (this.tooltipRetrigger) {
+                this.tooltipRetrigger = false;
+                return;
+            }
+            if (this.isTooltipBlocked()) {
+                ev.stopPropagation();
+                ev.stopImmediatePropagation();
+                this.cancelDojoTooltips();
+            }
+        };
+        const onClick = (ev) => {
+            const mouse = ev;
+            this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+            this.tooltipNeedMove = true;
+            this.tooltipClickX = mouse.clientX ?? 0;
+            this.tooltipClickY = mouse.clientY ?? 0;
+            this.tooltipWasBlocked = true;
+            const target = ev.target;
+            if (target && typeof target.closest === 'function') {
+                const interacted = this.interactiveTooltipTarget(target) ?? target;
+                this.tooltipLeaveSelector = this.selectorFor(interacted);
+            }
+            this.cancelDojoTooltips();
+            this.dismissTooltipFrom(this.lastHoverEl);
+        };
         const onMove = (ev) => {
-            this.lastHoverEl = ev.target;
-            if (Date.now() < this.tooltipQuietUntil)
-                return;
-            if (!this.tooltipWaitForMove && !this.tooltipBlockNew)
-                return;
-            this.tooltipWaitForMove = false;
-            this.setTooltipBlock(this.resolving);
-            this.clearTooltipKeeper();
+            const mouse = ev;
+            const target = ev.target;
+            this.lastHoverEl = target;
+            if (this.tooltipNeedMove) {
+                const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
+                const dy = (mouse.clientY ?? 0) - this.tooltipClickY;
+                if (dx * dx + dy * dy >= 16)
+                    this.tooltipNeedMove = false;
+            }
+            if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
+                this.tooltipLeaveSelector = null;
+            }
+            const blocked = this.isTooltipBlocked();
+            if (this.tooltipWasBlocked && !blocked)
+                this.retriggerTooltipHover();
+            this.tooltipWasBlocked = blocked;
         };
-        const onClick = () => {
-            this.tooltipQuietUntil = Date.now() + 500;
-            this.tooltipWaitForMove = true;
-            this.setTooltipBlock(true);
-        };
-        document.addEventListener('mousemove', onMove, true);
+        document.addEventListener('mouseover', onHover, true);
+        document.addEventListener('mouseenter', onHover, true);
         document.addEventListener('click', onClick, true);
+        document.addEventListener('mousemove', onMove, true);
     }
     beginTooltipGuard(zones) {
-        this.tooltipBlockNew = true;
         const hoverZone = this.hoverTooltipZone();
         const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
+        const hover = this.lastHoverEl;
+        this.tooltipNeedMove = true;
+        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+        this.tooltipWasBlocked = true;
+        if (hover && typeof hover.closest === 'function') {
+            this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
+        }
         if (affected)
-            this.closeOpenTooltips();
-        else
-            this.parkOpenTooltip();
-        this.setTooltipBlock(true);
+            this.dismissTooltipFrom(hover);
+        this.cancelDojoTooltips();
     }
     endTooltipGuard() {
-        this.tooltipWaitForMove = true;
-        this.setTooltipBlock(true);
+        this.tooltipNeedMove = true;
+        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+        this.tooltipWasBlocked = true;
+        const hover = this.lastHoverEl;
+        if (hover && typeof hover.closest === 'function') {
+            this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
+        }
+        this.cancelDojoTooltips();
     }
-    setTooltipBlock(on) {
-        this.tooltipBlockNew = on;
-        document.body.classList.toggle('bae_block_tooltips', on);
+    isTooltipBlocked() {
+        if (this.resolving)
+            return true;
+        if (Date.now() < this.tooltipQuietUntil)
+            return true;
+        if (this.tooltipNeedMove)
+            return true;
+        return this.isHoveringLeaveTarget(this.lastHoverEl);
+    }
+    isHoveringLeaveTarget(hover) {
+        if (!hover || !this.tooltipLeaveSelector || typeof hover.closest !== 'function')
+            return false;
+        try {
+            return !!hover.closest(this.tooltipLeaveSelector);
+        }
+        catch {
+            return false;
+        }
+    }
+    retriggerTooltipHover() {
+        const hover = this.lastHoverEl;
+        if (!hover || typeof hover.dispatchEvent !== 'function')
+            return;
+        this.tooltipRetrigger = true;
+        hover.dispatchEvent(new MouseEvent('mouseover', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+        }));
+    }
+    interactiveTooltipTarget(el) {
+        return el.closest([
+            '.bae_card',
+            '.bae_pile_slot',
+            '.bae_pool_slot',
+            '.bae_obj',
+            '.bae_score_card',
+            '.bae_camp_zone',
+            '.bae_regroup_hold',
+            '.bae_location_zone',
+        ].join(','));
+    }
+    selectorFor(el) {
+        const host = el;
+        if (host.id)
+            return `#${host.id}`;
+        const loc = host.closest?.('.bae_location_zone');
+        if (loc?.dataset.playerId != null && loc.dataset.loc != null) {
+            return `.bae_location_zone[data-player-id="${loc.dataset.playerId}"][data-loc="${loc.dataset.loc}"]`;
+        }
+        const camp = host.closest?.('.bae_camp_zone');
+        if (camp?.id)
+            return `#${camp.id}`;
+        const card = host.closest?.('.bae_card');
+        if (card?.id)
+            return `#${card.id}`;
+        return null;
     }
     hoverTooltipZone() {
         const el = this.lastHoverEl;
@@ -1550,35 +1782,70 @@ class OptionalUi {
         return null;
     }
     tooltipNodes() {
-        return Array.from(document.querySelectorAll('.dijitTooltip, .dijitTooltipPopup, .bga-tooltip, .tooltip'));
+        return Array.from(document.querySelectorAll('.dijitTooltip, .dijitTooltipPopup, .bga-tooltip'));
     }
-    closeOpenTooltips() {
-        this.clearTooltipKeeper();
+    repairTooltipNodes() {
         this.tooltipNodes().forEach((node) => {
-            node.style.display = 'none';
-            node.style.visibility = 'hidden';
+            node.style.removeProperty('display');
+            node.style.removeProperty('visibility');
+            node.style.removeProperty('width');
+            node.style.removeProperty('height');
+            node.style.removeProperty('overflow');
         });
-    }
-    parkOpenTooltip() {
-        this.clearTooltipKeeper();
-        const open = this.tooltipNodes().find((node) => {
-            const cs = getComputedStyle(node);
-            return cs.display !== 'none' && cs.visibility !== 'hidden' && node.offsetHeight > 0;
-        });
-        if (!open)
-            return;
-        const keeper = document.createElement('div');
-        keeper.className = 'bae_tooltip_keeper';
-        keeper.innerHTML = open.innerHTML;
-        const r = open.getBoundingClientRect();
-        keeper.style.left = `${r.left}px`;
-        keeper.style.top = `${r.top}px`;
-        keeper.style.width = `${Math.max(r.width, 40)}px`;
-        document.body.appendChild(keeper);
-        open.style.visibility = 'hidden';
-    }
-    clearTooltipKeeper() {
         document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
+        document.body.classList.remove('bae_block_tooltips');
+    }
+    dismissTooltipFrom(from) {
+        this.repairTooltipNodes();
+        if (from && typeof from.dispatchEvent === 'function') {
+            const related = document.body;
+            const bubble = { bubbles: true, cancelable: true, view: window, relatedTarget: related };
+            from.dispatchEvent(new MouseEvent('pointerout', bubble));
+            from.dispatchEvent(new MouseEvent('mouseout', bubble));
+            from.dispatchEvent(new MouseEvent('mouseleave', {
+                bubbles: false,
+                cancelable: true,
+                view: window,
+                relatedTarget: related,
+            }));
+        }
+        this.cancelDojoTooltips();
+    }
+    cancelDojoTooltips() {
+        this.repairTooltipNodes();
+        const hideWidget = (tip) => {
+            if (!tip || typeof tip !== 'object')
+                return;
+            const t = tip;
+            try {
+                if (t._showTimer) {
+                    window.clearTimeout(t._showTimer);
+                    t._showTimer = null;
+                }
+                t.close?.();
+                t._onUnHover?.();
+            }
+            catch { /* ignore */ }
+        };
+        const ui = this.host.bga?.gameui;
+        if (ui) {
+            for (const key of ['tooltips', '_tooltips']) {
+                const map = ui[key];
+                if (map && typeof map === 'object') {
+                    for (const tip of Object.values(map))
+                        hideWidget(tip);
+                }
+            }
+        }
+        const w = window;
+        try {
+            w.dijit?.hideTooltip?.();
+        }
+        catch { /* ignore */ }
+        hideWidget(w.dijit?._masterTT);
+        document.querySelectorAll('.dijitTooltip, .dijitTooltipPopup').forEach((node) => {
+            node.classList.add('dijitTooltipHidden');
+        });
     }
     deckEl() {
         return this.host.root.querySelector('#bae_pool_slot_deck');
@@ -1594,22 +1861,6 @@ class OptionalUi {
         if (!col)
             return [];
         return Array.from(col.querySelectorAll('.bae_handcard, .bae_handcard_hidden'));
-    }
-    nextPileRect(pid, loc) {
-        const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
-        if (!zone)
-            return null;
-        const zr = zone.getBoundingClientRect();
-        if (zr.width < 1 || zr.height < 1)
-            return null;
-        const pile = zone.querySelector('.bae_anim_pile');
-        const index = pile ? pile.querySelectorAll('.bae_pile_slot').length : 0;
-        const cardW = zr.width * (528 / 800);
-        const cardH = zr.height * (745 / 2494);
-        const shift = zr.height * (170 / 2494);
-        const left = zr.left + zr.width / 2 - cardW / 2;
-        const top = zr.top - index * shift - cardH;
-        return new DOMRect(left, top, cardW, cardH);
     }
     handDestEl(pid) {
         const col = this.host.root.querySelector(`.bae_player_handcol[data-player-id="${pid}"]`);
@@ -1636,10 +1887,19 @@ class OptionalUi {
             const shelf = this.shelfEl(pid, loc);
             return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []);
         };
-        const takeColor = (els, color) => {
-            const el = els.find((node) => !used.has(node) && Number(node.dataset.scientist) === color) ?? null;
-            if (el)
-                used.add(el);
+        const dist2 = (el, dest) => {
+            const r = el.getBoundingClientRect();
+            const dx = (r.left + r.width / 2) - (dest.left + dest.width / 2);
+            const dy = (r.top + r.height / 2) - (dest.top + dest.height / 2);
+            return dx * dx + dy * dy;
+        };
+        const takeNearest = (els, color, dest) => {
+            const candidates = els.filter((node) => !used.has(node) && Number(node.dataset.scientist) === color);
+            if (candidates.length === 0)
+                return null;
+            candidates.sort((a, b) => dist2(a, dest) - dist2(b, dest));
+            const el = candidates[0];
+            used.add(el);
             return el;
         };
         const slotsByLoc = [0, 1, 2, 3, 4].map((loc) => ({
@@ -1649,9 +1909,15 @@ class OptionalUi {
         }));
         const filled = slotsByLoc.map((row) => row.slots.map(() => null));
         for (const row of slotsByLoc) {
+            if (!row.shelf)
+                continue;
             const staying = currentAt(row.loc);
             row.slots.forEach((slot, i) => {
-                const el = takeColor(staying, slot.color);
+                const sample = staying[0];
+                if (!sample)
+                    return;
+                const dest = this.meepleSlotRect(row.shelf, slot, sample);
+                const el = takeNearest(staying, slot.color, dest);
                 if (el)
                     filled[row.loc][i] = el;
             });
@@ -1661,8 +1927,17 @@ class OptionalUi {
                 if (filled[row.loc][i])
                     return;
                 let el = null;
+                const sample = row.shelf?.querySelector('.bae_meeple_img')
+                    ?? currentAt(0)[0]
+                    ?? currentAt(1)[0]
+                    ?? currentAt(2)[0]
+                    ?? currentAt(3)[0]
+                    ?? currentAt(4)[0];
+                const dest = row.shelf && sample
+                    ? this.meepleSlotRect(row.shelf, slot, sample)
+                    : new DOMRect(0, 0, 1, 1);
                 for (let from = 0; from <= 4 && !el; from++) {
-                    el = takeColor(currentAt(from), slot.color);
+                    el = takeNearest(currentAt(from), slot.color, dest);
                 }
                 if (el)
                     filled[row.loc][i] = el;
@@ -1675,7 +1950,11 @@ class OptionalUi {
                 const el = filled[row.loc][i];
                 if (!el)
                     return;
-                assigned.push({ el, dest: this.meepleSlotRect(row.shelf, slot, el) });
+                const dest = this.meepleSlotRect(row.shelf, slot, el);
+                const r = el.getBoundingClientRect();
+                if (Math.abs(r.left - dest.left) < 3 && Math.abs(r.top - dest.top) < 3)
+                    return;
+                assigned.push({ el, dest });
             });
         }
         for (const { el, dest } of assigned) {
@@ -1736,10 +2015,12 @@ class OptionalUi {
         });
     }
     meepleSlotRect(shelf, slot, sample) {
-        const shelfR = shelf.getBoundingClientRect();
+        return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
+    }
+    meepleSlotRectFromBox(box, slot, sample) {
         const size = sample.getBoundingClientRect();
-        const cx = shelfR.left + shelfR.width * slot.leftPct / 100;
-        const cy = shelfR.top + shelfR.height * slot.topPct / 100;
+        const cx = box.left + box.width * slot.leftPct / 100;
+        const cy = box.top + box.height * slot.topPct / 100;
         return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);
     }
     cardEl(pid, cardId) {
@@ -1779,6 +2060,7 @@ class OptionalUi {
     }
 }
 OptionalUi.DISCARD_LOOP_MS = 1850;
+OptionalUi.TOOLTIP_CLICK_MS = 500;
 function objectiveProgressLines(obj, state, materials, players) {
     return Object.keys(players).map((pidStr) => {
         const pid = Number(pidStr);
@@ -1802,6 +2084,7 @@ class Game {
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
+        this.selectedObjectiveIdx = null;
         this.campSelected = false;
         this.selectedRegroupIds = new Set();
         this.cachedActionArgs = null;
@@ -1830,6 +2113,7 @@ class Game {
         this.optionalUi = new OptionalUi(this);
         // Keep --board-scale up to date when the window resizes
         window.addEventListener('resize', () => this.updateBoardScale());
+        this.zoomFactor = this.firstZoomOutFromFit();
         this.renderAll();
     }
     /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
@@ -1995,6 +2279,16 @@ class Game {
     getScale() {
         return this.getScaleForZoomFactor(this.zoomFactor);
     }
+    firstZoomOutFromFit() {
+        const fit = this.getScaleForZoomFactor(1);
+        let nextZoom = 1;
+        while (nextZoom > Game.ZOOM_MIN + 0.0001) {
+            nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
+            if (fit - this.getScaleForZoomFactor(nextZoom) > 0.0001)
+                return nextZoom;
+        }
+        return 1;
+    }
     canZoomInAtCurrentViewport() {
         const current = this.getScaleForZoomFactor(this.zoomFactor);
         const nextZoom = this.zoomFactor + Game.ZOOM_STEP;
@@ -2056,9 +2350,10 @@ class Game {
         });
         resetBtn?.addEventListener('click', (ev) => {
             ev.preventDefault();
-            if (Math.abs(this.zoomFactor - 1) <= 0.0001)
+            const resetZoom = this.firstZoomOutFromFit();
+            if (Math.abs(this.zoomFactor - resetZoom) <= 0.0001)
                 return;
-            this.zoomFactor = 1;
+            this.zoomFactor = resetZoom;
             this.renderAll();
         });
     }
@@ -2197,6 +2492,35 @@ class Game {
     buildCardTooltipSpriteHtml(type, id, title, details) {
         return this.buildCardTooltipSpriteHtmlInternal(type, id, title, details);
     }
+    wrapTooltipGrid(cells) {
+        if (cells.length === 0)
+            return '';
+        if (cells.length === 1)
+            return cells[0];
+        return `<div class="bae_tooltip_grid">${cells.map((cell) => `<div>${cell}</div>`).join('')}</div>`;
+    }
+    canSelectObjectiveToClaim() {
+        return this.bga.players.isCurrentPlayerActive()
+            && !this.isPromptClaimObjectiveLike()
+            && !this.isOpeningMulliganLike()
+            && (this.isGameplayLike() || this.isReplenishLike() || this.isAssignCampLike());
+    }
+    addClaimObjectiveButton() {
+        if (!this.canSelectObjectiveToClaim() || this.selectedObjectiveIdx == null)
+            return;
+        const idx = this.selectedObjectiveIdx;
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        const obj = this.gamedatas.boardState.objectives?.[idx];
+        const can = (obj?.players?.[myId] ?? 'unmet') === 'meets';
+        this.bga.statusBar.addActionButton(_("Claim Objective"), () => {
+            if (!can)
+                return;
+            void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+        }, {
+            disabled: !can,
+            tooltip: _("Claim this objective now and score 5 VP."),
+        });
+    }
     async confirmRegroupDiscard(cardIds) {
         const myId = Number(this.bga.players.getCurrentPlayerId());
         if (this.countScientistsInCamps(myId) === 0) {
@@ -2215,6 +2539,7 @@ class Game {
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
+        this.selectedObjectiveIdx = null;
         this.campSelected = true;
         this.selectedRegroupIds.clear();
         this.renderAll();
@@ -2226,6 +2551,7 @@ class Game {
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
+        this.selectedObjectiveIdx = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         this.renderAll();
@@ -2300,7 +2626,7 @@ class Game {
         const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
         const canZoomOut = this.canZoomOutAtCurrentViewport();
         const canZoomIn = this.canZoomInAtCurrentViewport();
-        const canResetZoom = Math.abs(this.zoomFactor - 1) > 0.0001;
+        const canResetZoom = Math.abs(this.zoomFactor - this.firstZoomOutFromFit()) > 0.0001;
         const canConfirmObserve = this.isGameplayLike() && this.isObserveSelectionLegal();
         const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
         const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
@@ -2331,11 +2657,15 @@ class Game {
             if (promptedObjectiveIdx === idx)
                 extraClass += " bae_obj_prompt_target";
             const disabledAttr = obj.active ? "" : "disabled";
+            const canConfirmClaim = this.canSelectObjectiveToClaim()
+                && this.selectedObjectiveIdx === idx
+                && playerState === "meets";
             const promptConfirmBlurb = promptedObjectiveIdx === idx
                 ? `<span class="bae_confirm_blurb">${this.escapeHtml(confirmObserveBlurb)}</span>`
-                : "";
+                : (canConfirmClaim ? `<span class="bae_confirm_blurb">${this.escapeHtml(confirmObserveBlurb)}</span>` : "");
+            const selectedClass = canConfirmClaim ? " bae_obj_selected" : "";
             // give each objective an ID so we can attach the BGA tooltip API instead of title attributes
-            html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(obj.id)}${promptConfirmBlurb}</button>`;
+            html += `<button id="bae_obj_${idx}" type="button" class="bae_obj${extraClass}${selectedClass}" data-obj-idx="${idx}" ${disabledAttr}>${this.objectiveFaceById(obj.id)}${promptConfirmBlurb}</button>`;
         });
         html += `</div></div>`;
         // Pool group (middle): deck slot first, then pool cards
@@ -2630,51 +2960,80 @@ class Game {
         if (!this.bga || !this.bga.gameui || typeof (this.bga.gameui.addTooltip) !== 'function')
             return;
         const d = this.gamedatas.boardState;
-        // Pool slots
+        // Pool slots: all four face-up pool cards share one grouped tooltip
+        const poolCells = (d.pool || []).slice().sort((a, b) => a.slot - b.slot).map((slot) => (this.buildCardTooltipSpriteHtml('animal', slot.id, _('Pool card'), [_('Click to take this card')])));
+        const poolGroupHtml = this.wrapTooltipGrid(poolCells);
         (d.pool || []).forEach((slot) => {
             const id = `bae_pool_slot_${slot.slot}`;
             try {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            const html = this.buildCardTooltipSpriteHtml('animal', slot.id, _('Pool card'), [_('Click to take this card')]);
-            this.bga.gameui.addTooltipHtml(id, html);
+            this.bga.gameui.addTooltipHtml(id, poolGroupHtml);
         });
         try {
             this.bga.gameui.removeTooltip('bae_pool_slot_deck');
         }
         catch (_) { }
         this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
-        // Objectives
-        (d.objectives || []).forEach((obj, idx) => {
+        // Objectives: hovering any one shows all of them in the top-row layout
+        const objectiveCells = (d.objectives || []).map((obj) => {
+            const objectiveMat = this.gamedatas.materials.objectives[obj.id];
+            const progressLines = objectiveProgressLines(obj, d, this.gamedatas.materials, this.gamedatas.players);
+            const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
+            return this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [objectiveMat?.description ?? '', ...progressLines, action]);
+        });
+        const objectiveGroupHtml = this.wrapTooltipGrid(objectiveCells);
+        (d.objectives || []).forEach((_obj, idx) => {
             const id = `bae_obj_${idx}`;
             try {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-            const progressLines = objectiveProgressLines(obj, d, this.gamedatas.materials, this.gamedatas.players);
-            const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
-            const html = this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [objectiveMat?.description ?? '', ...progressLines, action]);
-            this.bga.gameui.addTooltipHtml(id, html);
+            this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml);
         });
-        // Scoring cards
-        (d.scoring_cards || []).forEach((scoringId, idx) => {
-            const id = `bae_score_${idx}`;
-            try {
-                this.bga.gameui.removeTooltip(id);
-            }
-            catch (_) { }
+        // Scoring cards: hovering any one shows all of them in the top-row layout
+        const scoringCells = (d.scoring_cards || []).map((scoringId) => {
             const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
             const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
             const description = scoringMat?.description ?? '';
             const explanation = scoringMat?.explanation ?? '';
             const vpLines = scoringVpLines(scoringId, d, this.gamedatas.materials, this.gamedatas.players);
-            const html = this.buildCardTooltipSpriteHtml('scoring', scoringId, title, [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines]);
-            this.bga.gameui.addTooltipHtml(id, html);
+            return this.buildCardTooltipSpriteHtml('scoring', scoringId, title, [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines]);
+        });
+        const scoringGroupHtml = this.wrapTooltipGrid(scoringCells);
+        (d.scoring_cards || []).forEach((_scoringId, idx) => {
+            const id = `bae_score_${idx}`;
+            try {
+                this.bga.gameui.removeTooltip(id);
+            }
+            catch (_) { }
+            this.bga.gameui.addTooltipHtml(id, scoringGroupHtml);
         });
         // Camps, holds, and scientist shelves
         this.registerScientistTooltips();
+        // Played animal cards on locations
+        for (const pidStr of Object.keys(this.gamedatas.players)) {
+            const pid = Number(pidStr);
+            (d.boards[pid] ?? []).forEach((pile, loc) => {
+                pile.forEach((card, si) => {
+                    const id = `bae_pile_${pid}_${loc}_${si}`;
+                    try {
+                        this.bga.gameui.removeTooltip(id);
+                    }
+                    catch (_) { }
+                    const def = this.animalDef(card.id);
+                    const species = this.gamedatas.materials.species_names?.[def?.species ?? 0] ?? '';
+                    const vehicle = this.gamedatas.materials.vehicle_names?.[def?.vehicle ?? 0] ?? '';
+                    const sci = this.gamedatas.materials.scientist_names ?? [];
+                    const effect = def
+                        ? `${_('Moves')} ${sci[def.left_move] ?? def.left_move} ${_('left')} · ${sci[def.right_move] ?? def.right_move} ${_('right')}. ${_('Vehicle')}: ${vehicle}. ${_('Bonus VP')}: ${def.bonus_vp}.`
+                        : '';
+                    const html = this.buildCardTooltipSpriteHtml('animal', card.id, `${species || _('Animal card')} #${card.id}`, [effect]);
+                    this.bga.gameui.addTooltipHtml(id, html);
+                });
+            });
+        }
         // console.log(d, this.gamedatas.materials);
         // Track positions (space tooltips)
         const trackVps = this.gamedatas.materials.track_space_vp;
@@ -3085,6 +3444,7 @@ class Game {
                         return;
                     }
                     this.selectedCardId = id;
+                    this.selectedObjectiveIdx = null;
                 }
                 else {
                     return;
@@ -3116,6 +3476,7 @@ class Game {
                         void this.bga.actions.performAction("actAssignScientists", { location: loc });
                         return;
                     }
+                    this.selectedObjectiveIdx = null;
                     this.selectedLocation = loc;
                     this.renderAll();
                     this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3128,6 +3489,7 @@ class Game {
                         this.campSelected = false;
                         this.selectedRegroupIds.clear();
                         this.selectedCardId = null;
+                        this.selectedObjectiveIdx = null;
                         this.selectedLocation = loc;
                         this.renderAll();
                         this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3138,6 +3500,7 @@ class Game {
                                 return;
                             return;
                         }
+                        this.selectedObjectiveIdx = null;
                         this.selectedLocation = loc;
                         this.renderAll();
                         // Update action row when selecting/deselecting a location
@@ -3169,6 +3532,7 @@ class Game {
                         void this.bga.actions.performAction('actAssignScientists', { location: loc });
                         return;
                     }
+                    this.selectedObjectiveIdx = null;
                     this.selectedLocation = loc;
                     this.renderAll();
                     this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3179,6 +3543,7 @@ class Game {
                         this.campSelected = false;
                         this.selectedRegroupIds.clear();
                         this.selectedCardId = null;
+                        this.selectedObjectiveIdx = null;
                         this.selectedLocation = loc;
                         this.renderAll();
                         this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3189,6 +3554,7 @@ class Game {
                                 return;
                             return;
                         }
+                        this.selectedObjectiveIdx = null;
                         this.selectedLocation = loc;
                         this.renderAll();
                         this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3222,6 +3588,7 @@ class Game {
                     void this.bga.actions.performAction("actTakeAnimal", { pool_slot: slot });
                     return;
                 }
+                this.selectedObjectiveIdx = null;
                 this.selectedPoolSlot = slot;
                 this.renderAll();
                 this.onUpdateActionButtons(this.currentStateName(), null);
@@ -3246,7 +3613,21 @@ class Game {
                     void this.bga.actions.performAction("actClaimPromptObjective", { objective_index: idx });
                     return;
                 }
-                void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+                if (!this.canSelectObjectiveToClaim())
+                    return;
+                if (this.selectedObjectiveIdx === idx) {
+                    void this.bga.actions.performAction("actClaimObjective", { objective_index: idx });
+                    return;
+                }
+                this.selectedObjectiveIdx = idx;
+                this.selectedCardId = null;
+                this.selectedLocation = null;
+                this.selectedPoolSlot = null;
+                this.campSelected = false;
+                this.selectedRegroupIds.clear();
+                this.renderAll();
+                this.onUpdateActionButtons(this.currentStateName(), null);
+                this.optionalUi?.playSound('select');
             });
         });
     }
@@ -3255,6 +3636,7 @@ class Game {
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
+        this.selectedObjectiveIdx = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
         const n = stateName.toLowerCase();
@@ -3337,6 +3719,7 @@ class Game {
             return;
         }
         if (sn.includes("gameplay")) {
+            this.addClaimObjectiveButton();
             if (this.campSelected) {
                 const regroupCount = this.selectedRegroupIds.size;
                 const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
@@ -3381,7 +3764,7 @@ class Game {
                 disabled: false,
                 tooltip: _("Start choosing cards to discard and select a camp to regroup."),
             });
-            const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0;
+            const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0 && this.selectedObjectiveIdx == null;
             this.bga.statusBar.addActionButton(_('Clear selection'), () => {
                 this.clearSelection();
             }, {
@@ -3390,6 +3773,7 @@ class Game {
             });
         }
         if (sn.includes("replenish")) {
+            this.addClaimObjectiveButton();
             const replenishArgs = effectiveArgs;
             const poolCardSelected = this.selectedPoolSlot != null && this.selectedPoolSlot >= 0;
             this.bga.statusBar.addActionButton(_("Draw Card"), () => {
@@ -3416,6 +3800,7 @@ class Game {
             this.addUndoActionButton(replenishArgs?.canUndo ?? this.cachedUndoCanUndo, replenishArgs?.undoType ?? this.cachedUndoType);
         }
         if (sn.includes("assigncamp") || sn.includes("assign_camp")) {
+            this.addClaimObjectiveButton();
             const assignArgs = effectiveArgs;
             const locationSelected = this.selectedLocation != null;
             this.bga.statusBar.addActionButton(_("Assign Scientists"), () => {

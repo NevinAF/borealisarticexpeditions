@@ -14,11 +14,12 @@ export function rectOf(el: Element | null): DOMRect | null {
   return r;
 }
 
-export function motionLayer(root: HTMLElement): HTMLElement {
-  let layer = root.querySelector('.bae_motion_layer') as HTMLElement | null;
+export function motionLayer(root: HTMLElement, under = false): HTMLElement {
+  const sel = under ? '.bae_motion_layer_under' : '.bae_motion_layer:not(.bae_motion_layer_under)';
+  let layer = root.querySelector(sel) as HTMLElement | null;
   if (!layer) {
     layer = document.createElement('div');
-    layer.className = 'bae_motion_layer';
+    layer.className = under ? 'bae_motion_layer bae_motion_layer_under' : 'bae_motion_layer';
     root.appendChild(layer);
   }
   return layer;
@@ -74,6 +75,17 @@ export function placeClone(
   clone.style.transform = 'none';
   clone.style.transformOrigin = 'center center';
   motionLayer(root).appendChild(clone);
+  return clone;
+}
+
+export function placeCloneUnder(
+  source: HTMLElement,
+  extraClass: string,
+  root: HTMLElement,
+): HTMLElement {
+  const clone = placeClone(source, extraClass, root);
+  clone.style.zIndex = '1';
+  motionLayer(root, true).appendChild(clone);
   return clone;
 }
 
@@ -238,4 +250,18 @@ export function startDiscardGhost(source: HTMLElement, root: HTMLElement, cardId
   clone.style.setProperty('--dx', '-10px');
   if (cardId != null) clone.dataset.previewCard = String(cardId);
   return clone;
+}
+
+/** One-shot slide-off used when a hand card is actually discarded. */
+export function flyDiscardAway(
+  source: HTMLElement,
+  root: HTMLElement,
+  durationMs: number,
+): Promise<void> {
+  const from = source.getBoundingClientRect();
+  const clone = placeClone(source, 'bae_discard_resolve', root);
+  clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+  clone.style.setProperty('--dx', `${-Math.max(48, from.width * 0.4)}px`);
+  source.style.visibility = 'hidden';
+  return wait(durationMs).then(() => { clone.remove(); });
 }
