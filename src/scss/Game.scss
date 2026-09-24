@@ -294,14 +294,13 @@ html[data-theme="dark"] {
 }
 
 .bae_species_set_tooltip {
-  min-width: 132px;
   font-size: 13px;
   line-height: 1.35;
   text-align: center;
 }
 
 .bae_species_set_tooltip table {
-  width: 100%;
+  width: auto;
   border-collapse: collapse;
   text-align: center;
   margin: 0 auto;
@@ -335,6 +334,68 @@ html[data-theme="dark"] {
 .bae_species_set_tooltip p {
   margin: 10px 0 0;
   max-width: 260px;
+}
+
+.bae_track_tooltip {
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.bae_track_tooltip table {
+  border-collapse: collapse;
+  text-align: center;
+  margin: 0 auto;
+}
+
+.bae_track_tooltip th,
+.bae_track_tooltip td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(16, 36, 58, 0.16);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bae_track_tooltip th:first-child,
+.bae_track_tooltip td:first-child {
+  width: 1.6em;
+  padding-left: 2px;
+  padding-right: 2px;
+}
+
+.bae_track_tooltip thead .bae_text_with_icon {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.bae_track_tooltip_vehicle_head {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+}
+
+.bae_track_tooltip .bae_tooltip_token,
+.bae_track_tooltip .bae_vp_inline,
+.bae_track_tooltip .bae_tooltip_flag {
+  width: 1.25em;
+  height: 1.25em;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.bae_track_tooltip_vehicle_head .bae_tooltip_token {
+  display: inline-block;
+  margin: 0;
+}
+
+.bae_track_tooltip p {
+  margin: 10px 0 0;
+  max-width: 320px;
+  text-align: left;
+  white-space: normal;
 }
 
 .bae_pool {

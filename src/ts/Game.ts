@@ -1139,7 +1139,7 @@ export class Game {
 
     // console.log(d, this.gamedatas.materials);
 
-    // Track positions (space tooltips)
+    // Track: hovering any space on a location shows the full exploration table
     const trackVps = this.gamedatas.materials.track_space_vp;
     const vehicleNames = this.gamedatas.materials.vehicle_names;
     for (const pidStr of Object.keys(this.gamedatas.players)) {
@@ -1147,15 +1147,16 @@ export class Game {
       const tracksVehicles = this.gamedatas.materials.player_boards[d.board_for_players[pid] ?? 0] ?? {};
       for (let loc = 0; loc < 3; loc++) {
         const trackKey = loc == 0 ? 'left_location' : loc == 1 ? 'mid_location' : 'right_location';
-        const trackVehicles = tracksVehicles[trackKey] ?? [];
+        const html = this.explorationTrackTooltipHtml(
+          d.flags?.[pid]?.[loc] ?? 0,
+          tracksVehicles[trackKey] ?? [],
+          trackVps[loc] ?? [],
+          vehicleNames,
+        );
         for (let i = 0; i < 8; i++) {
-          const vehiclesAtSpace = trackVehicles[i - 1] ?? [];
           const id = `bae_track_${pid}_${loc}_${i}`;
           try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-          const vpEntry = trackVps[loc]?.[i] ?? 0;
-          const help = `${_('Exploration Track')} ${i} · ${vehiclesAtSpace.map(v => vehicleNames[v] ?? `#${v}`).join(', ') || _('Start')} · ${vpEntry} ${_('VP')}`;
-          const how = _('Advance the flag one space when the observed animal\'s vehicle matches a vehicle printed on the next space.');
-          this.bga.gameui.addTooltip(id, help, how);
+          this.bga.gameui.addTooltipHtml(id, html);
         }
       }
     }
@@ -1384,6 +1385,52 @@ export class Game {
           <thead>
             <tr>
               <th><img class="bae_tooltip_token" src="${animalIcon}" alt="${this.escapeHtml(_('Animals'))}" draggable="false"/></th>
+              <th>${vpIcon}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p>${blurb}</p>
+      </div>
+    `;
+  }
+
+  private explorationTrackTooltipHtml(
+    flagDepth: number,
+    trackVehicles: number[][],
+    spaceVp: number[],
+    vehicleNames: string[],
+  ): string {
+    const baseUrl = this.bga.images.getImgUrl();
+    const vehicleIcon = `${baseUrl}Tokens/track_obj.webp`;
+    const flagIcon = `${baseUrl}Tokens/FlagToken.webp`;
+    const vpIcon = this.vpInlineIcon();
+    const vehicleHead = (n: number) => (
+      `<span class="bae_track_tooltip_vehicle_head"><img class="bae_tooltip_token" src="${vehicleIcon}" alt="${this.escapeHtml(_('Vehicle'))}" draggable="false"/> ${n}</span>`
+    );
+    const nameOf = (id: number | undefined): string => {
+      if (id == null) return '';
+      return this.escapeHtml(vehicleNames[id] ?? `#${id}`);
+    };
+    const flagCell = (space: number): string => (
+      space === flagDepth
+        ? `<img class="bae_tooltip_flag" src="${flagIcon}" alt="${this.escapeHtml(_('Flag'))}" draggable="false"/>`
+        : ''
+    );
+    const rows = Array.from({ length: 8 }, (_, space) => {
+      const vehicles = trackVehicles[space - 1] ?? [];
+      const vp = spaceVp[space] ?? 0;
+      return `<tr><td>${flagCell(space)}</td><td>${nameOf(vehicles[0])}</td><td>${nameOf(vehicles[1])}</td><td>${vp}</td></tr>`;
+    }).join('');
+    const blurb = this.escapeHtml(_('Advance the flag one space when the observed animal\'s vehicle matches a vehicle printed on the next space.'));
+    return `
+      <div class="bae_track_tooltip">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>${vehicleHead(1)}</th>
+              <th>${vehicleHead(2)}</th>
               <th>${vpIcon}</th>
             </tr>
           </thead>
