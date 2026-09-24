@@ -168,6 +168,7 @@ class Game extends \Bga\GameFramework\Table
         $result['scoring_cards'] = $this->getScoringCardIds();
         $result['board_for_players'] = $this->getBoardForPlayers();
         $result['round'] = $this->getRoundNumber();
+        $result['last_returned_counts'] = $this->getLastReturnedCounts();
         $vps = $this->getCollectionFromDb(
             'SELECT `player_id` AS `id`, `player_score` AS `score` FROM `player`'
         );

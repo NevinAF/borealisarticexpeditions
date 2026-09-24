@@ -286,6 +286,8 @@ html[data-theme="dark"] {
 }
 
 .bae_playerboard {
+  position: relative;
+  overflow: visible;
   background: rgba(244, 246, 248, 0.14);
   border-radius: 5px;
   min-width: scaled($board_width);
@@ -300,6 +302,7 @@ html[data-theme="dark"] {
   gap: scaled($space_5);
   align-items: flex-end;
   justify-content: center;
+  overflow: visible;
 }
 
 .bae_player_handcol {
@@ -320,6 +323,7 @@ html[data-theme="dark"] {
 
 .bae_board_canvas {
   position: relative;
+  overflow: visible;
   width: scaled($board_width);
   aspect-ratio: math.div($board_width, $board_height);
   background-size: cover;
@@ -396,6 +400,34 @@ html[data-theme="dark"] {
 
 .bae_camp_right {
   left: px-to-percent-in-width($camp_right_x);
+}
+
+.bae_regroup_hold {
+  position: absolute;
+  left: px-to-percent-in-width($camp_left_x);
+  top: px-to-percent-in-height($camp_top);
+  width: px-to-percent-in-width($camp_width);
+  height: px-to-percent-in-height($camp_height);
+  transform: translateY(-120%);
+  pointer-events: none;
+  z-index: 6;
+
+  .bae_sci_shelf {
+    width: 100%;
+    height: 100%;
+  }
+
+  .bae_meeple_yellow {
+    width: math.div($meeple_yellow_width, $camp_width) * 100%;
+  }
+
+  .bae_meeple_teal {
+    width: math.div($meeple_teal_width, $camp_width) * 100%;
+  }
+
+  .bae_meeple_pink {
+    width: math.div($meeple_pink_width, $camp_width) * 100%;
+  }
 }
 
 
@@ -1150,7 +1182,7 @@ html[data-theme="dark"] .bae_opening_intro {
   object-fit: contain;
 }
 
-/* ========== OPTIONAL: Extra UI, help, legality, pattern match, previews, DnD ========== */
+/* ========== OPTIONAL: round badge, subtle motion previews, stats ========== */
 
 .bae_round_badge {
   position: absolute;
@@ -1166,28 +1198,12 @@ html[data-theme="dark"] .bae_opening_intro {
   color: #0e2944;
 }
 
-.bae_help_toggle {
-  position: absolute;
-  top: 5px;
-  left: 120px;
-  z-index: 30;
-  min-height: 20px;
-  padding: 2px 10px;
-  border: 1px solid rgba(16, 36, 58, 0.42);
-  border-radius: 5px;
-  background: rgba(248, 252, 255, 0.86);
-  color: #0e2944;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.bae_help_panel,
 .bae_stats_panel {
   position: absolute;
   top: 36px;
   left: 5px;
   z-index: 35;
-  width: min(360px, calc(100% - 20px));
+  width: min(380px, calc(100% - 20px));
   max-height: 70vh;
   overflow: auto;
   padding: 12px 14px;
@@ -1198,62 +1214,31 @@ html[data-theme="dark"] .bae_opening_intro {
   color: #0e2944;
 }
 
-.bae_help_panel h3,
 .bae_stats_panel h3 {
   margin: 0 0 8px;
   font-size: 16px;
 }
 
-.bae_help_warn {
-  color: #8a2f12;
-  font-weight: 600;
+.bae_stats_panel h4 {
+  margin: 10px 0 4px;
+  font-size: 14px;
 }
 
-.bae_help_close {
+.bae_stats_panel ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.bae_stats_meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.bae_stats_close {
   margin-top: 8px;
   cursor: pointer;
-}
-
-.bae_stats_row {
-  margin: 6px 0;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.bae_cannot_play {
-  opacity: 0.42;
-  filter: grayscale(0.35);
-}
-
-.bae_can_play {
-  /* legal play target - no extra chrome */
-}
-
-.bae_hover_match {
-  outline: 2px solid #2a6fdb;
-  outline-offset: 2px;
-  opacity: 1 !important;
-  filter: none !important;
-  z-index: 2;
-}
-
-.bae_encourage_regroup {
-  box-shadow: 0 0 0 2px #c45c00, inset 0 0 18px rgba(196, 92, 0, 0.2);
-}
-
-.bae_missing_scientist {
-  box-shadow: 0 0 0 2px #c62828, inset 0 0 16px rgba(198, 40, 40, 0.18);
-}
-
-.bae_pattern_match {
-  outline: 2px solid #0a7a4a;
-  outline-offset: 1px;
-  filter: brightness(1.12);
-}
-
-.bae_meeple_img.bae_pattern_match {
-  transform: translateY(-4px) scale(1.08);
-  transition: transform 120ms ease;
 }
 
 .bae_dragging {
@@ -1261,63 +1246,107 @@ html[data-theme="dark"] .bae_opening_intro {
 }
 
 .bae_drop_target {
-  outline: 2px dashed #2a6fdb;
+  outline: 1px dashed rgba(42, 111, 219, 0.45);
   outline-offset: 2px;
-  background: rgba(42, 111, 219, 0.12);
 }
 
-.bae_preview_ghost {
+.bae_motion_layer {
   position: absolute;
-  width: 28%;
-  aspect-ratio: 1;
-  border-radius: 40%;
-  opacity: 0.55;
+  inset: 0;
   pointer-events: none;
-  z-index: 5;
-  left: 36%;
-  top: 36%;
-  border: 2px dashed #2a6fdb;
-  background: rgba(42, 111, 219, 0.25);
-  animation: bae_preview_pulse 1.2s ease-in-out infinite;
+  z-index: 80;
+  overflow: visible;
 }
 
-.bae_preview_flag {
+.bae_motion_clone {
+  pointer-events: none;
+  will-change: transform;
+  overflow: hidden;
+}
+
+.bae_resolve_clone {
+  opacity: 1;
+}
+
+.bae_resolve_card .bae_card_img,
+.bae_resolve_card .bae_overlay_sprite,
+.bae_resolve_card .bae_pile_card_img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+
+.bae_trail_ghost {
+  animation: bae_trail_flow var(--dur, 900ms) ease-in-out infinite;
+}
+
+.bae_trail_ghost.bae_trail_stuck {
+  animation-name: bae_trail_stuck;
+}
+
+.bae_discard_ghost {
+  animation: bae_discard_preview var(--dur, 1.85s) ease-in-out infinite;
+}
+
+.bae_stuck_once {
+  animation: bae_trail_stuck 0.7s ease-in-out 1;
+}
+
+.bae_invalid_bubble {
   position: absolute;
-  inset: 15%;
-  border-radius: 50%;
+  left: 50%;
+  top: 0;
+  z-index: 40;
+  max-width: min(220px, 90%);
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(22, 30, 38, 0.9);
+  color: #f4f7fa;
+  font-size: 12px;
+  line-height: 1.3;
   pointer-events: none;
-  z-index: 4;
+  transform: translate(-50%, calc(-100% - 8px));
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
-.bae_preview_flag_ok {
-  box-shadow: 0 0 0 3px #2a6fdb, inset 0 0 10px rgba(42, 111, 219, 0.45);
+.bae_previews_off .bae_trail_ghost,
+.bae_previews_off .bae_discard_ghost,
+.bae_anim_off .bae_trail_ghost,
+.bae_anim_off .bae_discard_ghost {
+  animation: none !important;
 }
 
-.bae_preview_flag_no {
-  box-shadow: 0 0 0 3px #c62828, inset 0 0 10px rgba(198, 40, 40, 0.4);
-}
-
-.bae_preview_assign,
-.bae_preview_awaiting {
-  box-shadow: 0 0 0 2px rgba(42, 111, 219, 0.7);
-}
-
-.bae_anim_off .bae_preview_ghost,
-.bae_anim_off .bae_preview_flag,
-.bae_previews_off .bae_preview_ghost,
-.bae_previews_off .bae_preview_flag {
+.bae_previews_off .bae_trail_ghost,
+.bae_previews_off .bae_discard_ghost,
+.bae_anim_off .bae_trail_ghost,
+.bae_anim_off .bae_discard_ghost {
   display: none !important;
 }
 
-.bae_anim_slow .bae_preview_ghost { animation-duration: 2s; }
-.bae_anim_fast .bae_preview_ghost { animation-duration: 0.6s; }
+.bae_anim_slow .bae_trail_ghost { --dur: 1400ms; }
+.bae_anim_fast .bae_trail_ghost { --dur: 650ms; }
 
-@keyframes bae_preview_pulse {
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 0.7; }
+@keyframes bae_trail_flow {
+  0% { transform: translate(0, 0); opacity: 0; }
+  14% { opacity: 0.32; }
+  72% { opacity: 0.1; }
+  100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
 }
 
-/* OPTIONAL: lightweight resolution flash on notif updates */
+@keyframes bae_trail_stuck {
+  0%, 100% { transform: translate(0, 0); opacity: 0; }
+  22% { opacity: 0.28; }
+  50% { transform: translate(0, -7px); opacity: 0.16; }
+  78% { opacity: 0.06; }
+}
+
+@keyframes bae_discard_preview {
+  0% { transform: translateX(0); opacity: 0; }
+  22% { opacity: 0.18; }
+  100% { transform: translateX(var(--dx, -10px)); opacity: 0; }
+}
+
 .bae_anim_normal .bae_card,
 .bae_anim_slow .bae_card,
 .bae_anim_fast .bae_card {

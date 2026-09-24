@@ -1,7 +1,7 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
-import { AnimalDefLite } from './optional/Legality';
-import { OptionalUi } from './optional/OptionalUi';
+import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
+import { OptionalUi, objectiveProgressLines, scoringVpLines } from './optional/OptionalUi';
 
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
@@ -55,7 +55,7 @@ export class Game {
     this.root.id = "bae_playarea";
     this.root.className = "bae";
     area.appendChild(this.root);
-    // OPTIONAL: client-only UX helpers (help, legality, DnD, previews, sound)
+    // OPTIONAL: client-only UX helpers (previews, resolution motion, DnD, sound)
     this.optionalUi = new OptionalUi(this);
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
@@ -489,9 +489,24 @@ export class Game {
     }
   }
 
+  isObserveSelectionLegal(cardId: number | null = this.selectedCardId, location: number | null = this.selectedLocation): boolean {
+    if (cardId == null || location == null || this.campSelected) return false;
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    return canObserveAtLocation(
+      this.animalDef(cardId),
+      this.gamedatas.boardState.scientists,
+      myId,
+      location,
+    );
+  }
+
   private confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
     if (!this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
+    if (!this.isObserveSelectionLegal(cardId, location)) {
+      this.optionalUi?.showInvalidObserveHint();
+      return false;
+    }
     void this.bga.actions.performAction("actObserveAnimal", {
       card_id: cardId,
       location,
@@ -515,7 +530,7 @@ export class Game {
     const canZoomOut = this.canZoomOutAtCurrentViewport();
     const canZoomIn = this.canZoomInAtCurrentViewport();
     const canResetZoom = Math.abs(this.zoomFactor - 1) > 0.0001;
-    const canConfirmObserve = this.isGameplayLike() && this.selectedCardId != null && this.selectedLocation != null;
+    const canConfirmObserve = this.isGameplayLike() && this.isObserveSelectionLegal();
     const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
     const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
     const promptedObjectiveIdx = this.getPromptedObjectiveIndex();
@@ -694,7 +709,7 @@ export class Game {
     this.bindZoomHandlers();
     this.bindTableHandlers(myId);
     this.updateOpeningIntroOverlay();
-    // OPTIONAL: legality highlights, help, DnD, pattern match, previews
+    // OPTIONAL: previews, invalid-action hints, DnD
     this.optionalUi?.afterRender();
   }
 
@@ -833,21 +848,13 @@ export class Game {
       const id = `bae_obj_${idx}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-      const claimedPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'claimed').map(([pid]) => pid);
-      const meetsPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'meets').map(([pid]) => pid);
-      const unmetPids = Object.entries(obj.players ?? {}).filter(([, state]) => state === 'unmet').map(([pid]) => pid);
-      const nameOf = (pid: string) => this.gamedatas.players[Number(pid)]?.name ?? `${_('Player')} ${pid}`;
-      const progressLines = [
-        meetsPids.length ? `${_('Meets')}: ${meetsPids.map(nameOf).join(', ')}` : '',
-        claimedPids.length ? `${_('Claimed')}: ${claimedPids.map(nameOf).join(', ')}` : _('Unclaimed'),
-        unmetPids.length ? `${_('Does not meet')}: ${unmetPids.map(nameOf).join(', ')}` : '',
-      ];
+      const progressLines = objectiveProgressLines(obj, d, this.gamedatas.materials, this.gamedatas.players);
       const action = obj.active ? _('Click to claim this objective') : _('Inactive this round');
         const html = this.buildCardTooltipSpriteHtml(
           'objective',
           obj.id,
           objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-          [...progressLines, objectiveMat?.description ?? '', action],
+          [objectiveMat?.description ?? '', ...progressLines, action],
         );
         this.bga.gameui.addTooltipHtml(id, html);
     });
@@ -859,12 +866,14 @@ export class Game {
 
       const scoringMat = this.gamedatas.materials.scoring_cards?.[scoringId];
       const title = scoringMat?.title ?? `${_('Scoring card')} #${scoringId}`;
+      const description = scoringMat?.description ?? '';
       const explanation = scoringMat?.explanation ?? '';
+      const vpLines = scoringVpLines(scoringId, d, this.gamedatas.materials, this.gamedatas.players);
         const html = this.buildCardTooltipSpriteHtml(
           'scoring',
           scoringId,
           title,
-          [explanation ? `${_('Explanation')}: ${explanation}` : ''],
+          [description, explanation ? `${_('Explanation')}: ${explanation}` : '', ...vpLines],
         );
         this.bga.gameui.addTooltipHtml(id, html);
     });
@@ -992,7 +1001,7 @@ export class Game {
       const jitterY = ((i * 11 + col * 5 + 17 * location + 19 * player_id) % 5) - 2;
       const left = baseLeft + jitterX;
       const top = baseTop + jitterY;
-      out.push(`<img class="bae_meeple_img ${meepleClasses[col]}" src="${src}" alt="" draggable="false" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%"/>`);
+      out.push(`<img class="bae_meeple_img ${meepleClasses[col]}" data-scientist="${col}" src="${src}" alt="" draggable="false" style="left:${left.toFixed(1)}%;top:${top.toFixed(1)}%"/>`);
     }
 
     // Deterministic shuffle using a seeded Fisher–Yates shuffle to randomize
@@ -1304,7 +1313,7 @@ export class Game {
         const id = Number(c.id);
         const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
         const selRg = (this.campSelected || this.isOpeningMulliganLike()) && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
-        const confirmBlurb = this.isGameplayLike() && this.selectedCardId === id && this.selectedLocation != null
+        const confirmBlurb = this.isGameplayLike() && this.selectedCardId === id && this.isObserveSelectionLegal()
           ? `<span class="bae_confirm_blurb">${this.escapeHtml(_('Confirm?'))}</span>`
           : '';
         html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}${confirmBlurb}</button>`;
@@ -1618,16 +1627,24 @@ export class Game {
         return;
       }
 
-      const observeDisabled = this.selectedCardId == null || this.selectedLocation == null;
+      const observeDisabled = !this.isObserveSelectionLegal();
+      const observeMissingSelection = this.selectedCardId == null || this.selectedLocation == null;
       this.bga.statusBar.addActionButton(_("Observe"), () => {
-        if (observeDisabled) return;
+        if (observeDisabled) {
+          if (!observeMissingSelection) this.optionalUi?.showInvalidObserveHint();
+          return;
+        }
         void this.bga.actions.performAction("actObserveAnimal", {
           card_id: this.selectedCardId,
           location: this.selectedLocation,
         });
       }, {
         disabled: observeDisabled,
-        tooltip: (observeDisabled ? _("Select a card from your hand and a location to observe. ") : "") + _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card."),
+        tooltip: observeMissingSelection
+          ? _("Select a card from your hand and a location to observe. ") + _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card.")
+          : (observeDisabled
+            ? _("This location does not have the scientists required.")
+            : _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card.")),
     });
 
       this.bga.statusBar.addActionButton(_('Start Regroup'), () => {
@@ -1694,35 +1711,51 @@ export class Game {
   }
 
   async notif_observeAnimal(_args: any) {
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playObserveResolution(prev, _args); } catch (_) { /* keep state apply */ }
     this.optionalUi?.playSound('success');
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
+    this.selectedCardId = null;
+    this.selectedLocation = null;
     this.renderAll();
   }
   async notif_takeAnimal(_args: any) {
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
+    const prev = this.gamedatas.boardState;
+    const args = _args?.args ?? _args;
+    try { await this.optionalUi?.playTakeResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) {
+        this.gamedatas.boardState = args.boardState;
     }
+    this.selectedPoolSlot = null;
     this.renderAll();
   }
   async notif_mulliganPool(_args: any) {
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
+    const prev = this.gamedatas.boardState;
+    const args = _args?.args ?? _args;
+    try { await this.optionalUi?.playMulliganPoolResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) {
+        this.gamedatas.boardState = args.boardState;
     }
     this.renderAll();
 
-    const pid = Number(_args.player_id ?? _args.playerId ?? 0);
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
     const ctr = this.bga.playerPanels.getScoreCounter(pid);
     ctr.incValue(-1);
   }
   async notif_mulliganHand(_args: any) {
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
+    const prev = this.gamedatas.boardState;
+    const args = _args?.args ?? _args;
+    try { await this.optionalUi?.playMulliganHandResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) {
+        this.gamedatas.boardState = args.boardState;
     }
+    this.selectedRegroupIds.clear();
     this.renderAll();
   }
   async notif_actionUndone(_args: any) {
+    this.optionalUi?.clearHolding();
     if (_args.boardState) {
       this.gamedatas.boardState = _args.boardState;
     }
@@ -1730,10 +1763,15 @@ export class Game {
     this.syncScoresFromBoardState(this.gamedatas.boardState);
   }
   async notif_regroup(_args: any) {
-    // animate VP from camps (if any) for the acting player
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playRegroupResolution(prev, _args); } catch (_) { /* keep state apply */ }
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
+    this.selectedCardId = null;
+    this.selectedLocation = null;
+    this.campSelected = false;
+    this.selectedRegroupIds.clear();
     this.renderAll();
 
     const pid = Number(_args.player_id ?? _args.playerId ?? 0);
@@ -1742,9 +1780,13 @@ export class Game {
     ctr.incValue(vpGained);
   }
   async notif_assignScientists(_args: any) {
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playAssignResolution(prev, _args); } catch (_) { /* keep state apply */ }
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
+    this.selectedLocation = null;
+    this.campSelected = false;
     this.renderAll();
   }
   async notif_objectiveClaimed(_args: any) {

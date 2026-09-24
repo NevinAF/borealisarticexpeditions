@@ -60,6 +60,7 @@ interface BoardState {
   vps: Record<number, number>;
   playersEndingGame: number[];
   round?: number;
+  last_returned_counts?: Record<number, number>;
 }
 
 interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
