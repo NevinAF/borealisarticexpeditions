@@ -366,11 +366,11 @@ export class Game {
             'animal',
             9999,
             _('Hidden hand card'),
-            [_('You cannot see cards in other players hands')],
+            [_('You cannot see cards in other players hands. Animations do not indicate cards positions.')],
           );
           this.bga.gameui.addTooltipHtml(id, html);
         } else {
-          this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands'), '');
+          this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands. Animations do not indicate cards positions.'), '');
         }
       });
     }
