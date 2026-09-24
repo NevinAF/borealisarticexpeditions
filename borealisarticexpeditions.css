@@ -187,6 +187,24 @@ html[data-theme=dark] {
   font-weight: 700;
 }
 
+.bae_vp_tokens_tooltip {
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.bae_vp_tokens_tooltip_total {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.bae_vp_tokens_tooltip_objs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
 .bae_species_set_tooltip {
   font-size: 13px;
   line-height: 1.35;
@@ -352,6 +370,62 @@ html[data-theme=dark] {
   align-items: flex-end;
   justify-content: center;
   overflow: visible;
+}
+
+.bae_player_sidecol {
+  display: flex;
+  flex-direction: column;
+  gap: calc(14px * var(--bae-scale));
+  align-items: stretch;
+  width: calc(528px * var(--bae-scale));
+  position: relative;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.bae_vp_tokens_zone {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: calc(745px * var(--bae-scale));
+  bottom: calc(100% + calc(14px * var(--bae-scale)));
+  border: none;
+  border-radius: 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+  cursor: help;
+  z-index: 2;
+}
+
+.bae_vp_token_shelf {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.bae_vp_token {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+}
+
+.bae_vp_token_1 {
+  width: 44.1287878788%;
+}
+
+.bae_vp_token_3 {
+  width: 48.6742424242%;
+}
+
+.bae_vp_token_5 {
+  width: 55.303030303%;
+}
+
+.bae_motion_clone.bae_vp_token {
+  transform: none;
 }
 
 .bae_player_handcol {
@@ -1371,7 +1445,8 @@ html[data-theme=dark] .bae_opening_intro {
   animation-name: bae_trail_stuck;
 }
 
-.bae_trail_ghost.bae_sci_mover {
+.bae_trail_ghost.bae_sci_mover,
+.bae_trail_ghost.bae_vp_mover {
   animation-name: bae_sci_trail_flow;
 }
 

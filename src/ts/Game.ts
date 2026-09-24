@@ -3,6 +3,7 @@ const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
 import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
 import { objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
+import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
 
 export class Game {
   private static readonly BOARD_REFERENCE_WIDTH_PX = 3788;
@@ -54,6 +55,7 @@ export class Game {
   setup(gamedatas: BorealisArticExpeditionsGamedatas) {
     this.gamedatas = gamedatas;
     this.setupNotifications();
+    this.preloadGameImages();
     const area = this.bga.gameArea.getElement();
     this.root = document.createElement("div");
     this.root.id = "bae_playarea";
@@ -94,12 +96,26 @@ export class Game {
       'Tokens/meeple_obj.webp',
       'Tokens/track_obj.webp',
       'Tokens/VP.svg',
+      'Tokens/1VPToken.png',
+      'Tokens/3VPToken.png',
+      'Tokens/5VPToken.png',
     ];
     this.bga.images.preloadImages(files);
+    for (const file of ['Tokens/1VPToken.png', 'Tokens/3VPToken.png', 'Tokens/5VPToken.png']) {
+      this.bga.images.preloadImage(file);
+    }
     for (const file of files) {
+      const href = this.bga.images.getImgUrl(file);
+      if (file.endsWith('VPToken.png') && !document.head.querySelector(`link[rel="preload"][href="${href}"]`)) {
+        const link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.href = href;
+        document.head.appendChild(link);
+      }
       const img = new Image();
       img.decoding = 'async';
-      img.src = this.bga.images.getImgUrl(file);
+      img.src = href;
       void img.decode().catch(() => {});
     }
   }
@@ -781,9 +797,13 @@ export class Game {
       // and the board canvas to its right.
       html += `<div class="bae_playerboard_inner">`;
 
-      // Render a 4-slot hand column for the player. For non-visible hands (number)
-      // show card backs (id 9999) for existing cards; otherwise show placeholders.
       const handInfo = (d.hands || {})[pid];
+      const vpTokens = this.optionalUi?.vpTokensFor(pid) ?? optimalTokens(playerVp(d.vps, pid));
+      const tokenBase = this.bga.images.getImgUrl();
+      html += `<div class="bae_player_sidecol">`;
+      html += `<div id="bae_vp_tokens_${pid}" class="bae_vp_tokens_zone" data-player-id="${pid}" aria-label="${this.escapeHtml(_('VP Tokens'))}">`;
+      html += `<div class="bae_vp_token_shelf">${vpTokensInnerHtml(pid, vpTokens, tokenBase)}</div>`;
+      html += `</div>`;
       html += `<div class="bae_player_handcol" data-player-id="${pid}">`;
       if (typeof handInfo === 'number') {
         const cnt = Number(handInfo);
@@ -810,6 +830,7 @@ export class Game {
         for (let hi = 0; hi < 4; hi++) html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
       }
       html += `</div>`; // close handcol
+      html += `</div>`; // close sidecol
 
       const campSel = isSelf && this.campSelected ? " bae_camp_selected" : "";
       const campDotsSel = isSelf && this.campSelected ? " bae_sci_shelf_camp_selected" : "";
@@ -1167,6 +1188,13 @@ export class Game {
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
     }
+
+    for (const pidStr of Object.keys(this.gamedatas.players)) {
+      const pid = Number(pidStr);
+      const id = `bae_vp_tokens_${pid}`;
+      try { this.bga.gameui.removeTooltip(id); } catch (_) {}
+      this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid));
+    }
   }
 
   private renderTrackColumn(player_id: number, track: TrackUiClient, location: number, flagDepth: number): string {
@@ -1369,6 +1397,22 @@ export class Game {
   private vpInlineIcon(): string {
     const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
     return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="${this.escapeHtml(_('VP'))}" draggable="false"/></span>`;
+  }
+
+  private vpTokensTooltipHtml(pid: number): string {
+    const d = this.gamedatas.boardState;
+    const vp = playerVp(d.vps, pid);
+    const claimed = (d.objectives ?? []).filter((o) => o.players[pid] === 'claimed');
+    const total = `<div class="bae_vp_tokens_tooltip_total">${vp} ${this.vpInlineIcon()}</div>`;
+    if (claimed.length === 0) {
+      return `<div class="bae_vp_tokens_tooltip">${total}<div>${this.escapeHtml(_('No claimed objectives.'))}</div></div>`;
+    }
+    const names = claimed.map((obj) => {
+      const mat = this.gamedatas.materials.objectives[obj.id];
+      const title = mat?.title ?? `${_('Objective')} #${obj.id}`;
+      return `<div class="bae_vp_tokens_tooltip_obj">${this.escapeHtml(title)}</div>`;
+    }).join('');
+    return `<div class="bae_vp_tokens_tooltip">${total}<div class="bae_vp_tokens_tooltip_objs">${names}</div></div>`;
   }
 
   private speciesSetVpTooltipHtml(): string {
@@ -2164,6 +2208,8 @@ export class Game {
   }
   async notif_objectiveClaimed(_args: any) {
     this.optionalUi?.playSound('claim');
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playObjectiveClaimResolution(prev, _args); } catch (_) { /* keep state apply */ }
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
@@ -2195,34 +2241,32 @@ export class Game {
     this.optionalUi?.showEndGameStats();
   }
   async notif_scoringStep(_args: any) {
-    if (_args.boardState) {
-      this.gamedatas.boardState = _args.boardState;
+    const args = _args?.args ?? _args;
+    const prev = this.gamedatas.boardState;
+    try { await this.optionalUi?.playScoringStepResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) {
+      this.gamedatas.boardState = args.boardState;
     }
-    // Ensure DOM anchors exist
     this.renderAll();
 
-    const pid = Number(_args.player_id ?? _args.playerId ?? 0);
-    const anchorId = String(_args.anchor_id ?? `bae_playerboard_${pid}`);
-    let color = String(_args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const anchorId = String(args.anchor_id ?? `bae_playerboard_${pid}`);
+    let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
     if (color.startsWith && color.startsWith('#')) color = color.substring(1);
-    const amount = Number(_args.amount ?? 0);
+    const amount = scoringStepAmount(args);
     const scoreStr = (amount >= 0 ? '+' : '') + String(amount);
-    const duration = typeof _args.duration === 'number' ? _args.duration : 1200;
-    const offset_x = typeof _args.offset_x === 'number' ? Number(_args.offset_x) : undefined;
-    const offset_y = typeof _args.offset_y === 'number' ? Number(_args.offset_y) : undefined;
+    const duration = typeof args.duration === 'number' ? args.duration : 1200;
+    const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
+    const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
 
     try {
       if (this.bga && (this.bga as any).gameui && typeof (this.bga as any).gameui.displayScoring === 'function') {
         (this.bga as any).gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
       }
     } catch (err) {
-      console.error('scoringStep display failed', err, _args);
+      console.error('scoringStep display failed', err, args);
     }
 
-    // Update view after animation starts so player panels and board reflect new totals
-    this.renderAll();
-
-    // Update the numeric score counter safely (use incValue for deltas to avoid NaN from strings)
     const ctr = this.bga.playerPanels.getScoreCounter(pid);
     ctr.incValue(amount);
   }

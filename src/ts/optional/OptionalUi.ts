@@ -15,6 +15,7 @@ import {
   placeClone,
   placeCloneUnder,
   placeScientistClone,
+  rectOf,
   stackByScreenPosition,
   startDiscardGhost,
   startScientistTrail,
@@ -29,6 +30,14 @@ import {
   scoreScoringCard,
   speciesCounts,
 } from './Progress';
+import {
+  animalCardVpOrigin,
+  optimalTokens,
+  scoringStepAmount,
+  scoringStepKind,
+  VpTokens,
+  type VpValue,
+} from './VpTokens';
 
 /** OPTIONAL preference ids (gamepreferences.jsonc). */
 export const PREF_ANIM_SPEED = 100;
@@ -91,8 +100,15 @@ export class OptionalUi {
   private lastHoverEl: Element | null = null;
   private previewLocked = false;
   private static readonly TOOLTIP_CLICK_MS = 500;
+  private vp: VpTokens;
 
-  constructor(private host: OptionalUiHost) {}
+  constructor(private host: OptionalUiHost) {
+    this.vp = new VpTokens(host);
+  }
+
+  vpTokensFor(pid: number): VpValue[] {
+    return this.vp.tokensFor(pid);
+  }
 
   afterRender(): void {
     this.previewLocked = false;
@@ -319,10 +335,14 @@ export class OptionalUi {
       const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`) as HTMLElement | null;
       const leftMeeples = Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
       const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
+      const allMeeples = [...leftMeeples, ...rightMeeples];
+      const vpOnes = allMeeples.map(() => 1 as VpValue);
+      const vpSources = allMeeples.map((el) => el.getBoundingClientRect());
       const stackItems: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }> = [];
       const flights = [
         ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms, stackItems)),
         ...rightMeeples.map((el) => this.flyMeepleToHold(el, rightCamp, rightHold, ms, stackItems)),
+        this.vp.addIncoming(pid, vpOnes, vpSources, ms, false),
       ];
       stackByScreenPosition(stackItems.map((it) => ({ el: it.clone, top: it.from.top, left: it.from.left })));
       if (ms > 0) {
@@ -331,6 +351,7 @@ export class OptionalUi {
         });
       }
       await Promise.all(flights);
+      await this.vp.convertToOptimal(pid, ms);
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
     } finally {
       this.endResolution();
@@ -404,9 +425,13 @@ export class OptionalUi {
     const ms = this.duration();
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution(['pool']);
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    this.prepareResolution(['pool', `player:${pid}`]);
     try {
       const root = this.host.root;
+      const pool = root.querySelector('.bae_pool') as HTMLElement | null;
+      const poolRect = pool?.getBoundingClientRect() ?? this.deckEl()?.getBoundingClientRect() ?? null;
+      if (pid && poolRect) await this.vp.spendOneTo(pid, poolRect, ms);
       const deck = this.deckEl();
       const cards = this.poolCards();
       const dests = cards.map((el) => ({
@@ -443,6 +468,155 @@ export class OptionalUi {
     } finally {
       this.endResolution();
     }
+  }
+
+  async playObjectiveClaimResolution(_prev: BoardState, args: Record<string, unknown>): Promise<void> {
+    const ms = this.duration();
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    if (ms === 0 || this.resolving || !pid) return;
+    this.resolving = true;
+    this.prepareResolution([`player:${pid}`]);
+    try {
+      const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
+      const obj = Number.isFinite(idx)
+        ? this.host.root.querySelector(`#bae_obj_${idx}`) as HTMLElement | null
+        : null;
+      const from = rectOf(obj);
+      await this.vp.addIncoming(pid, [5], [from], ms, false);
+    } finally {
+      this.endResolution();
+    }
+  }
+
+  async playScoringStepResolution(_prev: BoardState, args: Record<string, unknown>): Promise<void> {
+    const base = this.duration();
+    const ms = base === 0 ? 0 : Math.round(base + 200);
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    if (ms === 0 || this.resolving || !pid) return;
+    const flights = this.scoringTokenFlights(pid, args);
+    if (flights.length === 0) return;
+    this.resolving = true;
+    this.prepareResolution([`player:${pid}`]);
+    try {
+      await this.vp.addIncoming(
+        pid,
+        flights.map((f) => f.value),
+        flights.map((f) => f.from),
+        ms,
+        true,
+      );
+      await wait(500);
+    } finally {
+      this.endResolution();
+    }
+  }
+
+  private scoringTokenFlights(
+    pid: number,
+    args: Record<string, unknown>,
+  ): Array<{ value: VpValue; from: DOMRect | null }> {
+    const kind = scoringStepKind(args);
+    const out: Array<{ value: VpValue; from: DOMRect | null }> = [];
+    const push = (amount: number, from: DOMRect | null): void => {
+      if (amount <= 0 || !from) return;
+      for (const value of optimalTokens(amount)) out.push({ value, from });
+    };
+    const locOf = (): number => Number(args.location ?? args.loc ?? 0);
+    const amounts = (): number[] => [
+      Number(args.amount_left ?? 0),
+      Number(args.amount_mid ?? 0),
+      Number(args.amount_right ?? 0),
+    ];
+    if (kind === 'species_sets') {
+      const from = this.speciesSetOrigin(pid);
+      if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
+        amounts().forEach((amount) => push(amount, from));
+      } else {
+        push(Number(args.amount ?? 0), from);
+      }
+      return out;
+    }
+    if (kind === 'exploration_track') {
+      const flags = this.host.gamedatas.boardState.flags?.[pid] ?? {};
+      const flagAt = (loc: number): number => Number(
+        args.flag_space
+        ?? (flags as Record<number, number>)[loc]
+        ?? (flags as Record<string, number>)[String(loc)]
+        ?? 0,
+      );
+      if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
+        amounts().forEach((amount, loc) => push(amount, this.trackVpOrigin(pid, loc, flagAt(loc))));
+      } else {
+        const loc = locOf();
+        push(Number(args.amount ?? 0), this.trackVpOrigin(pid, loc, flagAt(loc)));
+      }
+      return out;
+    }
+    if (kind === 'animal_card') {
+      const loc = locOf();
+      const slot = Number(args.slot ?? 0);
+      push(Number(args.amount ?? 0), this.animalCardVpOriginRect(pid, loc, slot, args));
+      return out;
+    }
+    if (kind === 'scoring_card') {
+      push(Number(args.amount ?? 0), this.scoringCardOrigin(args));
+      return out;
+    }
+    const fromAnchor = this.originFromAnchor(String(args.anchor_id ?? ''), pid, args);
+    push(scoringStepAmount(args), fromAnchor);
+    return out;
+  }
+
+  private speciesSetOrigin(pid: number): DOMRect | null {
+    const track = this.host.root.querySelector(`#bae_animal_loc_vp_${pid}`) as HTMLElement | null;
+    return rectOf(track) ?? this.locationZoneRect(pid, 2);
+  }
+
+  private trackVpOrigin(pid: number, loc: number, space: number): DOMRect | null {
+    const flag = this.flagEl(pid, loc, space);
+    const cell = this.trackEl(pid, loc, space);
+    return rectOf(flag) ?? rectOf(cell) ?? this.locationZoneRect(pid, loc);
+  }
+
+  private animalCardVpOriginRect(
+    pid: number,
+    loc: number,
+    slot: number,
+    args: Record<string, unknown>,
+  ): DOMRect | null {
+    const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`) as HTMLElement | null
+      ?? (args.card_id != null
+        ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`) as HTMLElement | null
+        : null);
+    if (card) return animalCardVpOrigin(card);
+    return this.locationZoneRect(pid, loc);
+  }
+
+  private scoringCardOrigin(args: Record<string, unknown>): DOMRect | null {
+    const scoringId = Number(args.scoring_id ?? args.scoringId ?? NaN);
+    const idx = Number.isFinite(Number(args.scoring_index))
+      ? Number(args.scoring_index)
+      : (this.host.gamedatas.boardState.scoring_cards ?? []).findIndex((id) => Number(id) === scoringId);
+    const card = this.host.root.querySelector(`#bae_score_${idx}`) as HTMLElement | null;
+    return rectOf(card);
+  }
+
+  private originFromAnchor(anchorId: string, pid: number, args: Record<string, unknown>): DOMRect | null {
+    if (!anchorId || anchorId === `bae_playerboard_${pid}`) return null;
+    const pile = /^bae_pile_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
+    if (pile) return this.animalCardVpOriginRect(Number(pile[1]), Number(pile[2]), Number(pile[3]), args);
+    const track = /^bae_track_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
+    if (track) return this.trackVpOrigin(Number(track[1]), Number(track[2]), Number(track[3]));
+    const el = (this.host.root.querySelector(`#${anchorId}`)
+      ?? document.getElementById(anchorId)) as HTMLElement | null;
+    return rectOf(el);
+  }
+
+  private locationZoneRect(pid: number, loc: number): DOMRect | null {
+    const zone = this.host.root.querySelector(
+      `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
+    ) as HTMLElement | null;
+    return rectOf(zone);
   }
 
   showEndGameStats(): void {
@@ -703,6 +877,7 @@ export class OptionalUi {
     const ms = this.previewLoopMs();
     this.previewRegroupPickupSide(pid, 3, 'left', ms);
     this.previewRegroupPickupSide(pid, 4, 'right', ms);
+    this.vp.previewOnesFrom(pid, this.campMeeples(pid), ms);
   }
 
   private previewRegroupPickupSide(pid: number, campLoc: number, side: 'left' | 'right', ms: number): void {
@@ -1341,6 +1516,7 @@ export class OptionalUi {
       '.bae_score_card',
       '.bae_camp_zone',
       '.bae_animal_loc_vp_track',
+      '.bae_vp_tokens_zone',
       '.bae_regroup_hold',
       '.bae_location_zone',
     ].join(','));

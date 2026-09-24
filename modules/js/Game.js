@@ -289,6 +289,30 @@ function flyClone(clone, to, durationMs, root, matchSize = false, destScale = 1,
         clone.style.transition = 'none';
     });
 }
+/** Fly toward dest and fade out before arriving. */
+function flyCloneFading(clone, to, durationMs, root, matchSize = false) {
+    const parent = containingBlock(clone, root);
+    const destLeft = to.left + (matchSize ? 0 : (to.width - clone.getBoundingClientRect().width) / 2);
+    const destTop = to.top + (matchSize ? 0 : (to.height - clone.getBoundingClientRect().height) / 2);
+    const parked = localOffset(parent, destLeft, destTop);
+    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+    const fadeMs = Math.max(1, Math.round(durationMs * 0.62));
+    clone.style.transform = 'none';
+    void clone.offsetWidth;
+    clone.style.transition = matchSize
+        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`
+        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`;
+    clone.style.left = `${parked.left}px`;
+    clone.style.top = `${parked.top}px`;
+    clone.style.opacity = '0';
+    if (matchSize) {
+        clone.style.width = `${to.width}px`;
+        clone.style.height = `${to.height}px`;
+    }
+    return wait(durationMs).then(() => {
+        clone.style.transition = 'none';
+    });
+}
 /** Fly using destination coordinates already expressed in `host`'s local space. */
 function flyCloneToLocal(clone, dest, durationMs, host, matchSize = false) {
     adoptClone(clone, host);
@@ -389,6 +413,11 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn)
     });
     return clone;
 }
+function bindPreviewFollow(clone, follow) {
+    const anchor = previewAnchors.get(clone);
+    if (anchor)
+        anchor.follow = follow;
+}
 /** Static clone parked at a destination (card placement preview). */
 function placeCloneAt(source, extraClass, root, at) {
     const clone = placeClone(source, extraClass, root);
@@ -418,11 +447,19 @@ function retargetPreviewClones(root) {
     root.querySelectorAll('.bae_discard_ghost, .bae_trail_ghost').forEach((node) => {
         const clone = node;
         const anchor = previewAnchors.get(clone);
-        if (!anchor || !anchor.source.isConnected)
+        if (!anchor)
+            return;
+        const fromEl = (anchor.follow?.isConnected ? anchor.follow : anchor.source);
+        if (!fromEl?.isConnected)
             return;
         copySpriteVars(root, clone);
-        const from = anchor.source.getBoundingClientRect();
+        const fromBox = fromEl.getBoundingClientRect();
         const parent = containingBlock(clone, root);
+        const sizeW = clone.offsetWidth || fromBox.width;
+        const sizeH = clone.offsetHeight || fromBox.height;
+        const from = anchor.follow
+            ? new DOMRect(fromBox.left + fromBox.width / 2 - sizeW / 2, fromBox.top + fromBox.height / 2 - sizeH / 2, sizeW, sizeH)
+            : fromBox;
         const loc = localRect(parent, from);
         clone.style.left = `${loc.left}px`;
         clone.style.top = `${loc.top}px`;
@@ -757,6 +794,435 @@ function animalBonusVp(playerId, state, materials) {
     return vp;
 }
 
+/** OPTIONAL: VP token mix, shelf layout, and flights into the player VP zone. */
+const TOKEN_REF_W = { 1: 233, 3: 257, 5: 292 };
+const ZONE_REF_W = 528;
+const CARD_REF_H = 745;
+const CARD_SHIFT_Y = 170;
+const EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+function playerVp(vps, pid) {
+    const raw = vps?.[pid]
+        ?? vps?.[String(pid)];
+    return Math.max(0, Math.floor(Number(raw?.score ?? raw ?? 0)));
+}
+/** Fewest tokens, preferring 5s then 3s then 1s (6 → 5+1, not 3+3). */
+function optimalTokens(vp) {
+    const out = [];
+    let rem = Math.max(0, Math.floor(vp));
+    while (rem >= 5) {
+        out.push(5);
+        rem -= 5;
+    }
+    while (rem >= 3) {
+        out.push(3);
+        rem -= 3;
+    }
+    while (rem >= 1) {
+        out.push(1);
+        rem -= 1;
+    }
+    return out;
+}
+function tokensSum(tokens) {
+    return tokens.reduce((sum, n) => sum + n, 0);
+}
+/** Break a 3 or 5 so the mix contains at least one 1VP token. */
+function ensureHasOne(tokens) {
+    if (tokens.includes(1))
+        return tokens;
+    const i3 = tokens.indexOf(3);
+    if (i3 >= 0) {
+        const next = [...tokens];
+        next.splice(i3, 1, 1, 1, 1);
+        return next;
+    }
+    const i5 = tokens.indexOf(5);
+    if (i5 >= 0) {
+        const next = [...tokens];
+        next.splice(i5, 1, 3, 1, 1);
+        return next;
+    }
+    return tokens;
+}
+function vpGrid(n) {
+    const cols = n <= 3 ? 1 : n <= 7 ? 2 : 3;
+    const rows = Math.max(4, Math.ceil(n / cols));
+    const add_rows = rows - Math.max(1, Math.ceil(n / cols));
+    return { cols, rows, add_rows };
+}
+function vpTokenLayout(n, playerId) {
+    if (n <= 0)
+        return [];
+    const { cols, rows, add_rows } = vpGrid(n);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols) + add_rows;
+        const jitterX = ((i * 7 + 13 * playerId) % 5) - 2;
+        const jitterY = ((i * 11 + 19 * playerId) % 5) - 2;
+        const leftPct = clamp(((col + 1) / (cols + 1)) * 100 + jitterX * 0.35, 28, 72);
+        const topPct = clamp(((row + 1) / (rows + 1)) * 100 + jitterY * 0.3, 10, 90);
+        out.push({ leftPct, topPct, col, row, cols, rows });
+    }
+    return out;
+}
+function vpTokenZIndex(slot) {
+    return slot.col * slot.rows + (slot.rows - 1 - slot.row) + 1;
+}
+function vpTokensInnerHtml(pid, tokens, baseUrl) {
+    const slots = vpTokenLayout(tokens.length, pid);
+    return tokens.map((value, i) => {
+        const slot = slots[i];
+        return `<img class="bae_vp_token bae_vp_token_${value}" data-vp="${value}" data-col="${slot.col}" data-row="${slot.row}" src="${baseUrl}Tokens/${value}VPToken.png" alt="" draggable="false" style="left:${slot.leftPct.toFixed(1)}%;top:${slot.topPct.toFixed(1)}%;z-index:${vpTokenZIndex(slot)}"/>`;
+    }).join('');
+}
+function animalCardVpOrigin(card) {
+    const r = card.getBoundingClientRect();
+    const strip = r.height * (CARD_SHIFT_Y / CARD_REF_H);
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height - strip / 2;
+    return new DOMRect(cx - 1, cy - 1, 2, 2);
+}
+function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+}
+function assignMatches(oldVals, next) {
+    const used = new Set();
+    const keep = [];
+    const drop = [];
+    for (let i = 0; i < oldVals.length; i++) {
+        let found = -1;
+        for (let j = 0; j < next.length; j++) {
+            if (used.has(j) || next[j] !== oldVals[i])
+                continue;
+            found = j;
+            break;
+        }
+        if (found >= 0) {
+            used.add(found);
+            keep.push({ oldI: i, nextI: found });
+        }
+        else {
+            drop.push(i);
+        }
+    }
+    const add = [];
+    for (let j = 0; j < next.length; j++) {
+        if (!used.has(j))
+            add.push(j);
+    }
+    return { keep, drop, add };
+}
+class VpTokens {
+    constructor(host) {
+        this.host = host;
+        this.mix = new Map();
+    }
+    tokensFor(pid) {
+        const vp = playerVp(this.host.gamedatas.boardState.vps, pid);
+        const current = this.mix.get(pid);
+        if (current && tokensSum(current) === vp)
+            return current;
+        const next = optimalTokens(vp);
+        this.mix.set(pid, next);
+        return next;
+    }
+    zone(pid) {
+        return this.host.root?.querySelector(`#bae_vp_tokens_${pid}`);
+    }
+    shelf(pid) {
+        return this.host.root?.querySelector(`#bae_vp_tokens_${pid} .bae_vp_token_shelf`);
+    }
+    async addIncoming(pid, incoming, sources, ms, convertAfter) {
+        if (incoming.length === 0)
+            return;
+        const current = this.liveMix(pid);
+        const next = [...current, ...incoming];
+        const slots = vpTokenLayout(next.length, pid);
+        const oldEls = this.tokenEls(pid);
+        const dests = incoming.map((value, i) => this.slotRect(pid, slots[current.length + i], value));
+        const spawned = [];
+        incoming.forEach((value, i) => {
+            const from = sources[i] ?? sources.find((r) => r) ?? null;
+            const to = dests[i];
+            const slot = slots[current.length + i];
+            if (!from || !to || !slot)
+                return;
+            spawned.push({ clone: this.spawnFlyingToken(value, from, to), from, to, slot });
+        });
+        spawned.forEach((it) => { it.clone.style.zIndex = String(80 + vpTokenZIndex(it.slot)); });
+        await Promise.all([
+            this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
+            ...spawned.map((it) => flyClone(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
+        ]);
+        incoming.forEach((value, i) => this.mountToken(pid, value, slots[current.length + i]));
+        this.mix.set(pid, next);
+        if (convertAfter) {
+            if (ms > 0)
+                await wait(250);
+            await this.convertTo(pid, optimalTokens(tokensSum(next)), ms);
+        }
+    }
+    async spendOneTo(pid, dest, ms) {
+        let mix = this.liveMix(pid);
+        if (!mix.includes(1)) {
+            await this.convertTo(pid, ensureHasOne(mix), ms);
+            mix = this.liveMix(pid);
+        }
+        const els = this.tokenEls(pid);
+        const idx = els.findIndex((el) => Number(el.dataset.vp) === 1);
+        if (idx < 0 || !dest) {
+            this.mix.set(pid, mix.slice(0, Math.max(0, mix.length - 1)));
+            return;
+        }
+        const one = els[idx];
+        const remainEls = els.filter((_, i) => i !== idx);
+        const remaining = mix.filter((_, i) => i !== idx);
+        const slots = vpTokenLayout(remaining.length, pid);
+        const clone = placeClone(one, 'bae_resolve_clone bae_vp_token', this.host.root);
+        one.remove();
+        await Promise.all([
+            flyCloneFading(clone, dest, ms, this.host.root, false),
+            this.applyLayout(remainEls, slots, ms),
+        ]);
+        clone.remove();
+        this.mix.set(pid, remaining);
+    }
+    async convertToOptimal(pid, ms) {
+        if (ms > 0)
+            await wait(250);
+        await this.convertTo(pid, optimalTokens(tokensSum(this.liveMix(pid))), ms);
+    }
+    previewOnesFrom(pid, sources, ms) {
+        if (sources.length === 0 || ms <= 0)
+            return;
+        const current = this.tokensFor(pid);
+        const next = [...current, ...sources.map(() => 1)];
+        const slots = vpTokenLayout(next.length, pid);
+        const destSlots = slots.slice(current.length);
+        const layer = motionLayer(this.host.root);
+        sources.forEach((src, i) => {
+            const destSlot = destSlots[i];
+            if (!destSlot)
+                return;
+            const size = this.tokenPixelSize(pid, 1);
+            const srcR = src.getBoundingClientRect();
+            const from = new DOMRect(srcR.left + srcR.width / 2 - size.w / 2, srcR.top + srcR.height / 2 - size.h / 2, size.w, size.h);
+            const dummy = this.createTokenEl(1);
+            dummy.style.position = 'absolute';
+            dummy.style.transform = 'none';
+            dummy.style.margin = '0';
+            dummy.style.pointerEvents = 'none';
+            const loc = coordsInParent(layer, from);
+            dummy.style.left = `${loc.left}px`;
+            dummy.style.top = `${loc.top}px`;
+            dummy.style.width = `${size.w}px`;
+            dummy.style.height = `${size.h}px`;
+            layer.appendChild(dummy);
+            const destFn = () => this.slotRect(pid, destSlot, 1);
+            const dest = destFn() ?? from;
+            const clone = startTrailToRect(dummy, dest, ms, this.host.root, 'bae_vp_mover', destFn);
+            bindPreviewFollow(clone, src);
+            dummy.remove();
+        });
+    }
+    liveMix(pid) {
+        const live = this.tokenEls(pid)
+            .map((el) => Number(el.dataset.vp))
+            .filter((n) => n === 1 || n === 3 || n === 5);
+        if (live.length > 0)
+            return live;
+        return this.mix.get(pid) ?? this.tokensFor(pid);
+    }
+    tokenEls(pid) {
+        return Array.from(this.shelf(pid)?.querySelectorAll('.bae_vp_token') ?? []);
+    }
+    createTokenEl(value) {
+        const img = document.createElement('img');
+        img.className = `bae_vp_token bae_vp_token_${value}`;
+        img.dataset.vp = String(value);
+        img.src = `${this.host.bga.images.getImgUrl()}Tokens/${value}VPToken.png`;
+        img.alt = '';
+        img.draggable = false;
+        return img;
+    }
+    mountToken(pid, value, slot) {
+        const shelf = this.shelf(pid);
+        if (!shelf)
+            return;
+        const el = this.createTokenEl(value);
+        this.writeSlot(el, slot);
+        shelf.appendChild(el);
+        this.restack(pid);
+    }
+    restack(pid, count) {
+        const n = count ?? this.tokenEls(pid).length;
+        const { rows } = vpGrid(n);
+        this.tokenEls(pid).forEach((el) => {
+            if (el.style.opacity === '0')
+                return;
+            const col = Number(el.dataset.col ?? 0);
+            const row = Number(el.dataset.row ?? 0);
+            el.style.zIndex = String(vpTokenZIndex({ col, row, rows }));
+        });
+    }
+    writeSlot(el, slot) {
+        el.style.left = `${slot.leftPct}%`;
+        el.style.top = `${slot.topPct}%`;
+        el.dataset.col = String(slot.col);
+        el.dataset.row = String(slot.row);
+    }
+    slotRect(pid, slot, value) {
+        const shelf = this.shelf(pid);
+        if (!shelf)
+            return null;
+        const probe = this.createTokenEl(value);
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
+        probe.style.left = `${slot.leftPct}%`;
+        probe.style.top = `${slot.topPct}%`;
+        shelf.appendChild(probe);
+        const rect = probe.getBoundingClientRect();
+        probe.remove();
+        if (rect.width < 1 || rect.height < 1) {
+            const box = shelf.getBoundingClientRect();
+            const size = this.tokenPixelSize(pid, value);
+            const cx = box.left + box.width * slot.leftPct / 100;
+            const cy = box.top + box.height * slot.topPct / 100;
+            return new DOMRect(cx - size.w / 2, cy - size.h / 2, size.w, size.h);
+        }
+        return rect;
+    }
+    tokenPixelSize(pid, value) {
+        const box = this.shelf(pid)?.getBoundingClientRect();
+        const w = (box?.width || ZONE_REF_W) * (TOKEN_REF_W[value] / ZONE_REF_W);
+        return { w, h: w };
+    }
+    applyLayout(els, slots, ms) {
+        els.forEach((el, i) => {
+            const slot = slots[i];
+            if (!slot)
+                return;
+            el.style.transition = ms > 0
+                ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
+                : 'none';
+            this.writeSlot(el, slot);
+        });
+        const pid = Number(els[0]?.closest('[data-player-id]')?.getAttribute('data-player-id') ?? 0);
+        if (pid)
+            this.restack(pid);
+        return wait(ms);
+    }
+    async convertTo(pid, next, ms) {
+        const shelf = this.shelf(pid);
+        if (!shelf) {
+            this.mix.set(pid, next);
+            return;
+        }
+        const oldEls = this.tokenEls(pid);
+        const oldVals = oldEls
+            .map((el) => Number(el.dataset.vp))
+            .filter((n) => n === 1 || n === 3 || n === 5);
+        if (sameMix(oldVals, next)) {
+            this.mix.set(pid, next);
+            return;
+        }
+        const slots = vpTokenLayout(next.length, pid);
+        const { keep, drop, add } = assignMatches(oldVals, next);
+        const fade = Math.max(120, Math.round(ms * 0.7));
+        keep.forEach(({ oldI, nextI }) => {
+            const el = oldEls[oldI];
+            const slot = slots[nextI];
+            if (!el || !slot)
+                return;
+            el.style.transition = ms > 0
+                ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
+                : 'none';
+            this.writeSlot(el, slot);
+        });
+        drop.forEach((oldI) => {
+            const el = oldEls[oldI];
+            if (!el)
+                return;
+            el.style.transition = `opacity ${fade}ms ease`;
+            el.style.opacity = '0';
+        });
+        const added = [];
+        add.forEach((nextI) => {
+            const slot = slots[nextI];
+            const value = next[nextI];
+            if (!slot || !value)
+                return;
+            const el = this.createTokenEl(value);
+            this.writeSlot(el, slot);
+            el.style.opacity = '0';
+            el.style.transition = `opacity ${fade}ms ease`;
+            shelf.appendChild(el);
+            added.push(el);
+        });
+        void shelf.offsetWidth;
+        added.forEach((el) => { el.style.opacity = '1'; });
+        this.restack(pid, next.length);
+        await wait(Math.max(ms, fade));
+        drop.forEach((oldI) => oldEls[oldI]?.remove());
+        this.restack(pid);
+        this.mix.set(pid, next);
+    }
+    spawnFlyingToken(value, from, to) {
+        const w = to.width > 1 ? to.width : this.tokenPixelSize(0, value).w;
+        const h = to.height > 1 ? to.height : w;
+        const start = new DOMRect(from.left + from.width / 2 - w / 2, from.top + from.height / 2 - h / 2, w, h);
+        const img = this.createTokenEl(value);
+        img.classList.add('bae_motion_clone', 'bae_resolve_clone');
+        img.style.position = 'absolute';
+        img.style.transform = 'none';
+        img.style.margin = '0';
+        img.style.pointerEvents = 'none';
+        img.style.zIndex = '80';
+        const layer = motionLayer(this.host.root);
+        const loc = coordsInParent(layer, start);
+        img.style.left = `${loc.left}px`;
+        img.style.top = `${loc.top}px`;
+        img.style.width = `${w}px`;
+        img.style.height = `${h}px`;
+        layer.appendChild(img);
+        return img;
+    }
+}
+function sameMix(a, b) {
+    if (a.length !== b.length)
+        return false;
+    const left = [...a].sort((x, y) => y - x);
+    const right = [...b].sort((x, y) => y - x);
+    return left.every((n, i) => n === right[i]);
+}
+function scoringStepAmount(args) {
+    if (args.amount != null && args.amount !== '')
+        return Number(args.amount);
+    return Number(args.amount_left ?? 0) + Number(args.amount_mid ?? 0) + Number(args.amount_right ?? 0);
+}
+function scoringStepKind(args) {
+    const direct = String(args.scoring_kind ?? args.kind ?? '');
+    if (direct)
+        return direct;
+    const anchor = String(args.anchor_id ?? '');
+    if (anchor.includes('animal_loc_vp'))
+        return 'species_sets';
+    if (anchor.includes('bae_track_'))
+        return 'exploration_track';
+    if (anchor.includes('bae_pile_'))
+        return 'animal_card';
+    if (anchor.includes('bae_score_'))
+        return 'scoring_card';
+    if (args.scoring_id != null || args.scoring_name != null || args.scoring_index != null)
+        return 'scoring_card';
+    if (args.card_id != null || args.slot != null)
+        return 'animal_card';
+    if (args.flag_space != null)
+        return 'exploration_track';
+    return '';
+}
+
 /** OPTIONAL preference ids (gamepreferences.jsonc). */
 const PREF_ANIM_SPEED = 100;
 const PREF_PREVIEWS = 101;
@@ -789,6 +1255,10 @@ class OptionalUi {
         this.tooltipRetrigger = false;
         this.lastHoverEl = null;
         this.previewLocked = false;
+        this.vp = new VpTokens(host);
+    }
+    vpTokensFor(pid) {
+        return this.vp.tokensFor(pid);
     }
     afterRender() {
         this.previewLocked = false;
@@ -1009,10 +1479,14 @@ class OptionalUi {
             const rightCamp = this.host.root.querySelector(`#bae_camp_${pid}_right`);
             const leftMeeples = Array.from(this.shelfEl(pid, 3)?.querySelectorAll('.bae_meeple_img') ?? []);
             const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []);
+            const allMeeples = [...leftMeeples, ...rightMeeples];
+            const vpOnes = allMeeples.map(() => 1);
+            const vpSources = allMeeples.map((el) => el.getBoundingClientRect());
             const stackItems = [];
             const flights = [
                 ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms, stackItems)),
                 ...rightMeeples.map((el) => this.flyMeepleToHold(el, rightCamp, rightHold, ms, stackItems)),
+                this.vp.addIncoming(pid, vpOnes, vpSources, ms, false),
             ];
             stackByScreenPosition(stackItems.map((it) => ({ el: it.clone, top: it.from.top, left: it.from.left })));
             if (ms > 0) {
@@ -1021,6 +1495,7 @@ class OptionalUi {
                 });
             }
             await Promise.all(flights);
+            await this.vp.convertToOptimal(pid, ms);
             await this.animateHandReplace(pid, discarded, prev, args.boardState, ms);
         }
         finally {
@@ -1101,9 +1576,14 @@ class OptionalUi {
         if (ms === 0 || this.resolving)
             return;
         this.resolving = true;
-        this.prepareResolution(['pool']);
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        this.prepareResolution(['pool', `player:${pid}`]);
         try {
             const root = this.host.root;
+            const pool = root.querySelector('.bae_pool');
+            const poolRect = pool?.getBoundingClientRect() ?? this.deckEl()?.getBoundingClientRect() ?? null;
+            if (pid && poolRect)
+                await this.vp.spendOneTo(pid, poolRect, ms);
             const deck = this.deckEl();
             const cards = this.poolCards();
             const dests = cards.map((el) => ({
@@ -1143,6 +1623,141 @@ class OptionalUi {
         finally {
             this.endResolution();
         }
+    }
+    async playObjectiveClaimResolution(_prev, args) {
+        const ms = this.duration();
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        if (ms === 0 || this.resolving || !pid)
+            return;
+        this.resolving = true;
+        this.prepareResolution([`player:${pid}`]);
+        try {
+            const idx = Number(args.objective_index ?? args.objectiveIndex ?? NaN);
+            const obj = Number.isFinite(idx)
+                ? this.host.root.querySelector(`#bae_obj_${idx}`)
+                : null;
+            const from = rectOf(obj);
+            await this.vp.addIncoming(pid, [5], [from], ms, false);
+        }
+        finally {
+            this.endResolution();
+        }
+    }
+    async playScoringStepResolution(_prev, args) {
+        const base = this.duration();
+        const ms = base === 0 ? 0 : Math.round(base + 200);
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        if (ms === 0 || this.resolving || !pid)
+            return;
+        const flights = this.scoringTokenFlights(pid, args);
+        if (flights.length === 0)
+            return;
+        this.resolving = true;
+        this.prepareResolution([`player:${pid}`]);
+        try {
+            await this.vp.addIncoming(pid, flights.map((f) => f.value), flights.map((f) => f.from), ms, true);
+            await wait(500);
+        }
+        finally {
+            this.endResolution();
+        }
+    }
+    scoringTokenFlights(pid, args) {
+        const kind = scoringStepKind(args);
+        const out = [];
+        const push = (amount, from) => {
+            if (amount <= 0 || !from)
+                return;
+            for (const value of optimalTokens(amount))
+                out.push({ value, from });
+        };
+        const locOf = () => Number(args.location ?? args.loc ?? 0);
+        const amounts = () => [
+            Number(args.amount_left ?? 0),
+            Number(args.amount_mid ?? 0),
+            Number(args.amount_right ?? 0),
+        ];
+        if (kind === 'species_sets') {
+            const from = this.speciesSetOrigin(pid);
+            if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
+                amounts().forEach((amount) => push(amount, from));
+            }
+            else {
+                push(Number(args.amount ?? 0), from);
+            }
+            return out;
+        }
+        if (kind === 'exploration_track') {
+            const flags = this.host.gamedatas.boardState.flags?.[pid] ?? {};
+            const flagAt = (loc) => Number(args.flag_space
+                ?? flags[loc]
+                ?? flags[String(loc)]
+                ?? 0);
+            if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
+                amounts().forEach((amount, loc) => push(amount, this.trackVpOrigin(pid, loc, flagAt(loc))));
+            }
+            else {
+                const loc = locOf();
+                push(Number(args.amount ?? 0), this.trackVpOrigin(pid, loc, flagAt(loc)));
+            }
+            return out;
+        }
+        if (kind === 'animal_card') {
+            const loc = locOf();
+            const slot = Number(args.slot ?? 0);
+            push(Number(args.amount ?? 0), this.animalCardVpOriginRect(pid, loc, slot, args));
+            return out;
+        }
+        if (kind === 'scoring_card') {
+            push(Number(args.amount ?? 0), this.scoringCardOrigin(args));
+            return out;
+        }
+        const fromAnchor = this.originFromAnchor(String(args.anchor_id ?? ''), pid, args);
+        push(scoringStepAmount(args), fromAnchor);
+        return out;
+    }
+    speciesSetOrigin(pid) {
+        const track = this.host.root.querySelector(`#bae_animal_loc_vp_${pid}`);
+        return rectOf(track) ?? this.locationZoneRect(pid, 2);
+    }
+    trackVpOrigin(pid, loc, space) {
+        const flag = this.flagEl(pid, loc, space);
+        const cell = this.trackEl(pid, loc, space);
+        return rectOf(flag) ?? rectOf(cell) ?? this.locationZoneRect(pid, loc);
+    }
+    animalCardVpOriginRect(pid, loc, slot, args) {
+        const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`)
+            ?? (args.card_id != null
+                ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`)
+                : null);
+        if (card)
+            return animalCardVpOrigin(card);
+        return this.locationZoneRect(pid, loc);
+    }
+    scoringCardOrigin(args) {
+        const scoringId = Number(args.scoring_id ?? args.scoringId ?? NaN);
+        const idx = Number.isFinite(Number(args.scoring_index))
+            ? Number(args.scoring_index)
+            : (this.host.gamedatas.boardState.scoring_cards ?? []).findIndex((id) => Number(id) === scoringId);
+        const card = this.host.root.querySelector(`#bae_score_${idx}`);
+        return rectOf(card);
+    }
+    originFromAnchor(anchorId, pid, args) {
+        if (!anchorId || anchorId === `bae_playerboard_${pid}`)
+            return null;
+        const pile = /^bae_pile_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
+        if (pile)
+            return this.animalCardVpOriginRect(Number(pile[1]), Number(pile[2]), Number(pile[3]), args);
+        const track = /^bae_track_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
+        if (track)
+            return this.trackVpOrigin(Number(track[1]), Number(track[2]), Number(track[3]));
+        const el = (this.host.root.querySelector(`#${anchorId}`)
+            ?? document.getElementById(anchorId));
+        return rectOf(el);
+    }
+    locationZoneRect(pid, loc) {
+        const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
+        return rectOf(zone);
     }
     showEndGameStats() {
         const existing = document.getElementById('bae_stats_panel');
@@ -1395,6 +2010,7 @@ class OptionalUi {
         const ms = this.previewLoopMs();
         this.previewRegroupPickupSide(pid, 3, 'left', ms);
         this.previewRegroupPickupSide(pid, 4, 'right', ms);
+        this.vp.previewOnesFrom(pid, this.campMeeples(pid), ms);
     }
     previewRegroupPickupSide(pid, campLoc, side, ms) {
         const sources = Array.from(this.shelfEl(pid, campLoc)?.querySelectorAll('.bae_meeple_img') ?? []);
@@ -2002,6 +2618,7 @@ class OptionalUi {
             '.bae_score_card',
             '.bae_camp_zone',
             '.bae_animal_loc_vp_track',
+            '.bae_vp_tokens_zone',
             '.bae_regroup_hold',
             '.bae_location_zone',
         ].join(','));
@@ -2376,6 +2993,7 @@ class Game {
     setup(gamedatas) {
         this.gamedatas = gamedatas;
         this.setupNotifications();
+        this.preloadGameImages();
         const area = this.bga.gameArea.getElement();
         this.root = document.createElement("div");
         this.root.id = "bae_playarea";
@@ -2415,12 +3033,26 @@ class Game {
             'Tokens/meeple_obj.webp',
             'Tokens/track_obj.webp',
             'Tokens/VP.svg',
+            'Tokens/1VPToken.png',
+            'Tokens/3VPToken.png',
+            'Tokens/5VPToken.png',
         ];
         this.bga.images.preloadImages(files);
+        for (const file of ['Tokens/1VPToken.png', 'Tokens/3VPToken.png', 'Tokens/5VPToken.png']) {
+            this.bga.images.preloadImage(file);
+        }
         for (const file of files) {
+            const href = this.bga.images.getImgUrl(file);
+            if (file.endsWith('VPToken.png') && !document.head.querySelector(`link[rel="preload"][href="${href}"]`)) {
+                const link = document.createElement('link');
+                link.rel = 'preload';
+                link.as = 'image';
+                link.href = href;
+                document.head.appendChild(link);
+            }
             const img = new Image();
             img.decoding = 'async';
-            img.src = this.bga.images.getImgUrl(file);
+            img.src = href;
             void img.decode().catch(() => { });
         }
     }
@@ -3048,9 +3680,13 @@ class Game {
             // Playerboard inner wrapper holds the left-hand column (hand slots)
             // and the board canvas to its right.
             html += `<div class="bae_playerboard_inner">`;
-            // Render a 4-slot hand column for the player. For non-visible hands (number)
-            // show card backs (id 9999) for existing cards; otherwise show placeholders.
             const handInfo = (d.hands || {})[pid];
+            const vpTokens = this.optionalUi?.vpTokensFor(pid) ?? optimalTokens(playerVp(d.vps, pid));
+            const tokenBase = this.bga.images.getImgUrl();
+            html += `<div class="bae_player_sidecol">`;
+            html += `<div id="bae_vp_tokens_${pid}" class="bae_vp_tokens_zone" data-player-id="${pid}" aria-label="${this.escapeHtml(_('VP Tokens'))}">`;
+            html += `<div class="bae_vp_token_shelf">${vpTokensInnerHtml(pid, vpTokens, tokenBase)}</div>`;
+            html += `</div>`;
             html += `<div class="bae_player_handcol" data-player-id="${pid}">`;
             if (typeof handInfo === 'number') {
                 const cnt = Number(handInfo);
@@ -3084,6 +3720,7 @@ class Game {
                     html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
             }
             html += `</div>`; // close handcol
+            html += `</div>`; // close sidecol
             const campSel = isSelf && this.campSelected ? " bae_camp_selected" : "";
             const campDotsSel = isSelf && this.campSelected ? " bae_sci_shelf_camp_selected" : "";
             const boardBg = this.imagePath("Playerboards", d.board_for_players[pid] ?? 0);
@@ -3398,6 +4035,15 @@ class Game {
             catch (_) { }
             this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
         }
+        for (const pidStr of Object.keys(this.gamedatas.players)) {
+            const pid = Number(pidStr);
+            const id = `bae_vp_tokens_${pid}`;
+            try {
+                this.bga.gameui.removeTooltip(id);
+            }
+            catch (_) { }
+            this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid));
+        }
     }
     renderTrackColumn(player_id, track, location, flagDepth) {
         const safeDepth = Math.max(0, Math.min(7, flagDepth));
@@ -3589,6 +4235,21 @@ class Game {
     vpInlineIcon() {
         const vpIcon = `${this.bga.images.getImgUrl()}Tokens/VP.svg`;
         return `<span class="bae_text_with_icon"><img class="bae_vp_inline" src="${vpIcon}" alt="${this.escapeHtml(_('VP'))}" draggable="false"/></span>`;
+    }
+    vpTokensTooltipHtml(pid) {
+        const d = this.gamedatas.boardState;
+        const vp = playerVp(d.vps, pid);
+        const claimed = (d.objectives ?? []).filter((o) => o.players[pid] === 'claimed');
+        const total = `<div class="bae_vp_tokens_tooltip_total">${vp} ${this.vpInlineIcon()}</div>`;
+        if (claimed.length === 0) {
+            return `<div class="bae_vp_tokens_tooltip">${total}<div>${this.escapeHtml(_('No claimed objectives.'))}</div></div>`;
+        }
+        const names = claimed.map((obj) => {
+            const mat = this.gamedatas.materials.objectives[obj.id];
+            const title = mat?.title ?? `${_('Objective')} #${obj.id}`;
+            return `<div class="bae_vp_tokens_tooltip_obj">${this.escapeHtml(title)}</div>`;
+        }).join('');
+        return `<div class="bae_vp_tokens_tooltip">${total}<div class="bae_vp_tokens_tooltip_objs">${names}</div></div>`;
     }
     speciesSetVpTooltipHtml() {
         const animalIcon = `${this.bga.images.getImgUrl()}Tokens/animal_obj.webp`;
@@ -4357,6 +5018,11 @@ class Game {
     }
     async notif_objectiveClaimed(_args) {
         this.optionalUi?.playSound('claim');
+        const prev = this.gamedatas.boardState;
+        try {
+            await this.optionalUi?.playObjectiveClaimResolution(prev, _args);
+        }
+        catch (_) { /* keep state apply */ }
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
@@ -4387,32 +5053,34 @@ class Game {
         this.optionalUi?.showEndGameStats();
     }
     async notif_scoringStep(_args) {
-        if (_args.boardState) {
-            this.gamedatas.boardState = _args.boardState;
+        const args = _args?.args ?? _args;
+        const prev = this.gamedatas.boardState;
+        try {
+            await this.optionalUi?.playScoringStepResolution(prev, args);
         }
-        // Ensure DOM anchors exist
+        catch (_) { /* keep state apply */ }
+        if (args.boardState) {
+            this.gamedatas.boardState = args.boardState;
+        }
         this.renderAll();
-        const pid = Number(_args.player_id ?? _args.playerId ?? 0);
-        const anchorId = String(_args.anchor_id ?? `bae_playerboard_${pid}`);
-        let color = String(_args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        const anchorId = String(args.anchor_id ?? `bae_playerboard_${pid}`);
+        let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
         if (color.startsWith && color.startsWith('#'))
             color = color.substring(1);
-        const amount = Number(_args.amount ?? 0);
+        const amount = scoringStepAmount(args);
         const scoreStr = (amount >= 0 ? '+' : '') + String(amount);
-        const duration = typeof _args.duration === 'number' ? _args.duration : 1200;
-        const offset_x = typeof _args.offset_x === 'number' ? Number(_args.offset_x) : undefined;
-        const offset_y = typeof _args.offset_y === 'number' ? Number(_args.offset_y) : undefined;
+        const duration = typeof args.duration === 'number' ? args.duration : 1200;
+        const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
+        const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
         try {
             if (this.bga && this.bga.gameui && typeof this.bga.gameui.displayScoring === 'function') {
                 this.bga.gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
             }
         }
         catch (err) {
-            console.error('scoringStep display failed', err, _args);
+            console.error('scoringStep display failed', err, args);
         }
-        // Update view after animation starts so player panels and board reflect new totals
-        this.renderAll();
-        // Update the numeric score counter safely (use incValue for deltas to avoid NaN from strings)
         const ctr = this.bga.playerPanels.getScoreCounter(pid);
         ctr.incValue(amount);
     }

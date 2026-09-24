@@ -84,6 +84,7 @@ type PreviewDestFn = () => DOMRect | null;
 type PreviewAnchor = {
   source: HTMLElement;
   dest?: PreviewDestFn;
+  follow?: HTMLElement;
 };
 
 const previewAnchors = new WeakMap<HTMLElement, PreviewAnchor>();
@@ -216,6 +217,37 @@ export function flyClone(
   if (matchSize) {
     clone.style.width = `${destW}px`;
     clone.style.height = `${destH}px`;
+  }
+  return wait(durationMs).then(() => {
+    clone.style.transition = 'none';
+  });
+}
+
+/** Fly toward dest and fade out before arriving. */
+export function flyCloneFading(
+  clone: HTMLElement,
+  to: DOMRect,
+  durationMs: number,
+  root: HTMLElement,
+  matchSize = false,
+): Promise<void> {
+  const parent = containingBlock(clone, root);
+  const destLeft = to.left + (matchSize ? 0 : (to.width - clone.getBoundingClientRect().width) / 2);
+  const destTop = to.top + (matchSize ? 0 : (to.height - clone.getBoundingClientRect().height) / 2);
+  const parked = localOffset(parent, destLeft, destTop);
+  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+  const fadeMs = Math.max(1, Math.round(durationMs * 0.62));
+  clone.style.transform = 'none';
+  void clone.offsetWidth;
+  clone.style.transition = matchSize
+    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`
+    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`;
+  clone.style.left = `${parked.left}px`;
+  clone.style.top = `${parked.top}px`;
+  clone.style.opacity = '0';
+  if (matchSize) {
+    clone.style.width = `${to.width}px`;
+    clone.style.height = `${to.height}px`;
   }
   return wait(durationMs).then(() => {
     clone.style.transition = 'none';
@@ -375,6 +407,11 @@ export function startTrailToRect(
   return clone;
 }
 
+export function bindPreviewFollow(clone: HTMLElement, follow: HTMLElement): void {
+  const anchor = previewAnchors.get(clone);
+  if (anchor) anchor.follow = follow;
+}
+
 /** Static clone parked at a destination (card placement preview). */
 export function placeCloneAt(
   source: HTMLElement,
@@ -409,10 +446,17 @@ export function retargetPreviewClones(root: HTMLElement): void {
   root.querySelectorAll('.bae_discard_ghost, .bae_trail_ghost').forEach((node) => {
     const clone = node as HTMLElement;
     const anchor = previewAnchors.get(clone);
-    if (!anchor || !anchor.source.isConnected) return;
+    if (!anchor) return;
+    const fromEl = (anchor.follow?.isConnected ? anchor.follow : anchor.source);
+    if (!fromEl?.isConnected) return;
     copySpriteVars(root, clone);
-    const from = anchor.source.getBoundingClientRect();
+    const fromBox = fromEl.getBoundingClientRect();
     const parent = containingBlock(clone, root);
+    const sizeW = clone.offsetWidth || fromBox.width;
+    const sizeH = clone.offsetHeight || fromBox.height;
+    const from = anchor.follow
+      ? new DOMRect(fromBox.left + fromBox.width / 2 - sizeW / 2, fromBox.top + fromBox.height / 2 - sizeH / 2, sizeW, sizeH)
+      : fromBox;
     const loc = localRect(parent, from);
     clone.style.left = `${loc.left}px`;
     clone.style.top = `${loc.top}px`;

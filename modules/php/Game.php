@@ -1246,73 +1246,67 @@ class Game extends \Bga\GameFramework\Table
             $playerName = $this->getPlayerNameById($pid);
             $rawColor = (string) $this->getPlayerColorById($pid);
             $color = ltrim($rawColor, '#');
-            $anchor = "bae_playerboard_{$pid}";
 
             // Species sets per location
-            $vps = [];
             for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
                 $vp = $this->scoreSpeciesSets($boards[$pid][$loc] ?? []);
-                $vps[$loc] = $vp;
                 if ($vp === 0) continue;
                 $this->bga->playerScore->inc($pid, $vp, null);
-            }
-
-            foreach ($this->getNextPlayerTable() as $recipient => $_2) {
+                foreach ($this->getNextPlayerTable() as $recipient => $_2) {
                     if ($recipient === 0) continue;
                     $this->bga->notify->player(
                         (int)$recipient,
                         'scoringStep',
-                        clienttranslate('${player_name} gains ${amount_left}/${amount_mid}/${amount_right} VP from species sets'),
+                        clienttranslate('${player_name} gains ${amount} VP from species sets'),
                         [
                             'player_id' => $pid,
-                            'amount_left' => $vps[0] ?? 0,
-                            'amount_mid' => $vps[1] ?? 0,
-                            'amount_right' => $vps[2] ?? 0,
+                            'scoring_kind' => 'species_sets',
+                            'kind' => 'species_sets',
+                            'amount' => $vp,
+                            'location' => $loc,
                             'player_name' => $playerName,
-                            'anchor_id' => $anchor,
+                            'anchor_id' => "bae_animal_loc_vp_{$pid}",
                             'color' => $color,
                             'boardState' => $this->getBoardState((int)$recipient),
                         ]
                     );
                 }
+            }
 
             // Track VP per location
-            $vps = [];
             for ($loc = 0; $loc < Material::LOCATION_COUNT; $loc++) {
                 $fi = (int) ($flags[$pid][$loc] ?? 0);
                 $vp = (Material::TRACK_SPACE_VP[$loc] ?? [])[$fi] ?? 0;
-                $vps[$loc] = $vp;
                 if ($vp === 0) continue;
                 $this->bga->playerScore->inc($pid, $vp, null);
-            }
-            foreach ($this->getNextPlayerTable() as $recipient => $_2) {
+                foreach ($this->getNextPlayerTable() as $recipient => $_2) {
                     if ($recipient === 0) continue;
                     $this->bga->notify->player(
                         (int)$recipient,
                         'scoringStep',
-                        clienttranslate('${player_name} gains ${amount_left}/${amount_mid}/${amount_right} VP from the exploration track'),
+                        clienttranslate('${player_name} gains ${amount} VP from the exploration track'),
                         [
                             'player_id' => $pid,
-                            'amount_left' => $vps[0] ?? 0,
-                            'amount_mid' => $vps[1] ?? 0,
-                            'amount_right' => $vps[2] ?? 0,
+                            'scoring_kind' => 'exploration_track',
+                            'kind' => 'exploration_track',
+                            'amount' => $vp,
+                            'location' => $loc,
+                            'flag_space' => $fi,
                             'player_name' => $playerName,
-                            'anchor_id' => $anchor,
+                            'anchor_id' => "bae_track_{$pid}_{$loc}_{$fi}",
                             'color' => $color,
                             'boardState' => $this->getBoardState((int)$recipient),
                         ]
                     );
                 }
+            }
 
             // Bonus VP from animal cards (animate per card)
-            foreach ($boards[$pid] ?? [] as $pile) {
-                $vp_total = 0;
-                foreach ($pile as $c) {
+            foreach ($boards[$pid] ?? [] as $loc => $pile) {
+                foreach ($pile as $si => $c) {
                     $def = self::animalDefById((int) $c['id']);
                     $bonus = (int) ($def['bonus_vp'] ?? 0);
-                    $vp_total += $bonus;
-                }
-                if ($vp_total === 0) continue;
+                    if ($bonus === 0) continue;
                     foreach ($this->getNextPlayerTable() as $recipient => $_2) {
                         if ($recipient === 0) continue;
                         $this->bga->notify->player(
@@ -1321,19 +1315,25 @@ class Game extends \Bga\GameFramework\Table
                             clienttranslate('${player_name} gains ${amount} VP from animal cards'),
                             [
                                 'player_id' => $pid,
-                                'amount' => $vp_total,
+                                'scoring_kind' => 'animal_card',
+                                'kind' => 'animal_card',
+                                'amount' => $bonus,
+                                'location' => (int) $loc,
+                                'slot' => (int) $si,
+                                'card_id' => (int) $c['id'],
                                 'player_name' => $playerName,
-                                'anchor_id' => $anchor,
+                                'anchor_id' => "bae_pile_{$pid}_{$loc}_{$si}",
                                 'color' => $color,
                                 'boardState' => $this->getBoardState((int)$recipient),
                             ]
                         );
                     }
-                    $this->bga->playerScore->inc($pid, $vp_total, null);
+                    $this->bga->playerScore->inc($pid, $bonus, null);
+                }
             }
 
             // Scoring card contributions
-            foreach ($scoringIds as $sid) {
+            foreach ($scoringIds as $scoringIndex => $sid) {
                 $delta = $this->scoreEndCard($sid, $pid, $boards, $flags, $sci);
                 if ($delta === 0) continue;
                 foreach ($this->getNextPlayerTable() as $recipient => $_2) {
@@ -1344,10 +1344,14 @@ class Game extends \Bga\GameFramework\Table
                         clienttranslate('${player_name} gains ${amount} VP from scoring card ${scoring_name}'),
                         [
                             'player_id' => $pid,
+                            'scoring_kind' => 'scoring_card',
+                            'kind' => 'scoring_card',
                             'amount' => $delta,
+                            'scoring_id' => $sid,
+                            'scoring_index' => (int) $scoringIndex,
                             'player_name' => $playerName,
                             'scoring_name' => Material::getScoringCardsData()[$sid]['title'] ?? '',
-                            'anchor_id' => $anchor,
+                            'anchor_id' => "bae_score_{$scoringIndex}",
                             'color' => $color,
                             'boardState' => $this->getBoardState((int)$recipient),
                         ]
