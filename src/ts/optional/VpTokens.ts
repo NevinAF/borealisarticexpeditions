@@ -2,8 +2,8 @@
 
 import {
   coordsInParent,
-  flyClone,
   flyCloneFading,
+  flyCloneFadingIn,
   motionLayer,
   placeClone,
   startTrailToRect,
@@ -197,7 +197,7 @@ export class VpTokens {
     spawned.forEach((it) => { it.clone.style.zIndex = String(80 + vpTokenZIndex(it.slot)); });
     await Promise.all([
       this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
-      ...spawned.map((it) => flyClone(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
+      ...spawned.map((it) => flyCloneFadingIn(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
     ]);
     incoming.forEach((value, i) => this.mountToken(pid, value, slots[current.length + i]));
     this.mix.set(pid, next);
@@ -446,6 +446,7 @@ export class VpTokens {
     img.style.margin = '0';
     img.style.pointerEvents = 'none';
     img.style.zIndex = '80';
+    img.style.opacity = '0';
     const layer = motionLayer(this.host.root);
     const loc = coordsInParent(layer, start);
     img.style.left = `${loc.left}px`;

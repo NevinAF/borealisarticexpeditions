@@ -223,6 +223,43 @@ export function flyClone(
   });
 }
 
+/** Fly a clone that fades in as it leaves the source. */
+export function flyCloneFadingIn(
+  clone: HTMLElement,
+  to: DOMRect,
+  durationMs: number,
+  root: HTMLElement,
+  matchSize = false,
+  destScale = 1,
+  host?: HTMLElement | null,
+): Promise<void> {
+  if (host) adoptClone(clone, host);
+  const parent = containingBlock(clone, root);
+  const destW = to.width * destScale;
+  const destH = to.height * destScale;
+  const destLeft = to.left + (to.width - destW) / 2;
+  const destTop = to.top + (to.height - destH) / 2;
+  const parked = localOffset(parent, destLeft, destTop);
+  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+  const fadeMs = Math.max(1, Math.round(durationMs * 0.32));
+  clone.style.transform = 'none';
+  clone.style.opacity = '0';
+  void clone.offsetWidth;
+  clone.style.transition = matchSize
+    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`
+    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`;
+  clone.style.left = `${parked.left}px`;
+  clone.style.top = `${parked.top}px`;
+  clone.style.opacity = '1';
+  if (matchSize) {
+    clone.style.width = `${destW}px`;
+    clone.style.height = `${destH}px`;
+  }
+  return wait(durationMs).then(() => {
+    clone.style.transition = 'none';
+  });
+}
+
 /** Fly toward dest and fade out before arriving. */
 export function flyCloneFading(
   clone: HTMLElement,

@@ -289,6 +289,35 @@ function flyClone(clone, to, durationMs, root, matchSize = false, destScale = 1,
         clone.style.transition = 'none';
     });
 }
+/** Fly a clone that fades in as it leaves the source. */
+function flyCloneFadingIn(clone, to, durationMs, root, matchSize = false, destScale = 1, host) {
+    if (host)
+        adoptClone(clone, host);
+    const parent = containingBlock(clone, root);
+    const destW = to.width * destScale;
+    const destH = to.height * destScale;
+    const destLeft = to.left + (to.width - destW) / 2;
+    const destTop = to.top + (to.height - destH) / 2;
+    const parked = localOffset(parent, destLeft, destTop);
+    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+    const fadeMs = Math.max(1, Math.round(durationMs * 0.32));
+    clone.style.transform = 'none';
+    clone.style.opacity = '0';
+    void clone.offsetWidth;
+    clone.style.transition = matchSize
+        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`
+        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`;
+    clone.style.left = `${parked.left}px`;
+    clone.style.top = `${parked.top}px`;
+    clone.style.opacity = '1';
+    if (matchSize) {
+        clone.style.width = `${destW}px`;
+        clone.style.height = `${destH}px`;
+    }
+    return wait(durationMs).then(() => {
+        clone.style.transition = 'none';
+    });
+}
 /** Fly toward dest and fade out before arriving. */
 function flyCloneFading(clone, to, durationMs, root, matchSize = false) {
     const parent = containingBlock(clone, root);
@@ -695,7 +724,7 @@ class VpTokens {
         spawned.forEach((it) => { it.clone.style.zIndex = String(80 + vpTokenZIndex(it.slot)); });
         await Promise.all([
             this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
-            ...spawned.map((it) => flyClone(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
+            ...spawned.map((it) => flyCloneFadingIn(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
         ]);
         incoming.forEach((value, i) => this.mountToken(pid, value, slots[current.length + i]));
         this.mix.set(pid, next);
@@ -924,6 +953,7 @@ class VpTokens {
         img.style.margin = '0';
         img.style.pointerEvents = 'none';
         img.style.zIndex = '80';
+        img.style.opacity = '0';
         const layer = motionLayer(this.host.root);
         const loc = coordsInParent(layer, start);
         img.style.left = `${loc.left}px`;

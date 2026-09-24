@@ -828,7 +828,7 @@ html[data-theme="dark"] {
   pointer-events: none;
   z-index: 1;
   border: #{$border}px solid #9a7b1a;
-  background: rgba(201, 162, 39, 0.28);
+  background: rgba(201, 162, 39, 0.4);
   box-shadow: inset 0 0 scaled(10) rgba(201, 162, 39, 0.18);
   animation: bae_obj_claimed_pulse 1.8s ease-in-out infinite;
 }
@@ -1547,9 +1547,12 @@ html[data-theme="dark"] .bae_opening_intro {
   animation-name: bae_trail_stuck;
 }
 
-.bae_trail_ghost.bae_sci_mover,
-.bae_trail_ghost.bae_vp_mover {
+.bae_trail_ghost.bae_sci_mover {
   animation-name: bae_sci_trail_flow;
+}
+
+.bae_trail_ghost.bae_vp_mover {
+  animation-name: bae_vp_trail_flow;
 }
 
 .bae_discard_ghost {
@@ -1622,6 +1625,13 @@ html[data-theme="dark"] .bae_opening_intro {
 
 @keyframes bae_sci_trail_flow {
   0% { left: var(--from-l); top: var(--from-t); opacity: 1; }
+  78% { left: var(--to-l); top: var(--to-t); opacity: 1; }
+  100% { left: var(--to-l); top: var(--to-t); opacity: 0; }
+}
+
+@keyframes bae_vp_trail_flow {
+  0% { left: var(--from-l); top: var(--from-t); opacity: 0; }
+  18% { opacity: 1; }
   78% { left: var(--to-l); top: var(--to-t); opacity: 1; }
   100% { left: var(--to-l); top: var(--to-t); opacity: 0; }
 }
