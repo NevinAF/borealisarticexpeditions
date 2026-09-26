@@ -59,7 +59,7 @@ export interface OptionalUiHost {
   isPromptClaimObjectiveLike(): boolean;
   isObserveSelectionLegal(cardId?: number | null, location?: number | null): boolean;
   clearSelection(): void;
-  enterRegroupMode(): void;
+  enterRegroupMode(initialCardId?: number | null): void;
   confirmObserveIfReady(cardId: number | null, location: number | null): boolean;
   confirmReadySelectionFromKeyboard(): boolean;
   currentStateName(): string;
@@ -79,6 +79,9 @@ export interface OptionalUiHost {
  */
 export class OptionalUi {
   private dragCardId: number | null = null;
+  private dragPoolSlot: number | null = null;
+  private dragHoverLoc: number | null = null;
+  private dragHoverCamp = false;
   private cleanupFns: Array<() => void> = [];
   private audioCtx: AudioContext | null = null;
   private prefBound = false;
@@ -120,6 +123,8 @@ export class OptionalUi {
     location: number | null;
     poolSlot: number | null;
     objectiveIdx: number | null;
+    campSelected: boolean;
+    regroupIds: number[];
   } | null = null;
   private lastHoverEl: Element | null = null;
   private static readonly POINTER_DRAG_PX = 16;
@@ -829,18 +834,27 @@ export class OptionalUi {
 
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const active = this.host.bga.players.isCurrentPlayerActive();
+    const dragPreviewCard = this.dragCardId;
+    const dragPreviewLoc = this.dragHoverLoc;
+    const draggingObserve = this.host.isGameplayLike()
+      && dragPreviewCard != null
+      && dragPreviewLoc != null;
 
-    const selectingDiscards = this.host.campSelected || this.host.isOpeningMulliganLike();
-    if (!selectingDiscards || this.host.selectedRegroupIds.size === 0) {
+    const selectingDiscards = !draggingObserve && this.regroupVisualsActive();
+    if (!selectingDiscards || this.discardWantedIds().size === 0) {
       this.clearDiscardGhosts();
     }
+    this.syncRegroupCardChrome();
 
     if (!this.previewsEnabled() || !active) {
       if (selectingDiscards) this.syncDiscardGhosts(myId);
       return;
     }
 
-    if (
+    if (draggingObserve && dragPreviewCard != null && dragPreviewLoc != null) {
+      this.previewCardPlacement(myId, dragPreviewCard, dragPreviewLoc);
+      this.previewObserve(myId, dragPreviewCard, dragPreviewLoc);
+    } else if (
       this.host.isGameplayLike()
       && this.host.selectedCardId != null
       && this.host.selectedLocation != null
@@ -854,7 +868,7 @@ export class OptionalUi {
       this.previewAssign(myId, this.host.selectedLocation);
     }
 
-    if (this.host.campSelected) {
+    if (selectingDiscards && this.host.campSelected) {
       this.previewRegroupPickup(myId);
     }
 
@@ -872,9 +886,44 @@ export class OptionalUi {
     this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
   }
 
+  private regroupVisualsActive(): boolean {
+    if (!(this.host.campSelected || this.host.isOpeningMulliganLike())) return false;
+    if (this.dragCardId != null && !this.dragDidDrop && !this.dragHoverCamp) return false;
+    return true;
+  }
+
+  private discardWantedIds(): Set<number> {
+    const wanted = new Set(this.host.selectedRegroupIds);
+    if (this.dragHoverCamp && this.dragCardId != null) wanted.add(this.dragCardId);
+    return wanted;
+  }
+
+  private syncRegroupCardChrome(): void {
+    if (this.dragCardId == null || this.dragDidDrop) return;
+    const root = this.host.root;
+    if (!root) return;
+    const myId = Number(this.host.bga.players.getCurrentPlayerId());
+    const active = this.regroupVisualsActive();
+    const wanted = active ? this.discardWantedIds() : new Set<number>();
+    root.querySelectorAll('.bae_card_regroup').forEach((el) => {
+      if (el.classList.contains('bae_pointer_ghost')) return;
+      el.classList.remove('bae_card_regroup');
+    });
+    if (active) {
+      wanted.forEach((id) => this.cardEl(myId, id)?.classList.add('bae_card_regroup'));
+      root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+        el.classList.add('bae_camp_selected');
+      });
+      return;
+    }
+    root.querySelectorAll('.bae_camp_selected').forEach((el) => {
+      el.classList.remove('bae_camp_selected');
+    });
+  }
+
   private syncDiscardGhosts(pid: number): void {
     if (!this.previewsEnabled()) return;
-    const wanted = this.host.selectedRegroupIds;
+    const wanted = this.discardWantedIds();
     this.pendingDiscard.forEach((timeoutId, cardId) => {
       if (wanted.has(cardId)) return;
       window.clearTimeout(timeoutId);
@@ -892,26 +941,19 @@ export class OptionalUi {
     }
     wanted.forEach((cardId) => {
       if (this.discardGhosts.has(cardId) || this.pendingDiscard.has(cardId)) return;
-      const el = this.cardEl(pid, cardId);
-      if (!el) return;
-      const start = () => {
-        this.pendingDiscard.delete(cardId);
-        if (!this.host.selectedRegroupIds.has(cardId) || this.discardGhosts.has(cardId)) return;
-        const card = this.cardEl(pid, cardId);
-        if (!card) return;
-        if (this.discardGhosts.size === 0) this.discardLoopEpoch = performance.now();
-        this.discardGhosts.set(cardId, startDiscardGhost(card, this.host.root, cardId));
-      };
-      const waitMs = this.discardLoopWaitMs();
-      if (waitMs <= 16) start();
-      else this.pendingDiscard.set(cardId, window.setTimeout(start, waitMs));
+      const card = this.cardEl(pid, cardId);
+      if (!card) return;
+      const delayMs = this.discardLoopElapsedMs();
+      if (this.discardGhosts.size === 0 && this.discardLoopEpoch <= 0) {
+        this.discardLoopEpoch = performance.now();
+      }
+      this.discardGhosts.set(cardId, startDiscardGhost(card, this.host.root, cardId, delayMs));
     });
   }
 
-  private discardLoopWaitMs(): number {
+  private discardLoopElapsedMs(): number {
     if (this.discardGhosts.size === 0 || this.discardLoopEpoch <= 0) return 0;
-    const elapsed = (performance.now() - this.discardLoopEpoch) % OptionalUi.DISCARD_LOOP_MS;
-    return Math.max(0, OptionalUi.DISCARD_LOOP_MS - elapsed);
+    return (performance.now() - this.discardLoopEpoch) % OptionalUi.DISCARD_LOOP_MS;
   }
 
   private previewObserve(pid: number, cardId: number, loc: number): void {
@@ -1276,17 +1318,15 @@ export class OptionalUi {
 
     this.host.root.querySelectorAll('.bae_handcard[data-hand-card]').forEach((el) => {
       const htmlEl = el as HTMLElement;
-      htmlEl.setAttribute('draggable', 'true');
-      if (this.canPointerDragHand()) htmlEl.style.touchAction = 'none';
+      const handDraggable = this.canPointerDragHand();
+      htmlEl.setAttribute('draggable', handDraggable ? 'true' : 'false');
+      if (handDraggable) htmlEl.style.touchAction = 'none';
       const onDragStart = (ev: DragEvent) => {
-        if (this.host.isActionBusy()) {
+        if (!this.canPointerDragHand()) {
           ev.preventDefault();
           return;
         }
-        this.dragCardId = Number(htmlEl.dataset.handCard);
-        this.dragClearedSelection = false;
-        this.dragDidDrop = false;
-        this.dragSelectionSnapshot = null;
+        this.beginHandDragChrome(Number(htmlEl.dataset.handCard));
         ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
         htmlEl.classList.add('bae_dragging');
         this.playSoundKind('select');
@@ -1328,9 +1368,9 @@ export class OptionalUi {
       };
       const onDrop = (ev: DragEvent) => {
         ev.preventDefault();
-        this.clearDropHighlights();
         const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
         this.applyHandDropOnLocation(cardId, Number(htmlEl.dataset.loc));
+        this.clearDropHighlights();
       };
       htmlEl.addEventListener('dragover', onDragOver);
       htmlEl.addEventListener('dragleave', onDragLeave);
@@ -1356,9 +1396,9 @@ export class OptionalUi {
       };
       const onDrop = (ev: DragEvent) => {
         ev.preventDefault();
-        this.clearDropHighlights();
         const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
         this.applyHandDropOnCamp(cardId);
+        this.clearDropHighlights();
       };
       htmlEl.addEventListener('dragover', onDragOver);
       htmlEl.addEventListener('dragleave', onDragLeave);
@@ -1373,7 +1413,7 @@ export class OptionalUi {
     const handCol = this.host.root.querySelector(`.bae_player_handcol[data-player-id="${myId}"]`);
     if (handCol) {
       const onDragOver = (ev: DragEvent) => {
-        if (!this.host.isReplenishLike()) return;
+        if (!this.host.isReplenishLike() || this.dragPoolSlot == null) return;
         ev.preventDefault();
         this.markDropHover(handCol as HTMLElement, true);
       };
@@ -1409,12 +1449,15 @@ export class OptionalUi {
           ev.preventDefault();
           return;
         }
+        this.dragCardId = null;
+        this.dragPoolSlot = Number(htmlEl.dataset.poolSlot);
         ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
         this.dragClearedSelection = false;
         this.dragDidDrop = false;
         this.dragSelectionSnapshot = null;
       };
       const onDragEnd = () => {
+        this.dragPoolSlot = null;
         this.finishDragSelectionChrome();
       };
       const onPointerDown = (ev: PointerEvent) => {
@@ -1448,6 +1491,30 @@ export class OptionalUi {
       && !this.host.isActionBusy();
   }
 
+  private beginHandDragChrome(cardId: number): void {
+    this.dragPoolSlot = null;
+    this.dragCardId = cardId;
+    this.dragClearedSelection = false;
+    this.dragDidDrop = false;
+    this.dragHoverCamp = false;
+    this.dragHoverLoc = null;
+    this.dragSelectionSnapshot = null;
+    this.captureDragSelectionSnapshot();
+    this.syncRegroupCardChrome();
+    if (this.host.campSelected) this.clearDiscardGhosts();
+  }
+
+  private captureDragSelectionSnapshot(): void {
+    if (this.dragSelectionSnapshot) return;
+    this.dragSelectionSnapshot = {
+      location: this.host.selectedLocation,
+      poolSlot: this.host.selectedPoolSlot,
+      objectiveIdx: this.host.selectedObjectiveIdx,
+      campSelected: this.host.campSelected,
+      regroupIds: Array.from(this.host.selectedRegroupIds),
+    };
+  }
+
   private applyHandDropOnLocation(cardId: number, loc: number): void {
     if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
     this.dragDidDrop = true;
@@ -1469,10 +1536,17 @@ export class OptionalUi {
   private applyHandDropOnCamp(cardId: number): void {
     if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
     this.dragDidDrop = true;
-    this.host.enterRegroupMode();
-    this.host.selectedRegroupIds.add(cardId);
-    this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
-    this.onSelectionChanged();
+    if (this.host.campSelected) {
+      this.host.selectedRegroupIds.add(cardId);
+      const myId = Number(this.host.bga.players.getCurrentPlayerId());
+      const card = this.cardEl(myId, cardId);
+      card?.classList.remove('bae_card_selected', 'bae_card_invalid');
+      card?.classList.add('bae_card_regroup');
+      this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+      this.onSelectionChanged();
+      return;
+    }
+    this.host.enterRegroupMode(cardId);
   }
 
   private applyPoolDropOnHand(slot: number): void {
@@ -1519,10 +1593,16 @@ export class OptionalUi {
     drag.active = true;
     this.tooltipDragging = true;
     this.tooltipPointerHeld = true;
-    this.dragCardId = drag.kind === 'hand' ? (drag.cardId ?? null) : null;
-    this.dragClearedSelection = false;
-    this.dragDidDrop = false;
-    this.dragSelectionSnapshot = null;
+    if (drag.kind === 'hand' && drag.cardId != null) {
+      this.beginHandDragChrome(drag.cardId);
+    } else {
+      this.dragCardId = null;
+      this.dragPoolSlot = drag.poolSlot ?? null;
+      this.dragClearedSelection = false;
+      this.dragDidDrop = false;
+      this.dragHoverCamp = false;
+      this.dragSelectionSnapshot = null;
+    }
     drag.source.classList.add('bae_dragging');
     this.clearTouchHit();
     try { drag.source.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
@@ -1610,6 +1690,7 @@ export class OptionalUi {
     drag.source.classList.remove('bae_dragging');
     try { drag.source.releasePointerCapture(drag.pointerId); } catch { /* ignore */ }
     this.dragCardId = null;
+    this.dragPoolSlot = null;
     this.clearTouchHit();
     if (restoreSelection) this.finishDragSelectionChrome();
     else this.discardDragSelectionChrome();
@@ -1630,9 +1711,15 @@ export class OptionalUi {
     this.host.selectedLocation = snap.location;
     this.host.selectedPoolSlot = snap.poolSlot;
     this.host.selectedObjectiveIdx = snap.objectiveIdx;
+    this.host.campSelected = snap.campSelected;
+    if (snap.campSelected) {
+      this.host.selectedRegroupIds.clear();
+      snap.regroupIds.forEach((id) => this.host.selectedRegroupIds.add(id));
+    }
     this.applySelectionGraphics();
     this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
     this.onSelectionChanged();
+    if (snap.campSelected) this.updateActionPreviews();
   }
 
   private applySelectionGraphics(): void {
@@ -1651,6 +1738,16 @@ export class OptionalUi {
     if (this.host.campSelected) {
       root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
         el.classList.add('bae_camp_selected');
+      });
+    }
+
+    root.querySelectorAll('.bae_card_regroup').forEach((el) => {
+      if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost')) return;
+      el.classList.remove('bae_card_regroup');
+    });
+    if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
+      this.host.selectedRegroupIds.forEach((id) => {
+        this.cardEl(myId, id)?.classList.add('bae_card_regroup');
       });
     }
 
@@ -1709,16 +1806,24 @@ export class OptionalUi {
   }
 
   private markDropHover(el: HTMLElement | null, confirm: boolean): void {
-    if (confirm && el) this.suppressSelectionGraphicsForDrag();
+    const onCamp = Boolean(el?.classList.contains('bae_camp_zone'));
+    if (confirm && el && !onCamp) this.suppressSelectionGraphicsForDrag();
     const prev = this.host.root.querySelector('.bae_drop_hover') as HTMLElement | null;
     if (prev === el) {
       if (confirm && el && !el.querySelector('.bae_drop_confirm')) this.addDropConfirm(el);
       return;
     }
     this.clearDropHighlights();
-    if (!el) return;
+    this.dragHoverCamp = onCamp;
+    if (!el) {
+      this.syncRegroupCardChrome();
+      return;
+    }
     el.classList.add('bae_drop_hover');
     if (confirm) this.addDropConfirm(el);
+    if (onCamp) this.suppressSelectionGraphicsForDrag();
+    this.syncRegroupCardChrome();
+    this.updateActionPreviews();
   }
 
   private markLocationDropHover(locEl: HTMLElement): void {
@@ -1731,7 +1836,7 @@ export class OptionalUi {
       myId,
       loc,
     );
-    if (legal) this.suppressSelectionGraphicsForDrag();
+    this.suppressSelectionGraphicsForDrag();
     const prev = this.host.root.querySelector('.bae_drop_hover') as HTMLElement | null;
     if (prev === locEl) {
       locEl.classList.toggle('bae_drop_hover_invalid', !legal);
@@ -1743,17 +1848,16 @@ export class OptionalUi {
     locEl.classList.add('bae_drop_hover');
     locEl.classList.toggle('bae_drop_hover_invalid', !legal);
     if (legal) this.addDropConfirm(locEl);
+    this.dragHoverLoc = Number.isFinite(loc) ? loc : null;
+    this.syncRegroupCardChrome();
+    this.updateActionPreviews();
   }
 
   /** Once a legal drop target is hovered, drop-hover is the only selection chrome. */
   private suppressSelectionGraphicsForDrag(): void {
     if (this.dragClearedSelection) return;
     this.dragClearedSelection = true;
-    this.dragSelectionSnapshot = {
-      location: this.host.selectedLocation,
-      poolSlot: this.host.selectedPoolSlot,
-      objectiveIdx: this.host.selectedObjectiveIdx,
-    };
+    this.captureDragSelectionSnapshot();
     this.host.selectedLocation = null;
     this.host.selectedObjectiveIdx = null;
     this.host.selectedPoolSlot = null;
@@ -1761,9 +1865,14 @@ export class OptionalUi {
     this.clearTouchHit();
     const root = this.host.root;
     if (!root) return;
-    root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
-      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
+    root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_obj_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_obj_selected');
     });
+    if (!this.dragHoverCamp) {
+      root.querySelectorAll('.bae_camp_selected').forEach((el) => {
+        el.classList.remove('bae_camp_selected');
+      });
+    }
     root.querySelectorAll('.bae_card_selected, .bae_card_invalid').forEach((el) => {
       if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost')) return;
       el.classList.remove('bae_card_selected', 'bae_card_invalid');
@@ -1782,10 +1891,18 @@ export class OptionalUi {
   }
 
   private clearDropHighlights(): void {
+    const hadLocHover = this.dragHoverLoc != null;
+    this.dragHoverLoc = null;
+    this.dragHoverCamp = false;
     this.host.root.querySelectorAll('.bae_drop_hover, .bae_drop_hover_invalid, .bae_drop_target').forEach((t) => {
       t.classList.remove('bae_drop_hover', 'bae_drop_hover_invalid', 'bae_drop_target');
     });
     this.host.root.querySelectorAll('.bae_drop_confirm').forEach((el) => el.remove());
+    if (hadLocHover) this.clearTransientPreviews();
+    if (this.dragCardId != null && !this.dragDidDrop) {
+      this.syncRegroupCardChrome();
+      this.updateActionPreviews();
+    }
   }
 
   private async animateHandReplace(

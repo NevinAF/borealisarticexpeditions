@@ -551,7 +551,7 @@ export class Game {
     });
   }
 
-  enterRegroupMode(): void {
+  enterRegroupMode(initialCardId?: number | null): void {
     if (this.isActionBusy()) return;
     this.selectedCardId = null;
     this.selectedLocation = null;
@@ -559,6 +559,7 @@ export class Game {
     this.selectedObjectiveIdx = null;
     this.campSelected = true;
     this.selectedRegroupIds.clear();
+    if (initialCardId != null && Number.isFinite(initialCardId)) this.selectedRegroupIds.add(initialCardId);
     this.renderAll();
     this.onUpdateActionButtons(this.currentStateName(), null);
     this.optionalUi?.onSelectionChanged();

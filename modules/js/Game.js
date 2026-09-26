@@ -501,12 +501,14 @@ function placeCloneAt(source, extraClass, root, at) {
     return clone;
 }
 /** Soft, slow discard preview: ghost only, real card stays put. */
-function startDiscardGhost(source, root, cardId) {
+function startDiscardGhost(source, root, cardId, delayMs = 0) {
     const clone = placeClone(source, 'bae_discard_ghost', root);
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
     clone.style.setProperty('--dur', '1.85s');
     clone.style.setProperty('--dx', animDx(-60));
+    if (delayMs > 0)
+        clone.style.animationDelay = `-${Math.round(delayMs)}ms`;
     if (cardId != null)
         clone.dataset.previewCard = String(cardId);
     previewAnchors.set(clone, { source });
@@ -1056,6 +1058,9 @@ class OptionalUi {
     constructor(host) {
         this.host = host;
         this.dragCardId = null;
+        this.dragPoolSlot = null;
+        this.dragHoverLoc = null;
+        this.dragHoverCamp = false;
         this.cleanupFns = [];
         this.audioCtx = null;
         this.prefBound = false;
@@ -1776,16 +1781,26 @@ class OptionalUi {
         this.clearTransientPreviews();
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const active = this.host.bga.players.isCurrentPlayerActive();
-        const selectingDiscards = this.host.campSelected || this.host.isOpeningMulliganLike();
-        if (!selectingDiscards || this.host.selectedRegroupIds.size === 0) {
+        const dragPreviewCard = this.dragCardId;
+        const dragPreviewLoc = this.dragHoverLoc;
+        const draggingObserve = this.host.isGameplayLike()
+            && dragPreviewCard != null
+            && dragPreviewLoc != null;
+        const selectingDiscards = !draggingObserve && this.regroupVisualsActive();
+        if (!selectingDiscards || this.discardWantedIds().size === 0) {
             this.clearDiscardGhosts();
         }
+        this.syncRegroupCardChrome();
         if (!this.previewsEnabled() || !active) {
             if (selectingDiscards)
                 this.syncDiscardGhosts(myId);
             return;
         }
-        if (this.host.isGameplayLike()
+        if (draggingObserve && dragPreviewCard != null && dragPreviewLoc != null) {
+            this.previewCardPlacement(myId, dragPreviewCard, dragPreviewLoc);
+            this.previewObserve(myId, dragPreviewCard, dragPreviewLoc);
+        }
+        else if (this.host.isGameplayLike()
             && this.host.selectedCardId != null
             && this.host.selectedLocation != null
             && !this.host.campSelected) {
@@ -1795,7 +1810,7 @@ class OptionalUi {
         if (this.host.isAssignCampLike() && this.host.selectedLocation != null) {
             this.previewAssign(myId, this.host.selectedLocation);
         }
-        if (this.host.campSelected) {
+        if (selectingDiscards && this.host.campSelected) {
             this.previewRegroupPickup(myId);
         }
         this.previewObjectiveClaim(myId);
@@ -1809,10 +1824,48 @@ class OptionalUi {
         const source = selected.querySelector('.bae_obj_img, .bae_overlay_card') ?? selected;
         this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
     }
+    regroupVisualsActive() {
+        if (!(this.host.campSelected || this.host.isOpeningMulliganLike()))
+            return false;
+        if (this.dragCardId != null && !this.dragDidDrop && !this.dragHoverCamp)
+            return false;
+        return true;
+    }
+    discardWantedIds() {
+        const wanted = new Set(this.host.selectedRegroupIds);
+        if (this.dragHoverCamp && this.dragCardId != null)
+            wanted.add(this.dragCardId);
+        return wanted;
+    }
+    syncRegroupCardChrome() {
+        if (this.dragCardId == null || this.dragDidDrop)
+            return;
+        const root = this.host.root;
+        if (!root)
+            return;
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const active = this.regroupVisualsActive();
+        const wanted = active ? this.discardWantedIds() : new Set();
+        root.querySelectorAll('.bae_card_regroup').forEach((el) => {
+            if (el.classList.contains('bae_pointer_ghost'))
+                return;
+            el.classList.remove('bae_card_regroup');
+        });
+        if (active) {
+            wanted.forEach((id) => this.cardEl(myId, id)?.classList.add('bae_card_regroup'));
+            root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+                el.classList.add('bae_camp_selected');
+            });
+            return;
+        }
+        root.querySelectorAll('.bae_camp_selected').forEach((el) => {
+            el.classList.remove('bae_camp_selected');
+        });
+    }
     syncDiscardGhosts(pid) {
         if (!this.previewsEnabled())
             return;
-        const wanted = this.host.selectedRegroupIds;
+        const wanted = this.discardWantedIds();
         this.pendingDiscard.forEach((timeoutId, cardId) => {
             if (wanted.has(cardId))
                 return;
@@ -1832,32 +1885,20 @@ class OptionalUi {
         wanted.forEach((cardId) => {
             if (this.discardGhosts.has(cardId) || this.pendingDiscard.has(cardId))
                 return;
-            const el = this.cardEl(pid, cardId);
-            if (!el)
+            const card = this.cardEl(pid, cardId);
+            if (!card)
                 return;
-            const start = () => {
-                this.pendingDiscard.delete(cardId);
-                if (!this.host.selectedRegroupIds.has(cardId) || this.discardGhosts.has(cardId))
-                    return;
-                const card = this.cardEl(pid, cardId);
-                if (!card)
-                    return;
-                if (this.discardGhosts.size === 0)
-                    this.discardLoopEpoch = performance.now();
-                this.discardGhosts.set(cardId, startDiscardGhost(card, this.host.root, cardId));
-            };
-            const waitMs = this.discardLoopWaitMs();
-            if (waitMs <= 16)
-                start();
-            else
-                this.pendingDiscard.set(cardId, window.setTimeout(start, waitMs));
+            const delayMs = this.discardLoopElapsedMs();
+            if (this.discardGhosts.size === 0 && this.discardLoopEpoch <= 0) {
+                this.discardLoopEpoch = performance.now();
+            }
+            this.discardGhosts.set(cardId, startDiscardGhost(card, this.host.root, cardId, delayMs));
         });
     }
-    discardLoopWaitMs() {
+    discardLoopElapsedMs() {
         if (this.discardGhosts.size === 0 || this.discardLoopEpoch <= 0)
             return 0;
-        const elapsed = (performance.now() - this.discardLoopEpoch) % OptionalUi.DISCARD_LOOP_MS;
-        return Math.max(0, OptionalUi.DISCARD_LOOP_MS - elapsed);
+        return (performance.now() - this.discardLoopEpoch) % OptionalUi.DISCARD_LOOP_MS;
     }
     previewObserve(pid, cardId, loc) {
         const def = this.host.animalDef(cardId);
@@ -2204,18 +2245,16 @@ class OptionalUi {
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         this.host.root.querySelectorAll('.bae_handcard[data-hand-card]').forEach((el) => {
             const htmlEl = el;
-            htmlEl.setAttribute('draggable', 'true');
-            if (this.canPointerDragHand())
+            const handDraggable = this.canPointerDragHand();
+            htmlEl.setAttribute('draggable', handDraggable ? 'true' : 'false');
+            if (handDraggable)
                 htmlEl.style.touchAction = 'none';
             const onDragStart = (ev) => {
-                if (this.host.isActionBusy()) {
+                if (!this.canPointerDragHand()) {
                     ev.preventDefault();
                     return;
                 }
-                this.dragCardId = Number(htmlEl.dataset.handCard);
-                this.dragClearedSelection = false;
-                this.dragDidDrop = false;
-                this.dragSelectionSnapshot = null;
+                this.beginHandDragChrome(Number(htmlEl.dataset.handCard));
                 ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
                 htmlEl.classList.add('bae_dragging');
                 this.playSoundKind('select');
@@ -2260,9 +2299,9 @@ class OptionalUi {
             };
             const onDrop = (ev) => {
                 ev.preventDefault();
-                this.clearDropHighlights();
                 const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
                 this.applyHandDropOnLocation(cardId, Number(htmlEl.dataset.loc));
+                this.clearDropHighlights();
             };
             htmlEl.addEventListener('dragover', onDragOver);
             htmlEl.addEventListener('dragleave', onDragLeave);
@@ -2290,9 +2329,9 @@ class OptionalUi {
             };
             const onDrop = (ev) => {
                 ev.preventDefault();
-                this.clearDropHighlights();
                 const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
                 this.applyHandDropOnCamp(cardId);
+                this.clearDropHighlights();
             };
             htmlEl.addEventListener('dragover', onDragOver);
             htmlEl.addEventListener('dragleave', onDragLeave);
@@ -2306,7 +2345,7 @@ class OptionalUi {
         const handCol = this.host.root.querySelector(`.bae_player_handcol[data-player-id="${myId}"]`);
         if (handCol) {
             const onDragOver = (ev) => {
-                if (!this.host.isReplenishLike())
+                if (!this.host.isReplenishLike() || this.dragPoolSlot == null)
                     return;
                 ev.preventDefault();
                 this.markDropHover(handCol, true);
@@ -2347,12 +2386,15 @@ class OptionalUi {
                     ev.preventDefault();
                     return;
                 }
+                this.dragCardId = null;
+                this.dragPoolSlot = Number(htmlEl.dataset.poolSlot);
                 ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
                 this.dragClearedSelection = false;
                 this.dragDidDrop = false;
                 this.dragSelectionSnapshot = null;
             };
             const onDragEnd = () => {
+                this.dragPoolSlot = null;
                 this.finishDragSelectionChrome();
             };
             const onPointerDown = (ev) => {
@@ -2384,6 +2426,30 @@ class OptionalUi {
             && this.host.bga.players.isCurrentPlayerActive()
             && !this.host.isActionBusy();
     }
+    beginHandDragChrome(cardId) {
+        this.dragPoolSlot = null;
+        this.dragCardId = cardId;
+        this.dragClearedSelection = false;
+        this.dragDidDrop = false;
+        this.dragHoverCamp = false;
+        this.dragHoverLoc = null;
+        this.dragSelectionSnapshot = null;
+        this.captureDragSelectionSnapshot();
+        this.syncRegroupCardChrome();
+        if (this.host.campSelected)
+            this.clearDiscardGhosts();
+    }
+    captureDragSelectionSnapshot() {
+        if (this.dragSelectionSnapshot)
+            return;
+        this.dragSelectionSnapshot = {
+            location: this.host.selectedLocation,
+            poolSlot: this.host.selectedPoolSlot,
+            objectiveIdx: this.host.selectedObjectiveIdx,
+            campSelected: this.host.campSelected,
+            regroupIds: Array.from(this.host.selectedRegroupIds),
+        };
+    }
     applyHandDropOnLocation(cardId, loc) {
         if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
             return;
@@ -2407,10 +2473,17 @@ class OptionalUi {
         if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
             return;
         this.dragDidDrop = true;
-        this.host.enterRegroupMode();
-        this.host.selectedRegroupIds.add(cardId);
-        this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
-        this.onSelectionChanged();
+        if (this.host.campSelected) {
+            this.host.selectedRegroupIds.add(cardId);
+            const myId = Number(this.host.bga.players.getCurrentPlayerId());
+            const card = this.cardEl(myId, cardId);
+            card?.classList.remove('bae_card_selected', 'bae_card_invalid');
+            card?.classList.add('bae_card_regroup');
+            this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+            this.onSelectionChanged();
+            return;
+        }
+        this.host.enterRegroupMode(cardId);
     }
     applyPoolDropOnHand(slot) {
         if (!Number.isFinite(slot) || this.host.isActionBusy() || !this.host.isReplenishLike() || !this.host.bga.players.isCurrentPlayerActive())
@@ -2455,10 +2528,17 @@ class OptionalUi {
         drag.active = true;
         this.tooltipDragging = true;
         this.tooltipPointerHeld = true;
-        this.dragCardId = drag.kind === 'hand' ? (drag.cardId ?? null) : null;
-        this.dragClearedSelection = false;
-        this.dragDidDrop = false;
-        this.dragSelectionSnapshot = null;
+        if (drag.kind === 'hand' && drag.cardId != null) {
+            this.beginHandDragChrome(drag.cardId);
+        }
+        else {
+            this.dragCardId = null;
+            this.dragPoolSlot = drag.poolSlot ?? null;
+            this.dragClearedSelection = false;
+            this.dragDidDrop = false;
+            this.dragHoverCamp = false;
+            this.dragSelectionSnapshot = null;
+        }
         drag.source.classList.add('bae_dragging');
         this.clearTouchHit();
         try {
@@ -2558,6 +2638,7 @@ class OptionalUi {
         }
         catch { /* ignore */ }
         this.dragCardId = null;
+        this.dragPoolSlot = null;
         this.clearTouchHit();
         if (restoreSelection)
             this.finishDragSelectionChrome();
@@ -2579,9 +2660,16 @@ class OptionalUi {
         this.host.selectedLocation = snap.location;
         this.host.selectedPoolSlot = snap.poolSlot;
         this.host.selectedObjectiveIdx = snap.objectiveIdx;
+        this.host.campSelected = snap.campSelected;
+        if (snap.campSelected) {
+            this.host.selectedRegroupIds.clear();
+            snap.regroupIds.forEach((id) => this.host.selectedRegroupIds.add(id));
+        }
         this.applySelectionGraphics();
         this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
         this.onSelectionChanged();
+        if (snap.campSelected)
+            this.updateActionPreviews();
     }
     applySelectionGraphics() {
         const root = this.host.root;
@@ -2600,6 +2688,16 @@ class OptionalUi {
         if (this.host.campSelected) {
             root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
                 el.classList.add('bae_camp_selected');
+            });
+        }
+        root.querySelectorAll('.bae_card_regroup').forEach((el) => {
+            if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost'))
+                return;
+            el.classList.remove('bae_card_regroup');
+        });
+        if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
+            this.host.selectedRegroupIds.forEach((id) => {
+                this.cardEl(myId, id)?.classList.add('bae_card_regroup');
             });
         }
         if (this.host.selectedLocation != null && !this.host.campSelected) {
@@ -2653,7 +2751,8 @@ class OptionalUi {
         el.appendChild(span);
     }
     markDropHover(el, confirm) {
-        if (confirm && el)
+        const onCamp = Boolean(el?.classList.contains('bae_camp_zone'));
+        if (confirm && el && !onCamp)
             this.suppressSelectionGraphicsForDrag();
         const prev = this.host.root.querySelector('.bae_drop_hover');
         if (prev === el) {
@@ -2662,19 +2761,25 @@ class OptionalUi {
             return;
         }
         this.clearDropHighlights();
-        if (!el)
+        this.dragHoverCamp = onCamp;
+        if (!el) {
+            this.syncRegroupCardChrome();
             return;
+        }
         el.classList.add('bae_drop_hover');
         if (confirm)
             this.addDropConfirm(el);
+        if (onCamp)
+            this.suppressSelectionGraphicsForDrag();
+        this.syncRegroupCardChrome();
+        this.updateActionPreviews();
     }
     markLocationDropHover(locEl) {
         const cardId = this.dragCardId ?? this.pointerDrag?.cardId ?? null;
         const loc = Number(locEl.dataset.loc);
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const legal = cardId != null && canObserveAtLocation(this.host.animalDef(cardId), this.host.gamedatas.boardState.scientists, myId, loc);
-        if (legal)
-            this.suppressSelectionGraphicsForDrag();
+        this.suppressSelectionGraphicsForDrag();
         const prev = this.host.root.querySelector('.bae_drop_hover');
         if (prev === locEl) {
             locEl.classList.toggle('bae_drop_hover_invalid', !legal);
@@ -2689,17 +2794,16 @@ class OptionalUi {
         locEl.classList.toggle('bae_drop_hover_invalid', !legal);
         if (legal)
             this.addDropConfirm(locEl);
+        this.dragHoverLoc = Number.isFinite(loc) ? loc : null;
+        this.syncRegroupCardChrome();
+        this.updateActionPreviews();
     }
     /** Once a legal drop target is hovered, drop-hover is the only selection chrome. */
     suppressSelectionGraphicsForDrag() {
         if (this.dragClearedSelection)
             return;
         this.dragClearedSelection = true;
-        this.dragSelectionSnapshot = {
-            location: this.host.selectedLocation,
-            poolSlot: this.host.selectedPoolSlot,
-            objectiveIdx: this.host.selectedObjectiveIdx,
-        };
+        this.captureDragSelectionSnapshot();
         this.host.selectedLocation = null;
         this.host.selectedObjectiveIdx = null;
         this.host.selectedPoolSlot = null;
@@ -2708,9 +2812,14 @@ class OptionalUi {
         const root = this.host.root;
         if (!root)
             return;
-        root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
-            el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
+        root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_obj_selected').forEach((el) => {
+            el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_obj_selected');
         });
+        if (!this.dragHoverCamp) {
+            root.querySelectorAll('.bae_camp_selected').forEach((el) => {
+                el.classList.remove('bae_camp_selected');
+            });
+        }
         root.querySelectorAll('.bae_card_selected, .bae_card_invalid').forEach((el) => {
             if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost'))
                 return;
@@ -2730,10 +2839,19 @@ class OptionalUi {
         el.appendChild(span);
     }
     clearDropHighlights() {
+        const hadLocHover = this.dragHoverLoc != null;
+        this.dragHoverLoc = null;
+        this.dragHoverCamp = false;
         this.host.root.querySelectorAll('.bae_drop_hover, .bae_drop_hover_invalid, .bae_drop_target').forEach((t) => {
             t.classList.remove('bae_drop_hover', 'bae_drop_hover_invalid', 'bae_drop_target');
         });
         this.host.root.querySelectorAll('.bae_drop_confirm').forEach((el) => el.remove());
+        if (hadLocHover)
+            this.clearTransientPreviews();
+        if (this.dragCardId != null && !this.dragDidDrop) {
+            this.syncRegroupCardChrome();
+            this.updateActionPreviews();
+        }
     }
     async animateHandReplace(pid, discarded, prev, next, ms) {
         const root = this.host.root;
@@ -4606,7 +4724,7 @@ class Game {
             card_ids_json: JSON.stringify(cardIds),
         });
     }
-    enterRegroupMode() {
+    enterRegroupMode(initialCardId) {
         if (this.isActionBusy())
             return;
         this.selectedCardId = null;
@@ -4615,6 +4733,8 @@ class Game {
         this.selectedObjectiveIdx = null;
         this.campSelected = true;
         this.selectedRegroupIds.clear();
+        if (initialCardId != null && Number.isFinite(initialCardId))
+            this.selectedRegroupIds.add(initialCardId);
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
         this.optionalUi?.onSelectionChanged();

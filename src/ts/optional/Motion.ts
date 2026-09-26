@@ -505,12 +505,18 @@ export function placeCloneAt(
 }
 
 /** Soft, slow discard preview: ghost only, real card stays put. */
-export function startDiscardGhost(source: HTMLElement, root: HTMLElement, cardId?: number): HTMLElement {
+export function startDiscardGhost(
+  source: HTMLElement,
+  root: HTMLElement,
+  cardId?: number,
+  delayMs = 0,
+): HTMLElement {
   const clone = placeClone(source, 'bae_discard_ghost', root);
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', '1.85s');
   clone.style.setProperty('--dx', animDx(-60));
+  if (delayMs > 0) clone.style.animationDelay = `-${Math.round(delayMs)}ms`;
   if (cardId != null) clone.dataset.previewCard = String(cardId);
   previewAnchors.set(clone, { source });
   return clone;
