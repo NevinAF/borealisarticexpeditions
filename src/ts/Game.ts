@@ -245,23 +245,18 @@ export class Game {
     private getScaleForZoomFactor(zoomFactor: number): number {
       const area = this.bga.gameArea.getElement();
       const areaRect = area.getBoundingClientRect();
-    //   const rootRect = this.root.getBoundingClientRect();
-
       const availableWidth = Math.max(1, areaRect.width);
       const availableHeight = Math.max(1, window.innerHeight);
       const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
       const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
       const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
-      const autoScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
+      // Default fit keeps the top row on one line. Max zoom is the board + hand width so
+      // small devices can enlarge the player area and let the top row wrap.
+      const fitScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
+      const maxScale = Math.max(0.01, scaleByBoardWidth);
       const boundedZoom = Math.max(Game.ZOOM_MIN, zoomFactor);
-      const zoomedScale = Math.max(0.01, autoScale * boundedZoom);
-
-      // Clamp zoom by width-based limits so top row and board width never overflow.
-      const widthClampScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByTopRowWidth));
-      const scale = Math.min(zoomedScale, widthClampScale);
-
-      return scale;
-    };
+      return Math.min(Math.max(0.01, fitScale * boundedZoom), maxScale);
+    }
 
     private getScale(): number {
       return this.getScaleForZoomFactor(this.zoomFactor);
@@ -901,7 +896,13 @@ export class Game {
     const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
     const currentScale = Number.parseFloat(scaleRaw);
     const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
-    return Math.max(0.3, baseScale * 2);
+    const desired = Math.max(0.18, baseScale * 2);
+    const viewport = Math.max(160, Math.min(window.innerWidth, document.documentElement.clientWidth) - 48);
+    const gap = 8;
+    const columns = 2;
+    const maxCardW = (viewport * 0.92 - gap * (columns - 1)) / columns;
+    const cap = maxCardW / Game.CARD_REFERENCE_HEIGHT_PX;
+    return Math.max(0.12, Math.min(desired, cap));
   }
 
   private applySlideshowScaleStyles(el: HTMLElement): void {
@@ -1547,10 +1548,7 @@ export class Game {
     details: string[],
     scoresHtml = '',
   ): string {
-    const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
-    const currentScale = Number.parseFloat(scaleRaw);
-    const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
-    const tooltipScale = Math.max(0.3, baseScale * 2);
+    const tooltipScale = this.getTooltipScale();
     const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
     const baseUrl = this.bga.images.getImgUrl();
     const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;

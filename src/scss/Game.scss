@@ -140,14 +140,17 @@ html[data-theme="dark"] {
 }
 
 .bae_toprow {
-  display: grid;
-  grid-template-columns: auto auto auto;
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   align-items: center;
   gap: scaled($space_8);
   margin-bottom: scaled($space_7);
   margin-left: auto;
   margin-right: auto;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   position: relative;
   z-index: 20;
 }
@@ -201,6 +204,9 @@ html[data-theme="dark"] {
   flex-wrap: nowrap;
   gap: scaled($space_6);
   align-items: center;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bae_playerboards {
@@ -222,6 +228,7 @@ html[data-theme="dark"] {
   border-radius: 0;
   padding: scaled($space_4);
   min-width: 0;
+  flex: 0 1 auto;
   box-shadow: none;
 }
 
@@ -256,6 +263,8 @@ html[data-theme="dark"] {
   gap: 8px;
   justify-content: center;
   align-content: center;
+  max-width: min(92vw, 640px);
+  box-sizing: border-box;
 }
 
 .bae_tooltip_card {
@@ -264,12 +273,16 @@ html[data-theme="dark"] {
   align-items: stretch;
   gap: 12px;
   font-family: 'BaeCardSerif', serif;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bae_tooltip_card_face {
   display: block;
   border-radius: 6px;
   overflow: hidden;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bae_tooltip_card_face .bae_card_img,
@@ -287,6 +300,14 @@ html[data-theme="dark"] {
 
 .bae_tooltip_scores + .bae_tooltip_extra {
   padding-top: 8px;
+}
+
+.dijitTooltipContainer:has(.bae_tooltip_grid),
+.dijitTooltipContainer:has(.bae_tooltip_card),
+.bga-tooltip:has(.bae_tooltip_grid),
+.bga-tooltip:has(.bae_tooltip_card) {
+  max-width: min(92vw, 640px);
+  box-sizing: border-box;
 }
 
 .bae_tooltip_claimed_by {
