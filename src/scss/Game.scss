@@ -1,13 +1,5 @@
 @use "sass:math";
 
-@font-face {
-  font-family: "BaeCardSerif";
-  src: url("img/font.otf") format("opentype");
-  font-style: normal;
-  font-weight: 200 900;
-  font-display: swap;
-}
-
 // Function that converts a pixel length or point to a percentage based on the reference size of the board (3788x2600)
 @function px-to-percent-in-width($value) {
   @return math.div($value, 3788) * 100%;
