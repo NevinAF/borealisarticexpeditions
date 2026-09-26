@@ -7,9 +7,48 @@ export function animMs(speed: number): number {
   return 560;
 }
 
+/**
+ * Viewport box for cloning. Centering transforms (meeples/flags) can report the
+ * untransformed layout box once a parent starts scrolling at high zoom; rebuild
+ * the visual box from offsetParent + the computed translate when that happens.
+ */
+export function visualRect(el: Element): DOMRect {
+  const reported = el.getBoundingClientRect();
+  if (!(el instanceof HTMLElement)) return reported;
+  const css = getComputedStyle(el);
+  if (!css.transform || css.transform === 'none') return reported;
+  const parent = el.offsetParent;
+  if (!(parent instanceof HTMLElement)) return reported;
+  let matrix: DOMMatrixReadOnly;
+  try {
+    matrix = new DOMMatrixReadOnly(css.transform);
+  } catch {
+    return reported;
+  }
+  if (Math.abs(matrix.e) < 0.5 && Math.abs(matrix.f) < 0.5) return reported;
+  const parentBox = parent.getBoundingClientRect();
+  const parentCss = getComputedStyle(parent);
+  const scaleX = parent.offsetWidth > 0 ? parentBox.width / parent.offsetWidth : 1;
+  const scaleY = parent.offsetHeight > 0 ? parentBox.height / parent.offsetHeight : 1;
+  const layoutLeft = parentBox.left
+    + (parseFloat(parentCss.borderLeftWidth) || 0)
+    + (el.offsetLeft - parent.scrollLeft) * scaleX;
+  const layoutTop = parentBox.top
+    + (parseFloat(parentCss.borderTopWidth) || 0)
+    + (el.offsetTop - parent.scrollTop) * scaleY;
+  const visualLeft = layoutLeft + matrix.e * scaleX;
+  const visualTop = layoutTop + matrix.f * scaleY;
+  const distLayout = Math.abs(reported.left - layoutLeft) + Math.abs(reported.top - layoutTop);
+  const distVisual = Math.abs(reported.left - visualLeft) + Math.abs(reported.top - visualTop);
+  if (distLayout + 1 < distVisual) {
+    return new DOMRect(visualLeft, visualTop, reported.width, reported.height);
+  }
+  return reported;
+}
+
 export function rectOf(el: Element | null): DOMRect | null {
   if (!el) return null;
-  const r = el.getBoundingClientRect();
+  const r = visualRect(el);
   if (r.width < 1 && r.height < 1) return null;
   return r;
 }
@@ -131,7 +170,7 @@ export function placeClone(
   extraClass: string,
   root: HTMLElement,
 ): HTMLElement {
-  const r = source.getBoundingClientRect();
+  const r = visualRect(source);
   const layer = motionLayer(root);
   const loc = localRect(layer, r);
   const clone = source.cloneNode(true) as HTMLElement;
@@ -363,11 +402,11 @@ export function startTrail(
 ): HTMLElement {
   return startTrailToRect(
     source,
-    dest.getBoundingClientRect(),
+    visualRect(dest),
     durationMs,
     root,
     extraClass,
-    () => dest.isConnected ? dest.getBoundingClientRect() : null,
+    () => dest.isConnected ? visualRect(dest) : null,
   );
 }
 
@@ -382,11 +421,11 @@ export function startScientistTrail(
   source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   return startTrailToRect(
     source,
-    dest.getBoundingClientRect(),
+    visualRect(dest),
     durationMs,
     root,
     'bae_sci_mover',
-    () => dest.isConnected ? dest.getBoundingClientRect() : null,
+    () => dest.isConnected ? visualRect(dest) : null,
   );
 }
 
@@ -410,7 +449,7 @@ export function startTrailToRect(
   extraClass = '',
   destFn?: PreviewDestFn,
 ): HTMLElement {
-  const from = source.getBoundingClientRect();
+  const from = visualRect(source);
   const layer = motionLayer(root);
   const loc = localRect(layer, from);
   const clone = source.cloneNode(true) as HTMLElement;
@@ -487,7 +526,7 @@ export function retargetPreviewClones(root: HTMLElement): void {
     const fromEl = (anchor.follow?.isConnected ? anchor.follow : anchor.source);
     if (!fromEl?.isConnected) return;
     copySpriteVars(root, clone);
-    const fromBox = fromEl.getBoundingClientRect();
+    const fromBox = visualRect(fromEl);
     const parent = containingBlock(clone, root);
     const sizeW = clone.offsetWidth || fromBox.width;
     const sizeH = clone.offsetHeight || fromBox.height;
@@ -516,7 +555,7 @@ export function flyDiscardAway(
   root: HTMLElement,
   durationMs: number,
 ): Promise<void> {
-  const from = source.getBoundingClientRect();
+  const from = visualRect(source);
   const clone = placeClone(source, 'bae_discard_resolve', root);
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);

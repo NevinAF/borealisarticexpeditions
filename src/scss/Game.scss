@@ -603,8 +603,13 @@ html[data-theme="dark"] {
   width: math.div(292, $card_width) * 100%;
 }
 
-.bae_motion_clone.bae_vp_token {
+.bae_motion_clone.bae_vp_token,
+.bae_motion_clone.bae_meeple_img,
+.bae_motion_clone.bae_track_flag_only {
   transform: none;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
 }
 
 .bae_player_handcol {
@@ -971,7 +976,7 @@ html[data-theme="dark"] {
   z-index: 4;
 }
 
-.bae_location_zone .bae_card_img {
+.bae_location_zone .bae_card_img:not(.bae_pile_card_img) {
   width: 50%;
   min-width: 40px;
   max-width: 120px;
@@ -1025,9 +1030,20 @@ html[data-theme="dark"] {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
+  min-width: 0;
+  aspect-ratio: auto;
   background-repeat: no-repeat;
   background-position: var(--sprite-x, 0%) var(--sprite-y, 0%);
   pointer-events: auto;
+}
+
+.bae_location_zone .bae_pile_slot .bae_card_img {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-width: 0;
+  aspect-ratio: auto;
 }
 
 /* Positioning for the 7 fixed pile slots inside each location zone.
@@ -1666,6 +1682,9 @@ html[data-theme="dark"] .bae_opening_intro {
 .bae_card_place_preview .bae_card_img {
   width: 100%;
   height: 100%;
+  max-width: none;
+  min-width: 0;
+  aspect-ratio: auto;
 }
 
 .bae_trail_ghost {

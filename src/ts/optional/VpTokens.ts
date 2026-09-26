@@ -8,6 +8,7 @@ import {
   placeClone,
   startTrailToRect,
   bindPreviewFollow,
+  visualRect,
   wait,
 } from './Motion';
 
@@ -253,7 +254,7 @@ export class VpTokens {
       const destSlot = destSlots[i];
       if (!destSlot) return;
       const size = this.tokenPixelSize(pid, value);
-      const srcR = src.getBoundingClientRect();
+      const srcR = visualRect(src);
       const from = new DOMRect(
         srcR.left + srcR.width / 2 - size.w / 2,
         srcR.top + srcR.height / 2 - size.h / 2,
@@ -341,7 +342,7 @@ export class VpTokens {
     probe.style.left = `${slot.leftPct}%`;
     probe.style.top = `${slot.topPct}%`;
     shelf.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
+    const rect = visualRect(probe);
     probe.remove();
     if (rect.width < 1 || rect.height < 1) {
       const box = shelf.getBoundingClientRect();

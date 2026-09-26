@@ -119,10 +119,53 @@ function animMs(speed) {
         return 360;
     return 560;
 }
+/**
+ * Viewport box for cloning. Centering transforms (meeples/flags) can report the
+ * untransformed layout box once a parent starts scrolling at high zoom; rebuild
+ * the visual box from offsetParent + the computed translate when that happens.
+ */
+function visualRect(el) {
+    const reported = el.getBoundingClientRect();
+    if (!(el instanceof HTMLElement))
+        return reported;
+    const css = getComputedStyle(el);
+    if (!css.transform || css.transform === 'none')
+        return reported;
+    const parent = el.offsetParent;
+    if (!(parent instanceof HTMLElement))
+        return reported;
+    let matrix;
+    try {
+        matrix = new DOMMatrixReadOnly(css.transform);
+    }
+    catch {
+        return reported;
+    }
+    if (Math.abs(matrix.e) < 0.5 && Math.abs(matrix.f) < 0.5)
+        return reported;
+    const parentBox = parent.getBoundingClientRect();
+    const parentCss = getComputedStyle(parent);
+    const scaleX = parent.offsetWidth > 0 ? parentBox.width / parent.offsetWidth : 1;
+    const scaleY = parent.offsetHeight > 0 ? parentBox.height / parent.offsetHeight : 1;
+    const layoutLeft = parentBox.left
+        + (parseFloat(parentCss.borderLeftWidth) || 0)
+        + (el.offsetLeft - parent.scrollLeft) * scaleX;
+    const layoutTop = parentBox.top
+        + (parseFloat(parentCss.borderTopWidth) || 0)
+        + (el.offsetTop - parent.scrollTop) * scaleY;
+    const visualLeft = layoutLeft + matrix.e * scaleX;
+    const visualTop = layoutTop + matrix.f * scaleY;
+    const distLayout = Math.abs(reported.left - layoutLeft) + Math.abs(reported.top - layoutTop);
+    const distVisual = Math.abs(reported.left - visualLeft) + Math.abs(reported.top - visualTop);
+    if (distLayout + 1 < distVisual) {
+        return new DOMRect(visualLeft, visualTop, reported.width, reported.height);
+    }
+    return reported;
+}
 function rectOf(el) {
     if (!el)
         return null;
-    const r = el.getBoundingClientRect();
+    const r = visualRect(el);
     if (r.width < 1 && r.height < 1)
         return null;
     return r;
@@ -216,7 +259,7 @@ function stripChrome(el) {
     el.querySelectorAll('.bae_confirm_blurb, .bae_deck_overlay').forEach((node) => node.remove());
 }
 function placeClone(source, extraClass, root) {
-    const r = source.getBoundingClientRect();
+    const r = visualRect(source);
     const layer = motionLayer(root);
     const loc = localRect(layer, r);
     const clone = source.cloneNode(true);
@@ -395,13 +438,13 @@ function flipElements(els, apply, durationMs) {
 }
 /** Looping ghost that travels from source rect toward dest rect. */
 function startTrail(source, dest, durationMs, root, extraClass = '') {
-    return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, extraClass, () => dest.isConnected ? dest.getBoundingClientRect() : null);
+    return startTrailToRect(source, visualRect(dest), durationMs, root, extraClass, () => dest.isConnected ? visualRect(dest) : null);
 }
 /** Leave a faded scientist in place and loop an opaque copy toward the destination. */
 function startScientistTrail(source, dest, durationMs, root) {
     source.classList.add('bae_preview_fade_left');
     source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
-    return startTrailToRect(source, dest.getBoundingClientRect(), durationMs, root, 'bae_sci_mover', () => dest.isConnected ? dest.getBoundingClientRect() : null);
+    return startTrailToRect(source, visualRect(dest), durationMs, root, 'bae_sci_mover', () => dest.isConnected ? visualRect(dest) : null);
 }
 function startScientistTrailToRect(source, to, durationMs, root, destFn) {
     source.classList.add('bae_preview_fade_left');
@@ -409,7 +452,7 @@ function startScientistTrailToRect(source, to, durationMs, root, destFn) {
     return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover', destFn);
 }
 function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn) {
-    const from = source.getBoundingClientRect();
+    const from = visualRect(source);
     const layer = motionLayer(root);
     const loc = localRect(layer, from);
     const clone = source.cloneNode(true);
@@ -482,7 +525,7 @@ function retargetPreviewClones(root) {
         if (!fromEl?.isConnected)
             return;
         copySpriteVars(root, clone);
-        const fromBox = fromEl.getBoundingClientRect();
+        const fromBox = visualRect(fromEl);
         const parent = containingBlock(clone, root);
         const sizeW = clone.offsetWidth || fromBox.width;
         const sizeH = clone.offsetHeight || fromBox.height;
@@ -507,7 +550,7 @@ function retargetPreviewClones(root) {
 }
 /** One-shot slide-off used when a hand card is actually discarded. */
 function flyDiscardAway(source, root, durationMs) {
-    const from = source.getBoundingClientRect();
+    const from = visualRect(source);
     const clone = placeClone(source, 'bae_discard_resolve', root);
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
@@ -780,7 +823,7 @@ class VpTokens {
             if (!destSlot)
                 return;
             const size = this.tokenPixelSize(pid, value);
-            const srcR = src.getBoundingClientRect();
+            const srcR = visualRect(src);
             const from = new DOMRect(srcR.left + srcR.width / 2 - size.w / 2, srcR.top + srcR.height / 2 - size.h / 2, size.w, size.h);
             const dummy = this.createTokenEl(value);
             dummy.style.position = 'absolute';
@@ -856,7 +899,7 @@ class VpTokens {
         probe.style.left = `${slot.leftPct}%`;
         probe.style.top = `${slot.topPct}%`;
         shelf.appendChild(probe);
-        const rect = probe.getBoundingClientRect();
+        const rect = visualRect(probe);
         probe.remove();
         if (rect.width < 1 || rect.height < 1) {
             const box = shelf.getBoundingClientRect();
@@ -1065,6 +1108,8 @@ class OptionalUi {
         this.host.refreshScientistTooltips();
         if (this.isTooltipBlocked())
             this.cancelDojoTooltips();
+        this.syncTopRowWrap();
+        this.syncRoundBadge();
         this.updateActionPreviews();
         this.bindPreferenceListener();
         this.scheduleLayoutChrome();
@@ -1287,7 +1332,7 @@ class OptionalUi {
             const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []);
             const allMeeples = [...leftMeeples, ...rightMeeples];
             const vpOnes = allMeeples.map(() => 1);
-            const vpSources = allMeeples.map((el) => el.getBoundingClientRect());
+            const vpSources = allMeeples.map((el) => visualRect(el));
             const stackItems = [];
             const flights = [
                 ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms, stackItems)),
@@ -1614,8 +1659,12 @@ class OptionalUi {
             return;
         this.layoutChromeRaf = requestAnimationFrame(() => {
             this.layoutChromeRaf = 0;
-            this.syncTopRowWrap();
+            const wrapChanged = this.syncTopRowWrap();
             this.syncRoundBadge();
+            if (wrapChanged)
+                this.updateActionPreviews();
+            else
+                retargetPreviewClones(this.host.root);
             if (this.tooltipPinnedId && !document.body.classList.contains('bae_tooltip_placing')) {
                 this.fitPinnedTooltip();
             }
@@ -1624,18 +1673,20 @@ class OptionalUi {
     syncTopRowWrap() {
         const row = this.host.root.querySelector('.bae_toprow');
         if (!row)
-            return;
+            return false;
         const kids = Array.from(row.children);
         if (kids.length < 2) {
+            const had = row.classList.contains('bae_toprow_wrapped');
             row.classList.remove('bae_toprow_wrapped');
-            return;
+            return had;
         }
         const gap = parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap) || 0;
         const total = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0) + gap * (kids.length - 1);
         const wrapped = total > row.clientWidth + 2;
         if (row.classList.contains('bae_toprow_wrapped') === wrapped)
-            return;
+            return false;
         row.classList.toggle('bae_toprow_wrapped', wrapped);
+        return true;
     }
     syncRoundBadge() {
         const badge = this.host.root.querySelector('.bae_round_badge');
@@ -1907,7 +1958,7 @@ class OptionalUi {
                 sci[color].push(loc);
         }
         const slots = this.scientistLayout(pid, { [pid]: sci }, loc);
-        const occupied = existing.map((el) => el.getBoundingClientRect());
+        const occupied = existing.map((el) => visualRect(el));
         const candidates = slots.map((slot) => (destShelf
             ? this.meepleSlotRect(destShelf, slot, sample)
             : this.meepleSlotRectFromBox(destBox, slot, sample)));
@@ -1974,11 +2025,11 @@ class OptionalUi {
         for (let i = 0; i < extraCount; i++)
             sci[0].push(loc);
         const slots = this.scientistLayout(pid, { [pid]: sci }, loc);
-        const occupied = existing.map((el) => el.getBoundingClientRect());
+        const occupied = existing.map((el) => visualRect(el));
         const candidates = slots.map((slot) => this.meepleSlotRect(shelf, slot, sizeSample));
         const free = candidates.filter((rect) => !occupied.some((occ) => this.meepleRectsOverlap(rect, occ)));
         const box = shelf.getBoundingClientRect();
-        const size = sizeSample.getBoundingClientRect();
+        const size = visualRect(sizeSample);
         const room = new DOMRect(box.left - size.width * 0.3, box.top - size.height * 0.3, box.width + size.width * 0.6, box.height + size.height * 0.6);
         const out = [];
         const taken = [...occupied];
@@ -2041,7 +2092,7 @@ class OptionalUi {
     }
     placeDenyX(at, ms, loop) {
         const layer = motionLayer(this.host.root);
-        const r = at.getBoundingClientRect();
+        const r = visualRect(at);
         const loc = coordsInParent(layer, r);
         const size = Math.max(r.width, r.height, 12);
         const x = document.createElement('div');
@@ -2688,7 +2739,7 @@ class OptionalUi {
         const campBox = camp?.getBoundingClientRect();
         if (!destBox || !campBox)
             return Promise.resolve();
-        const from = el.getBoundingClientRect();
+        const from = visualRect(el);
         const dest = new DOMRect(destBox.left + (from.left - campBox.left), destBox.top + (from.top - campBox.top), from.width, from.height);
         const clone = placeScientistClone(el, 'bae_resolve_clone', this.host.root);
         el.style.visibility = 'hidden';
@@ -2742,7 +2793,7 @@ class OptionalUi {
         probe.style.visibility = 'hidden';
         probe.style.pointerEvents = 'none';
         pile.appendChild(probe);
-        const rect = probe.getBoundingClientRect();
+        const rect = visualRect(probe);
         const local = coordsInParent(pile, rect);
         pile.removeChild(probe);
         if (rect.width < 1 || rect.height < 1)
@@ -2760,7 +2811,7 @@ class OptionalUi {
         probe.style.left = `${(50 + jitterLeft).toFixed(1)}%`;
         probe.style.top = `${(50 + jitterTop).toFixed(1)}%`;
         cell.appendChild(probe);
-        const rect = probe.getBoundingClientRect();
+        const rect = visualRect(probe);
         probe.remove();
         return rect.width < 1 || rect.height < 1 ? null : rect;
     }
@@ -3399,7 +3450,7 @@ class OptionalUi {
             return Array.from(shelf?.querySelectorAll('.bae_meeple_img') ?? []);
         };
         const dist2 = (el, dest) => {
-            const r = el.getBoundingClientRect();
+            const r = visualRect(el);
             const dx = (r.left + r.width / 2) - (dest.left + dest.width / 2);
             const dy = (r.top + r.height / 2) - (dest.top + dest.height / 2);
             return dx * dx + dy * dy;
@@ -3462,7 +3513,7 @@ class OptionalUi {
                 if (!el)
                     return;
                 const dest = this.meepleSlotRect(row.shelf, slot, el);
-                const r = el.getBoundingClientRect();
+                const r = visualRect(el);
                 if (Math.abs(r.left - dest.left) < 3 && Math.abs(r.top - dest.top) < 3)
                     return;
                 assigned.push({ el, dest });
@@ -3476,7 +3527,7 @@ class OptionalUi {
             if (seen.has(el))
                 return;
             seen.add(el);
-            const from = el.getBoundingClientRect();
+            const from = visualRect(el);
             const dest = destOf.get(el) ?? from;
             const clone = placeScientistClone(el, 'bae_resolve_clone', root);
             el.style.visibility = 'hidden';
@@ -3556,7 +3607,7 @@ class OptionalUi {
         probe.style.left = `${slot.leftPct}%`;
         probe.style.top = `${slot.topPct}%`;
         shelf.appendChild(probe);
-        const rect = probe.getBoundingClientRect();
+        const rect = visualRect(probe);
         probe.remove();
         if (rect.width < 1 || rect.height < 1) {
             return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
@@ -3564,7 +3615,7 @@ class OptionalUi {
         return rect;
     }
     meepleSlotRectFromBox(box, slot, sample) {
-        const size = sample.getBoundingClientRect();
+        const size = visualRect(sample);
         const cx = box.left + box.width * slot.leftPct / 100;
         const cy = box.top + box.height * slot.topPct / 100;
         return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);

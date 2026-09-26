@@ -17,6 +17,7 @@ import {
   placeCloneUnder,
   placeScientistClone,
   rectOf,
+  visualRect,
   stackByScreenPosition,
   startDiscardGhost,
   startScientistTrail,
@@ -146,6 +147,8 @@ export class OptionalUi {
     this.renderRegroupHold();
     this.host.refreshScientistTooltips();
     if (this.isTooltipBlocked()) this.cancelDojoTooltips();
+    this.syncTopRowWrap();
+    this.syncRoundBadge();
     this.updateActionPreviews();
     this.bindPreferenceListener();
     this.scheduleLayoutChrome();
@@ -375,7 +378,7 @@ export class OptionalUi {
       const rightMeeples = Array.from(this.shelfEl(pid, 4)?.querySelectorAll('.bae_meeple_img') ?? []) as HTMLElement[];
       const allMeeples = [...leftMeeples, ...rightMeeples];
       const vpOnes = allMeeples.map(() => 1 as VpValue);
-      const vpSources = allMeeples.map((el) => el.getBoundingClientRect());
+      const vpSources = allMeeples.map((el) => visualRect(el));
       const stackItems: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }> = [];
       const flights = [
         ...leftMeeples.map((el) => this.flyMeepleToHold(el, leftCamp, leftHold, ms, stackItems)),
@@ -706,27 +709,31 @@ export class OptionalUi {
     if (this.layoutChromeRaf) return;
     this.layoutChromeRaf = requestAnimationFrame(() => {
       this.layoutChromeRaf = 0;
-      this.syncTopRowWrap();
+      const wrapChanged = this.syncTopRowWrap();
       this.syncRoundBadge();
+      if (wrapChanged) this.updateActionPreviews();
+      else retargetPreviewClones(this.host.root);
       if (this.tooltipPinnedId && !document.body.classList.contains('bae_tooltip_placing')) {
         this.fitPinnedTooltip();
       }
     });
   }
 
-  private syncTopRowWrap(): void {
+  private syncTopRowWrap(): boolean {
     const row = this.host.root.querySelector('.bae_toprow') as HTMLElement | null;
-    if (!row) return;
+    if (!row) return false;
     const kids = Array.from(row.children) as HTMLElement[];
     if (kids.length < 2) {
+      const had = row.classList.contains('bae_toprow_wrapped');
       row.classList.remove('bae_toprow_wrapped');
-      return;
+      return had;
     }
     const gap = parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap) || 0;
     const total = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0) + gap * (kids.length - 1);
     const wrapped = total > row.clientWidth + 2;
-    if (row.classList.contains('bae_toprow_wrapped') === wrapped) return;
+    if (row.classList.contains('bae_toprow_wrapped') === wrapped) return false;
     row.classList.toggle('bae_toprow_wrapped', wrapped);
+    return true;
   }
 
   private syncRoundBadge(): void {
@@ -1002,7 +1009,7 @@ export class OptionalUi {
       if (color >= 0 && color < 3) sci[color].push(loc);
     }
     const slots = this.scientistLayout(pid, { [pid]: sci }, loc);
-    const occupied = existing.map((el) => el.getBoundingClientRect());
+    const occupied = existing.map((el) => visualRect(el));
     const candidates = slots.map((slot) => (
       destShelf
         ? this.meepleSlotRect(destShelf, slot, sample)
@@ -1071,11 +1078,11 @@ export class OptionalUi {
     }
     for (let i = 0; i < extraCount; i++) sci[0].push(loc);
     const slots = this.scientistLayout(pid, { [pid]: sci }, loc);
-    const occupied = existing.map((el) => el.getBoundingClientRect());
+    const occupied = existing.map((el) => visualRect(el));
     const candidates = slots.map((slot) => this.meepleSlotRect(shelf, slot, sizeSample));
     const free = candidates.filter((rect) => !occupied.some((occ) => this.meepleRectsOverlap(rect, occ)));
     const box = shelf.getBoundingClientRect();
-    const size = sizeSample.getBoundingClientRect();
+    const size = visualRect(sizeSample);
     const room = new DOMRect(
       box.left - size.width * 0.3,
       box.top - size.height * 0.3,
@@ -1149,7 +1156,7 @@ export class OptionalUi {
 
   private placeDenyX(at: HTMLElement, ms: number, loop: boolean): HTMLElement {
     const layer = motionLayer(this.host.root);
-    const r = at.getBoundingClientRect();
+    const r = visualRect(at);
     const loc = coordsInParent(layer, r);
     const size = Math.max(r.width, r.height, 12);
     const x = document.createElement('div');
@@ -1801,7 +1808,7 @@ export class OptionalUi {
     const destBox = hold?.getBoundingClientRect() ?? (camp ? this.offsetRect(camp.getBoundingClientRect(), 0, -camp.getBoundingClientRect().height * 1.2) : null);
     const campBox = camp?.getBoundingClientRect();
     if (!destBox || !campBox) return Promise.resolve();
-    const from = el.getBoundingClientRect();
+    const from = visualRect(el);
     const dest = new DOMRect(
       destBox.left + (from.left - campBox.left),
       destBox.top + (from.top - campBox.top),
@@ -1865,7 +1872,7 @@ export class OptionalUi {
     probe.style.visibility = 'hidden';
     probe.style.pointerEvents = 'none';
     pile.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
+    const rect = visualRect(probe);
     const local = coordsInParent(pile, rect);
     pile.removeChild(probe);
     if (rect.width < 1 || rect.height < 1) return null;
@@ -1882,7 +1889,7 @@ export class OptionalUi {
     probe.style.left = `${(50 + jitterLeft).toFixed(1)}%`;
     probe.style.top = `${(50 + jitterTop).toFixed(1)}%`;
     cell.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
+    const rect = visualRect(probe);
     probe.remove();
     return rect.width < 1 || rect.height < 1 ? null : rect;
   }
@@ -2509,7 +2516,7 @@ export class OptionalUi {
     };
 
     const dist2 = (el: HTMLElement, dest: DOMRect): number => {
-      const r = el.getBoundingClientRect();
+      const r = visualRect(el);
       const dx = (r.left + r.width / 2) - (dest.left + dest.width / 2);
       const dy = (r.top + r.height / 2) - (dest.top + dest.height / 2);
       return dx * dx + dy * dy;
@@ -2569,7 +2576,7 @@ export class OptionalUi {
         const el = filled[row.loc][i];
         if (!el) return;
         const dest = this.meepleSlotRect(row.shelf!, slot, el);
-        const r = el.getBoundingClientRect();
+        const r = visualRect(el);
         if (Math.abs(r.left - dest.left) < 3 && Math.abs(r.top - dest.top) < 3) return;
         assigned.push({ el, dest });
       });
@@ -2582,7 +2589,7 @@ export class OptionalUi {
     const consider = (el: HTMLElement) => {
       if (seen.has(el)) return;
       seen.add(el);
-      const from = el.getBoundingClientRect();
+      const from = visualRect(el);
       const dest = destOf.get(el) ?? from;
       const clone = placeScientistClone(el, 'bae_resolve_clone', root);
       el.style.visibility = 'hidden';
@@ -2667,7 +2674,7 @@ export class OptionalUi {
     probe.style.left = `${slot.leftPct}%`;
     probe.style.top = `${slot.topPct}%`;
     shelf.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
+    const rect = visualRect(probe);
     probe.remove();
     if (rect.width < 1 || rect.height < 1) {
       return this.meepleSlotRectFromBox(shelf.getBoundingClientRect(), slot, sample);
@@ -2680,7 +2687,7 @@ export class OptionalUi {
     slot: { leftPct: number; topPct: number },
     sample: HTMLElement,
   ): DOMRect {
-    const size = sample.getBoundingClientRect();
+    const size = visualRect(sample);
     const cx = box.left + box.width * slot.leftPct / 100;
     const cy = box.top + box.height * slot.topPct / 100;
     return new DOMRect(cx - size.width / 2, cy - size.height / 2, size.width, size.height);
