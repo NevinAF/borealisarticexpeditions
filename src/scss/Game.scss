@@ -1829,8 +1829,8 @@ body.bae_tooltip_placing .bga-tooltip {
 
 @keyframes bae_vp_trail_flow {
   0% { left: var(--from-l); top: var(--from-t); opacity: 0; }
-  18% { opacity: 1; }
-  78% { left: var(--to-l); top: var(--to-t); opacity: 1; }
+  30% { opacity: 0.8; }
+  78% { left: var(--to-l); top: var(--to-t); opacity: 0.8; }
   100% { left: var(--to-l); top: var(--to-t); opacity: 0; }
 }
 
