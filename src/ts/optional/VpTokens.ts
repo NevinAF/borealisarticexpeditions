@@ -262,6 +262,7 @@ export class VpTokens {
         size.h,
       );
       const dummy = this.createTokenEl(value);
+      dummy.classList.remove('bae_vp_token_1', 'bae_vp_token_3', 'bae_vp_token_5');
       dummy.style.position = 'absolute';
       dummy.style.transform = 'none';
       dummy.style.margin = '0';

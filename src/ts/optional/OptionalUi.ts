@@ -323,6 +323,7 @@ export class OptionalUi {
       const remaining = this.handCards(pid).filter((el) => el !== cardEl);
       if (cardEl && pileDest) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
+        clone.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
         cardEl.style.visibility = 'hidden';
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const reveal = pid !== myId
@@ -843,10 +844,11 @@ export class OptionalUi {
   }
 
   private previewObjectiveClaim(pid: number): void {
-    const source = this.host.root.querySelector(
+    const selected = this.host.root.querySelector(
       '.bae_obj_selected, .bae_obj_prompt_target',
     ) as HTMLElement | null;
-    if (!source) return;
+    if (!selected) return;
+    const source = (selected.querySelector('.bae_obj_img, .bae_overlay_card') as HTMLElement | null) ?? selected;
     this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
   }
 
@@ -1776,6 +1778,7 @@ export class OptionalUi {
     overlay.style.opacity = '0';
     overlay.style.transition = `opacity ${fade}ms ease`;
     overlay.innerHTML = this.host.animalCardHtml(cardId);
+    overlay.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
     const current = clone.querySelector('.bae_card_img, .bae_pile_card_img') as HTMLElement | null;
     if (current) current.style.transition = `opacity ${fade}ms ease`;
     clone.appendChild(overlay);

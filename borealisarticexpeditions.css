@@ -736,7 +736,7 @@ html[data-theme=dark] {
   margin-top: 0;
 }
 
-#bae_playarea .bae_obj {
+#bae_playarea button.bae_obj {
   display: inline-flex;
   flex: none;
   cursor: pointer;
@@ -918,7 +918,9 @@ html[data-theme=dark] {
   pointer-events: auto;
 }
 
-.bae_location_zone .bae_pile_slot .bae_card_img {
+.bae_location_zone .bae_pile_slot .bae_card_img,
+.bae_location_zone .bae_anim_pile .bae_card_img,
+.bae_location_zone .bae_resolve_card .bae_card_img {
   width: 100%;
   height: 100%;
   max-width: none;
@@ -1518,10 +1520,13 @@ html[data-theme=dark] .bae_opening_intro {
 
 .bae_resolve_card .bae_card_img,
 .bae_resolve_card .bae_overlay_sprite,
-.bae_resolve_card .bae_pile_card_img {
+.bae_resolve_card .bae_pile_card_img,
+.bae_card_back_fade .bae_card_img {
   width: 100%;
   height: 100%;
   max-width: none;
+  min-width: 0;
+  aspect-ratio: auto;
 }
 
 .bae_card_back_fade,

@@ -826,6 +826,7 @@ class VpTokens {
             const srcR = visualRect(src);
             const from = new DOMRect(srcR.left + srcR.width / 2 - size.w / 2, srcR.top + srcR.height / 2 - size.h / 2, size.w, size.h);
             const dummy = this.createTokenEl(value);
+            dummy.classList.remove('bae_vp_token_1', 'bae_vp_token_3', 'bae_vp_token_5');
             dummy.style.position = 'absolute';
             dummy.style.transform = 'none';
             dummy.style.margin = '0';
@@ -1278,6 +1279,7 @@ class OptionalUi {
             const remaining = this.handCards(pid).filter((el) => el !== cardEl);
             if (cardEl && pileDest) {
                 const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
+                clone.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
                 cardEl.style.visibility = 'hidden';
                 const myId = Number(this.host.bga.players.getCurrentPlayerId());
                 const reveal = pid !== myId
@@ -1788,9 +1790,10 @@ class OptionalUi {
             this.syncDiscardGhosts(myId);
     }
     previewObjectiveClaim(pid) {
-        const source = this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target');
-        if (!source)
+        const selected = this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target');
+        if (!selected)
             return;
+        const source = selected.querySelector('.bae_obj_img, .bae_overlay_card') ?? selected;
         this.vp.previewTokensFrom(pid, [source], 5, this.previewLoopMs());
     }
     syncDiscardGhosts(pid) {
@@ -2711,6 +2714,7 @@ class OptionalUi {
         overlay.style.opacity = '0';
         overlay.style.transition = `opacity ${fade}ms ease`;
         overlay.innerHTML = this.host.animalCardHtml(cardId);
+        overlay.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
         const current = clone.querySelector('.bae_card_img, .bae_pile_card_img');
         if (current)
             current.style.transition = `opacity ${fade}ms ease`;
