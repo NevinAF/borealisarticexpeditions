@@ -588,9 +588,10 @@ export class Game {
     this.root?.querySelectorAll('.bae_card_selected, .bae_card_regroup').forEach((el) => {
       el.classList.remove('bae_card_selected', 'bae_card_regroup');
     });
-    this.root?.querySelectorAll('.bae_loc_selected, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
-      el.classList.remove('bae_loc_selected', 'bae_camp_selected', 'bae_obj_selected');
+    this.root?.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
     });
+    this.root?.querySelectorAll('.bae_card_invalid').forEach((el) => el.classList.remove('bae_card_invalid'));
     this.root?.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
     this.bga.statusBar.removeActionButtons();
   }

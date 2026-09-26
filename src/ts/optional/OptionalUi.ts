@@ -112,6 +112,7 @@ export class OptionalUi {
     ghost: HTMLElement | null;
     active: boolean;
   } | null = null;
+  private dragClearedSelection = false;
   private lastHoverEl: Element | null = null;
   private static readonly POINTER_DRAG_PX = 16;
   private static readonly TOUCH_TAP_PX = 24;
@@ -174,6 +175,10 @@ export class OptionalUi {
     this.pendingDiscard.clear();
     this.discardLoopEpoch = 0;
     freezeAndFadePreviews(this.host.root);
+    this.host.root?.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected');
+    });
+    this.host.root?.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
   }
 
   onSelectionChanged(): void {
@@ -289,7 +294,9 @@ export class OptionalUi {
         el.classList.remove('bae_card_selected');
       });
     }
-    this.host.root.querySelectorAll('.bae_loc_selected').forEach((el) => el.classList.remove('bae_loc_selected'));
+    this.host.root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid');
+    });
     this.host.root.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
   }
 
@@ -780,8 +787,8 @@ export class OptionalUi {
 
   private clearTransientPreviews(): void {
     if (!this.host.root) return;
-    this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
-    document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
+    this.host.root.querySelectorAll('.bae_motion_clone:not(.bae_discard_ghost):not(.bae_pointer_ghost), .bae_invalid_bubble').forEach((el) => el.remove());
+    document.querySelectorAll('body > .bae_motion_clone:not(.bae_discard_ghost):not(.bae_pointer_ghost), body > .bae_invalid_bubble').forEach((el) => el.remove());
     this.host.root.querySelectorAll('.bae_preview_fade_left').forEach((el) => el.classList.remove('bae_preview_fade_left'));
     this.host.root.querySelectorAll('.bae_card_place_preview').forEach((el) => el.remove());
   }
@@ -1220,6 +1227,7 @@ export class OptionalUi {
           return;
         }
         this.dragCardId = Number(htmlEl.dataset.handCard);
+        this.dragClearedSelection = false;
         ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
         htmlEl.classList.add('bae_dragging');
         this.playSound('select');
@@ -1227,6 +1235,7 @@ export class OptionalUi {
       const onDragEnd = () => {
         htmlEl.classList.remove('bae_dragging');
         this.dragCardId = null;
+        this.dragClearedSelection = false;
         this.clearDropHighlights();
       };
       const onPointerDown = (ev: PointerEvent) => {
@@ -1343,8 +1352,12 @@ export class OptionalUi {
           return;
         }
         ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
+        this.dragClearedSelection = false;
       };
-      const onDragEnd = () => this.clearDropHighlights();
+      const onDragEnd = () => {
+        this.dragClearedSelection = false;
+        this.clearDropHighlights();
+      };
       const onPointerDown = (ev: PointerEvent) => {
         if (ev.pointerType !== 'touch' || this.host.isActionBusy() || !this.canPointerDragPool()) return;
         this.beginPointerDragWatch(ev, {
@@ -1382,6 +1395,9 @@ export class OptionalUi {
     this.host.selectedRegroupIds.clear();
     this.host.selectedPoolSlot = null;
     this.host.selectedObjectiveIdx = null;
+    this.host.root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid');
+    });
     if (this.host.confirmObserveIfReady(cardId, loc)) return;
     this.host.selectedCardId = cardId;
     this.host.selectedLocation = loc;
@@ -1442,6 +1458,7 @@ export class OptionalUi {
     this.tooltipDragging = true;
     this.tooltipPointerHeld = true;
     this.dragCardId = drag.kind === 'hand' ? (drag.cardId ?? null) : null;
+    this.dragClearedSelection = false;
     drag.source.classList.add('bae_dragging');
     this.clearTouchHit();
     try { drag.source.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
@@ -1529,11 +1546,13 @@ export class OptionalUi {
     drag.source.classList.remove('bae_dragging');
     try { drag.source.releasePointerCapture(drag.pointerId); } catch { /* ignore */ }
     this.dragCardId = null;
+    this.dragClearedSelection = false;
     this.clearDropHighlights();
     this.clearTouchHit();
   }
 
   private markDropHover(el: HTMLElement | null, confirm: boolean): void {
+    if (confirm && el) this.suppressSelectionGraphicsForDrag();
     const prev = this.host.root.querySelector('.bae_drop_hover') as HTMLElement | null;
     if (prev === el) {
       if (confirm && el && !el.querySelector('.bae_drop_confirm')) this.addDropConfirm(el);
@@ -1555,6 +1574,7 @@ export class OptionalUi {
       myId,
       loc,
     );
+    if (legal) this.suppressSelectionGraphicsForDrag();
     const prev = this.host.root.querySelector('.bae_drop_hover') as HTMLElement | null;
     if (prev === locEl) {
       locEl.classList.toggle('bae_drop_hover_invalid', !legal);
@@ -1566,6 +1586,28 @@ export class OptionalUi {
     locEl.classList.add('bae_drop_hover');
     locEl.classList.toggle('bae_drop_hover_invalid', !legal);
     if (legal) this.addDropConfirm(locEl);
+  }
+
+  /** Once a legal drop target is hovered, drop-hover is the only selection chrome. */
+  private suppressSelectionGraphicsForDrag(): void {
+    if (this.dragClearedSelection) return;
+    this.dragClearedSelection = true;
+    this.host.selectedLocation = null;
+    this.host.selectedObjectiveIdx = null;
+    this.host.selectedPoolSlot = null;
+    this.clearTransientPreviews();
+    this.clearTouchHit();
+    const root = this.host.root;
+    if (!root) return;
+    root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
+    });
+    root.querySelectorAll('.bae_card_selected, .bae_card_invalid').forEach((el) => {
+      if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost')) return;
+      el.classList.remove('bae_card_selected', 'bae_card_invalid');
+    });
+    root.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
+    this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
   }
 
   private addDropConfirm(el: HTMLElement): void {
