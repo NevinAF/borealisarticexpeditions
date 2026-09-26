@@ -2338,29 +2338,47 @@ export class Game {
   async notif_scoringStep(_args: any) {
     const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playScoringStepResolution(prev, args); } catch (_) { /* keep state apply */ }
+    let scored = false;
+    const showScore = (): void => {
+      if (scored) return;
+      scored = true;
+      this.displayScoringStep(args);
+    };
+    let animated = false;
+    try {
+      animated = await this.optionalUi?.playScoringStepResolution(prev, args, showScore) ?? false;
+    } catch (_) { /* keep state apply */ }
     if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
-    this.renderAll();
+    if (!animated) {
+      this.renderAll();
+      showScore();
+    }
 
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    const anchorId = String(args.anchor_id ?? `bae_playerboard_${pid}`);
-    let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
-    if (color.startsWith && color.startsWith('#')) color = color.substring(1);
     const amount = scoringStepAmount(args);
+    const ctr = this.bga.playerPanels.getScoreCounter(pid);
+    ctr.incValue(amount);
+  }
+
+  private displayScoringStep(args: Record<string, unknown>): void {
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const amount = scoringStepAmount(args);
+    if (!pid || amount === 0) return;
+    const anchorId = String(args.anchor_id ?? `bae_playerboard_${pid}`);
+    let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ''));
+    if (color.startsWith && color.startsWith('#')) color = color.substring(1);
     const scoreStr = (amount >= 0 ? '+' : '') + String(amount);
-    const duration = typeof args.duration === 'number' ? args.duration : 1200;
+    const duration = typeof args.duration === 'number' ? Number(args.duration) : 1200;
     const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
     const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
-
     try {
       if (this.bga && (this.bga as any).gameui && typeof (this.bga as any).gameui.displayScoring === 'function') {
         (this.bga as any).gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
       }
+      this.optionalUi?.liftScoringPopups();
+      requestAnimationFrame(() => this.optionalUi?.liftScoringPopups());
     } catch (err) {
       console.error('scoringStep display failed', err, args);
     }
-
-    const ctr = this.bga.playerPanels.getScoreCounter(pid);
-    ctr.incValue(amount);
   }
 }

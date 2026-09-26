@@ -189,6 +189,16 @@ function scientistMotionLayer(root) {
     }
     return layer;
 }
+/** Above cards/board (and the regular motion layer) for scoring popups and in-flight VP. */
+function scoringLayer(root) {
+    let layer = root.querySelector('.bae_scoring_layer');
+    if (!layer) {
+        layer = document.createElement('div');
+        layer.className = 'bae_scoring_layer';
+        root.appendChild(layer);
+    }
+    return layer;
+}
 /** Higher on screen (and righter) stays behind; lower (and lefter) paints in front. */
 function stackByScreenPosition(items) {
     const sorted = [...items].sort((a, b) => a.top - b.top || b.left - a.left);
@@ -613,8 +623,6 @@ function freezeAndFadePreviews(root, durationMs = 320) {
 /** OPTIONAL: VP token mix, shelf layout, and flights into the player VP zone. */
 const TOKEN_REF_W = { 1: 233, 3: 257, 5: 292 };
 const ZONE_REF_W = 528;
-const CARD_REF_H = 745;
-const CARD_SHIFT_Y = 170;
 const EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
 function playerVp(vps, pid) {
     const raw = vps?.[pid]
@@ -692,13 +700,6 @@ function vpTokensInnerHtml(pid, tokens, baseUrl) {
         return `<img class="bae_vp_token bae_vp_token_${value}" data-vp="${value}" data-col="${slot.col}" data-row="${slot.row}" src="${baseUrl}Tokens/${value}VPToken.png" alt="" draggable="false" style="left:${slot.leftPct.toFixed(1)}%;top:${slot.topPct.toFixed(1)}%;z-index:${vpTokenZIndex(slot)}"/>`;
     }).join('');
 }
-function animalCardVpOrigin(card) {
-    const r = card.getBoundingClientRect();
-    const strip = r.height * (CARD_SHIFT_Y / CARD_REF_H);
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height - strip / 2;
-    return new DOMRect(cx - 1, cy - 1, 2, 2);
-}
 function clamp(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
 }
@@ -766,7 +767,7 @@ class VpTokens {
                 return;
             spawned.push({ clone: this.spawnFlyingToken(value, from, to), from, to, slot });
         });
-        spawned.forEach((it) => { it.clone.style.zIndex = String(80 + vpTokenZIndex(it.slot)); });
+        spawned.forEach((it) => { it.clone.classList.add('bae_vp_flight'); });
         await Promise.all([
             this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
             ...spawned.map((it) => flyCloneFadingIn(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
@@ -993,14 +994,14 @@ class VpTokens {
         const h = to.height > 1 ? to.height : w;
         const start = new DOMRect(from.left + from.width / 2 - w / 2, from.top + from.height / 2 - h / 2, w, h);
         const img = this.createTokenEl(value);
-        img.classList.add('bae_motion_clone', 'bae_resolve_clone');
+        img.classList.add('bae_motion_clone', 'bae_resolve_clone', 'bae_vp_flight');
         img.style.position = 'absolute';
         img.style.transform = 'none';
         img.style.margin = '0';
         img.style.pointerEvents = 'none';
-        img.style.zIndex = '80';
+        img.style.zIndex = '1';
         img.style.opacity = '0';
-        const layer = motionLayer(this.host.root);
+        const layer = scoringLayer(this.host.root);
         const loc = coordsInParent(layer, start);
         img.style.left = `${loc.left}px`;
         img.style.top = `${loc.top}px`;
@@ -1530,24 +1531,51 @@ class OptionalUi {
             this.endResolution();
         }
     }
-    async playScoringStepResolution(_prev, args) {
+    async playScoringStepResolution(_prev, args, onStart) {
         const base = this.duration();
         const ms = base === 0 ? 0 : Math.round(base + 200);
         const pid = Number(args.player_id ?? args.playerId ?? 0);
         if (ms === 0 || this.resolving || !pid)
-            return;
+            return false;
         const flights = this.scoringTokenFlights(pid, args);
         if (flights.length === 0)
-            return;
+            return false;
         this.resolving = true;
         this.prepareResolution([`player:${pid}`]);
         try {
+            onStart?.();
             await this.vp.addIncoming(pid, flights.map((f) => f.value), flights.map((f) => f.from), ms, true);
             await wait(500);
+            return true;
         }
         finally {
             this.endResolution();
         }
+    }
+    /** Move BGA +XX popups onto the scoring overlay so they paint above cards and tokens. */
+    liftScoringPopups() {
+        const root = this.host.root;
+        if (!root)
+            return;
+        const layer = scoringLayer(root);
+        document.querySelectorAll('.scored').forEach((node) => {
+            if (!(node instanceof HTMLElement) || layer.contains(node))
+                return;
+            const r = node.getBoundingClientRect();
+            if (r.width < 1 && r.height < 1)
+                return;
+            layer.appendChild(node);
+            const loc = coordsInParent(layer, r);
+            node.style.position = 'absolute';
+            node.style.left = `${loc.left}px`;
+            node.style.top = `${loc.top}px`;
+            node.style.right = 'auto';
+            node.style.bottom = 'auto';
+            node.style.margin = '0';
+            node.style.transform = 'none';
+            node.style.zIndex = '2';
+            node.style.pointerEvents = 'none';
+        });
     }
     scoringTokenFlights(pid, args) {
         const kind = scoringStepKind(args);
@@ -1558,68 +1586,71 @@ class OptionalUi {
             for (const value of optimalTokens(amount))
                 out.push({ value, from });
         };
-        const locOf = () => Number(args.location ?? args.loc ?? 0);
         const amounts = () => [
             Number(args.amount_left ?? 0),
             Number(args.amount_mid ?? 0),
             Number(args.amount_right ?? 0),
         ];
-        if (kind === 'species_sets') {
-            const from = this.speciesSetOrigin(pid);
-            if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
-                amounts().forEach((amount) => push(amount, from));
-            }
-            else {
-                push(Number(args.amount ?? 0), from);
-            }
+        if (kind === 'species_sets' && (args.amount_left != null || args.amount_mid != null || args.amount_right != null)) {
+            amounts().forEach((amount, loc) => push(amount, this.scoringAnchorRect(this.speciesSetAnchorEl(pid, loc))));
             return out;
         }
-        if (kind === 'exploration_track') {
+        if (kind === 'exploration_track' && (args.amount_left != null || args.amount_mid != null || args.amount_right != null)) {
             const flags = this.host.gamedatas.boardState.flags?.[pid] ?? {};
             const flagAt = (loc) => Number(args.flag_space
                 ?? flags[loc]
                 ?? flags[String(loc)]
                 ?? 0);
-            if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
-                amounts().forEach((amount, loc) => push(amount, this.trackVpOrigin(pid, loc, flagAt(loc))));
-            }
-            else {
-                const loc = locOf();
-                push(Number(args.amount ?? 0), this.trackVpOrigin(pid, loc, flagAt(loc)));
-            }
+            amounts().forEach((amount, loc) => push(amount, this.scoringAnchorRect(this.trackEl(pid, loc, flagAt(loc)))));
             return out;
         }
-        if (kind === 'animal_card') {
-            const loc = locOf();
-            const slot = Number(args.slot ?? 0);
-            push(Number(args.amount ?? 0), this.animalCardVpOriginRect(pid, loc, slot, args));
-            return out;
-        }
-        if (kind === 'scoring_card') {
-            push(Number(args.amount ?? 0), this.scoringCardOrigin(args));
-            return out;
-        }
-        const fromAnchor = this.originFromAnchor(String(args.anchor_id ?? ''), pid, args);
-        push(scoringStepAmount(args), fromAnchor);
+        push(scoringStepAmount(args), this.scoringPopupOrigin(pid, args));
         return out;
     }
-    speciesSetOrigin(pid) {
-        const track = this.host.root.querySelector(`#bae_animal_loc_vp_${pid}`);
-        return rectOf(track) ?? this.locationZoneRect(pid, 2);
+    /** Same element box BGA displayScoring centers on, so tokens spawn under the +XX. */
+    scoringPopupOrigin(pid, args) {
+        const anchorId = String(args.anchor_id ?? '');
+        const fromId = this.scoringAnchorRect(this.scoringAnchorById(anchorId));
+        if (fromId)
+            return fromId;
+        const kind = scoringStepKind(args);
+        const loc = Number(args.location ?? args.loc ?? 0);
+        if (kind === 'species_sets')
+            return this.scoringAnchorRect(this.speciesSetAnchorEl(pid, loc));
+        if (kind === 'exploration_track') {
+            const space = Number(args.flag_space ?? 0);
+            return this.scoringAnchorRect(this.trackEl(pid, loc, space)) ?? this.locationZoneRect(pid, loc);
+        }
+        if (kind === 'animal_card') {
+            const slot = Number(args.slot ?? 0);
+            const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`)
+                ?? (args.card_id != null
+                    ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`)
+                    : null);
+            return this.scoringAnchorRect(card) ?? this.locationZoneRect(pid, loc);
+        }
+        if (kind === 'scoring_card')
+            return this.scoringCardOrigin(args);
+        return null;
     }
-    trackVpOrigin(pid, loc, space) {
-        const flag = this.flagEl(pid, loc, space);
-        const cell = this.trackEl(pid, loc, space);
-        return rectOf(flag) ?? rectOf(cell) ?? this.locationZoneRect(pid, loc);
+    scoringAnchorById(anchorId) {
+        if (!anchorId)
+            return null;
+        return (this.host.root.querySelector(`#${anchorId}`)
+            ?? document.getElementById(anchorId));
     }
-    animalCardVpOriginRect(pid, loc, slot, args) {
-        const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`)
-            ?? (args.card_id != null
-                ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`)
-                : null);
-        if (card)
-            return animalCardVpOrigin(card);
-        return this.locationZoneRect(pid, loc);
+    scoringAnchorRect(el) {
+        if (!el)
+            return null;
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 && r.height < 1)
+            return null;
+        return r;
+    }
+    speciesSetAnchorEl(pid, loc) {
+        return this.host.root.querySelector(`#bae_pile_${pid}_${loc}_0`)
+            ?? this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"] .bae_pile_slot`)
+            ?? this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
     }
     scoringCardOrigin(args) {
         const scoringId = Number(args.scoring_id ?? args.scoringId ?? NaN);
@@ -1627,29 +1658,7 @@ class OptionalUi {
             ? Number(args.scoring_index)
             : (this.host.gamedatas.boardState.scoring_cards ?? []).findIndex((id) => Number(id) === scoringId);
         const card = this.host.root.querySelector(`#bae_score_${idx}`);
-        return rectOf(card);
-    }
-    originFromAnchor(anchorId, pid, args) {
-        if (!anchorId || anchorId === `bae_playerboard_${pid}`)
-            return null;
-        const pile = this.numericIdParts(anchorId, 'bae_pile_');
-        if (pile?.length === 3)
-            return this.animalCardVpOriginRect(pile[0], pile[1], pile[2], args);
-        const track = this.numericIdParts(anchorId, 'bae_track_');
-        if (track?.length === 3)
-            return this.trackVpOrigin(track[0], track[1], track[2]);
-        const el = (this.host.root.querySelector(`#${anchorId}`)
-            ?? document.getElementById(anchorId));
-        return rectOf(el);
-    }
-    /** Parse trailing numeric segments of a bae_pile / bae_track element id. */
-    numericIdParts(id, prefix) {
-        if (!id.startsWith(prefix))
-            return null;
-        const nums = id.slice(prefix.length).split('_').map(Number);
-        if (nums.length === 0 || nums.some((n) => !Number.isFinite(n)))
-            return null;
-        return nums;
+        return this.scoringAnchorRect(card);
     }
     locationZoneRect(pid, loc) {
         const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
@@ -6456,33 +6465,52 @@ class Game {
     async notif_scoringStep(_args) {
         const args = this.unwrapNotif(_args);
         const prev = this.gamedatas.boardState;
+        let scored = false;
+        const showScore = () => {
+            if (scored)
+                return;
+            scored = true;
+            this.displayScoringStep(args);
+        };
+        let animated = false;
         try {
-            await this.optionalUi?.playScoringStepResolution(prev, args);
+            animated = await this.optionalUi?.playScoringStepResolution(prev, args, showScore) ?? false;
         }
         catch (_) { /* keep state apply */ }
         if (args.boardState)
             this.gamedatas.boardState = args.boardState;
-        this.renderAll();
+        if (!animated) {
+            this.renderAll();
+            showScore();
+        }
         const pid = Number(args.player_id ?? args.playerId ?? 0);
+        const amount = scoringStepAmount(args);
+        const ctr = this.bga.playerPanels.getScoreCounter(pid);
+        ctr.incValue(amount);
+    }
+    displayScoringStep(args) {
+        const pid = Number(args.player_id ?? args.playerId ?? 0);
+        const amount = scoringStepAmount(args);
+        if (!pid || amount === 0)
+            return;
         const anchorId = String(args.anchor_id ?? `bae_playerboard_${pid}`);
-        let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ""));
+        let color = String(args.color ?? (this.gamedatas.players?.[pid]?.color ?? ''));
         if (color.startsWith && color.startsWith('#'))
             color = color.substring(1);
-        const amount = scoringStepAmount(args);
         const scoreStr = (amount >= 0 ? '+' : '') + String(amount);
-        const duration = typeof args.duration === 'number' ? args.duration : 1200;
+        const duration = typeof args.duration === 'number' ? Number(args.duration) : 1200;
         const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
         const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
         try {
             if (this.bga && this.bga.gameui && typeof this.bga.gameui.displayScoring === 'function') {
                 this.bga.gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
             }
+            this.optionalUi?.liftScoringPopups();
+            requestAnimationFrame(() => this.optionalUi?.liftScoringPopups());
         }
         catch (err) {
             console.error('scoringStep display failed', err, args);
         }
-        const ctr = this.bga.playerPanels.getScoreCounter(pid);
-        ctr.incValue(amount);
     }
 }
 Game.BOARD_REFERENCE_WIDTH_PX = 3788;

@@ -24,10 +24,10 @@ import {
   startScientistTrailToRect,
   retargetPreviewClones,
   motionLayer,
+  scoringLayer,
   wait,
 } from './Motion';
 import {
-  animalCardVpOrigin,
   optimalTokens,
   scoringStepAmount,
   scoringStepKind,
@@ -570,16 +570,21 @@ export class OptionalUi {
     }
   }
 
-  async playScoringStepResolution(_prev: BoardState, args: Record<string, unknown>): Promise<void> {
+  async playScoringStepResolution(
+    _prev: BoardState,
+    args: Record<string, unknown>,
+    onStart?: () => void,
+  ): Promise<boolean> {
     const base = this.duration();
     const ms = base === 0 ? 0 : Math.round(base + 200);
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    if (ms === 0 || this.resolving || !pid) return;
+    if (ms === 0 || this.resolving || !pid) return false;
     const flights = this.scoringTokenFlights(pid, args);
-    if (flights.length === 0) return;
+    if (flights.length === 0) return false;
     this.resolving = true;
     this.prepareResolution([`player:${pid}`]);
     try {
+      onStart?.();
       await this.vp.addIncoming(
         pid,
         flights.map((f) => f.value),
@@ -588,9 +593,33 @@ export class OptionalUi {
         true,
       );
       await wait(500);
+      return true;
     } finally {
       this.endResolution();
     }
+  }
+
+  /** Move BGA +XX popups onto the scoring overlay so they paint above cards and tokens. */
+  liftScoringPopups(): void {
+    const root = this.host.root;
+    if (!root) return;
+    const layer = scoringLayer(root);
+    document.querySelectorAll('.scored').forEach((node) => {
+      if (!(node instanceof HTMLElement) || layer.contains(node)) return;
+      const r = node.getBoundingClientRect();
+      if (r.width < 1 && r.height < 1) return;
+      layer.appendChild(node);
+      const loc = coordsInParent(layer, r);
+      node.style.position = 'absolute';
+      node.style.left = `${loc.left}px`;
+      node.style.top = `${loc.top}px`;
+      node.style.right = 'auto';
+      node.style.bottom = 'auto';
+      node.style.margin = '0';
+      node.style.transform = 'none';
+      node.style.zIndex = '2';
+      node.style.pointerEvents = 'none';
+    });
   }
 
   private scoringTokenFlights(
@@ -603,22 +632,16 @@ export class OptionalUi {
       if (amount <= 0 || !from) return;
       for (const value of optimalTokens(amount)) out.push({ value, from });
     };
-    const locOf = (): number => Number(args.location ?? args.loc ?? 0);
     const amounts = (): number[] => [
       Number(args.amount_left ?? 0),
       Number(args.amount_mid ?? 0),
       Number(args.amount_right ?? 0),
     ];
-    if (kind === 'species_sets') {
-      const from = this.speciesSetOrigin(pid);
-      if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
-        amounts().forEach((amount) => push(amount, from));
-      } else {
-        push(Number(args.amount ?? 0), from);
-      }
+    if (kind === 'species_sets' && (args.amount_left != null || args.amount_mid != null || args.amount_right != null)) {
+      amounts().forEach((amount, loc) => push(amount, this.scoringAnchorRect(this.speciesSetAnchorEl(pid, loc))));
       return out;
     }
-    if (kind === 'exploration_track') {
+    if (kind === 'exploration_track' && (args.amount_left != null || args.amount_mid != null || args.amount_right != null)) {
       const flags = this.host.gamedatas.boardState.flags?.[pid] ?? {};
       const flagAt = (loc: number): number => Number(
         args.flag_space
@@ -626,52 +649,58 @@ export class OptionalUi {
         ?? (flags as Record<string, number>)[String(loc)]
         ?? 0,
       );
-      if (args.amount_left != null || args.amount_mid != null || args.amount_right != null) {
-        amounts().forEach((amount, loc) => push(amount, this.trackVpOrigin(pid, loc, flagAt(loc))));
-      } else {
-        const loc = locOf();
-        push(Number(args.amount ?? 0), this.trackVpOrigin(pid, loc, flagAt(loc)));
-      }
+      amounts().forEach((amount, loc) => push(amount, this.scoringAnchorRect(this.trackEl(pid, loc, flagAt(loc)))));
       return out;
     }
-    if (kind === 'animal_card') {
-      const loc = locOf();
-      const slot = Number(args.slot ?? 0);
-      push(Number(args.amount ?? 0), this.animalCardVpOriginRect(pid, loc, slot, args));
-      return out;
-    }
-    if (kind === 'scoring_card') {
-      push(Number(args.amount ?? 0), this.scoringCardOrigin(args));
-      return out;
-    }
-    const fromAnchor = this.originFromAnchor(String(args.anchor_id ?? ''), pid, args);
-    push(scoringStepAmount(args), fromAnchor);
+    push(scoringStepAmount(args), this.scoringPopupOrigin(pid, args));
     return out;
   }
 
-  private speciesSetOrigin(pid: number): DOMRect | null {
-    const track = this.host.root.querySelector(`#bae_animal_loc_vp_${pid}`) as HTMLElement | null;
-    return rectOf(track) ?? this.locationZoneRect(pid, 2);
+  /** Same element box BGA displayScoring centers on, so tokens spawn under the +XX. */
+  private scoringPopupOrigin(pid: number, args: Record<string, unknown>): DOMRect | null {
+    const anchorId = String(args.anchor_id ?? '');
+    const fromId = this.scoringAnchorRect(this.scoringAnchorById(anchorId));
+    if (fromId) return fromId;
+    const kind = scoringStepKind(args);
+    const loc = Number(args.location ?? args.loc ?? 0);
+    if (kind === 'species_sets') return this.scoringAnchorRect(this.speciesSetAnchorEl(pid, loc));
+    if (kind === 'exploration_track') {
+      const space = Number(args.flag_space ?? 0);
+      return this.scoringAnchorRect(this.trackEl(pid, loc, space)) ?? this.locationZoneRect(pid, loc);
+    }
+    if (kind === 'animal_card') {
+      const slot = Number(args.slot ?? 0);
+      const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`) as HTMLElement | null
+        ?? (args.card_id != null
+          ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`) as HTMLElement | null
+          : null);
+      return this.scoringAnchorRect(card) ?? this.locationZoneRect(pid, loc);
+    }
+    if (kind === 'scoring_card') return this.scoringCardOrigin(args);
+    return null;
   }
 
-  private trackVpOrigin(pid: number, loc: number, space: number): DOMRect | null {
-    const flag = this.flagEl(pid, loc, space);
-    const cell = this.trackEl(pid, loc, space);
-    return rectOf(flag) ?? rectOf(cell) ?? this.locationZoneRect(pid, loc);
+  private scoringAnchorById(anchorId: string): HTMLElement | null {
+    if (!anchorId) return null;
+    return (this.host.root.querySelector(`#${anchorId}`)
+      ?? document.getElementById(anchorId)) as HTMLElement | null;
   }
 
-  private animalCardVpOriginRect(
-    pid: number,
-    loc: number,
-    slot: number,
-    args: Record<string, unknown>,
-  ): DOMRect | null {
-    const card = this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${slot}`) as HTMLElement | null
-      ?? (args.card_id != null
-        ? this.host.root.querySelector(`#bae_pile_${pid}_${loc}_${Number(args.card_id)}`) as HTMLElement | null
-        : null);
-    if (card) return animalCardVpOrigin(card);
-    return this.locationZoneRect(pid, loc);
+  private scoringAnchorRect(el: HTMLElement | null | undefined): DOMRect | null {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 && r.height < 1) return null;
+    return r;
+  }
+
+  private speciesSetAnchorEl(pid: number, loc: number): HTMLElement | null {
+    return this.host.root.querySelector(`#bae_pile_${pid}_${loc}_0`) as HTMLElement | null
+      ?? this.host.root.querySelector(
+        `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"] .bae_pile_slot`,
+      ) as HTMLElement | null
+      ?? this.host.root.querySelector(
+        `.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`,
+      ) as HTMLElement | null;
   }
 
   private scoringCardOrigin(args: Record<string, unknown>): DOMRect | null {
@@ -680,26 +709,7 @@ export class OptionalUi {
       ? Number(args.scoring_index)
       : (this.host.gamedatas.boardState.scoring_cards ?? []).findIndex((id) => Number(id) === scoringId);
     const card = this.host.root.querySelector(`#bae_score_${idx}`) as HTMLElement | null;
-    return rectOf(card);
-  }
-
-  private originFromAnchor(anchorId: string, pid: number, args: Record<string, unknown>): DOMRect | null {
-    if (!anchorId || anchorId === `bae_playerboard_${pid}`) return null;
-    const pile = this.numericIdParts(anchorId, 'bae_pile_');
-    if (pile?.length === 3) return this.animalCardVpOriginRect(pile[0], pile[1], pile[2], args);
-    const track = this.numericIdParts(anchorId, 'bae_track_');
-    if (track?.length === 3) return this.trackVpOrigin(track[0], track[1], track[2]);
-    const el = (this.host.root.querySelector(`#${anchorId}`)
-      ?? document.getElementById(anchorId)) as HTMLElement | null;
-    return rectOf(el);
-  }
-
-  /** Parse trailing numeric segments of a bae_pile / bae_track element id. */
-  private numericIdParts(id: string, prefix: string): number[] | null {
-    if (!id.startsWith(prefix)) return null;
-    const nums = id.slice(prefix.length).split('_').map(Number);
-    if (nums.length === 0 || nums.some((n) => !Number.isFinite(n))) return null;
-    return nums;
+    return this.scoringAnchorRect(card);
   }
 
   private locationZoneRect(pid: number, loc: number): DOMRect | null {

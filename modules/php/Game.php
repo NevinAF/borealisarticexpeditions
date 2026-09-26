@@ -1422,7 +1422,7 @@ class Game extends \Bga\GameFramework\Table
                         'amount' => $vp,
                         'location' => $loc,
                         'player_name' => $playerName,
-                        'anchor_id' => "bae_animal_loc_vp_{$pid}",
+                        'anchor_id' => "bae_pile_{$pid}_{$loc}_0",
                         'color' => $color,
                     ]
                 );

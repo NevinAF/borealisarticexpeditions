@@ -6,6 +6,7 @@ import {
   flyCloneFadingIn,
   motionLayer,
   placeClone,
+  scoringLayer,
   startTrailToRect,
   bindPreviewFollow,
   visualRect,
@@ -22,8 +23,6 @@ export type VpValue = 1 | 3 | 5;
 
 const TOKEN_REF_W: Record<VpValue, number> = { 1: 233, 3: 257, 5: 292 };
 const ZONE_REF_W = 528;
-const CARD_REF_H = 745;
-const CARD_SHIFT_Y = 170;
 const EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
 
 export function playerVp(vps: BoardState['vps'] | undefined, pid: number): number {
@@ -112,14 +111,6 @@ export function vpTokensInnerHtml(pid: number, tokens: VpValue[], baseUrl: strin
   }).join('');
 }
 
-export function animalCardVpOrigin(card: HTMLElement): DOMRect {
-  const r = card.getBoundingClientRect();
-  const strip = r.height * (CARD_SHIFT_Y / CARD_REF_H);
-  const cx = r.left + r.width / 2;
-  const cy = r.top + r.height - strip / 2;
-  return new DOMRect(cx - 1, cy - 1, 2, 2);
-}
-
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -195,7 +186,7 @@ export class VpTokens {
       if (!from || !to || !slot) return;
       spawned.push({ clone: this.spawnFlyingToken(value, from, to), from, to, slot });
     });
-    spawned.forEach((it) => { it.clone.style.zIndex = String(80 + vpTokenZIndex(it.slot)); });
+    spawned.forEach((it) => { it.clone.classList.add('bae_vp_flight'); });
     await Promise.all([
       this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
       ...spawned.map((it) => flyCloneFadingIn(it.clone, it.to, ms, this.host.root, true).then(() => { it.clone.remove(); })),
@@ -442,14 +433,14 @@ export class VpTokens {
       h,
     );
     const img = this.createTokenEl(value);
-    img.classList.add('bae_motion_clone', 'bae_resolve_clone');
+    img.classList.add('bae_motion_clone', 'bae_resolve_clone', 'bae_vp_flight');
     img.style.position = 'absolute';
     img.style.transform = 'none';
     img.style.margin = '0';
     img.style.pointerEvents = 'none';
-    img.style.zIndex = '80';
+    img.style.zIndex = '1';
     img.style.opacity = '0';
-    const layer = motionLayer(this.host.root);
+    const layer = scoringLayer(this.host.root);
     const loc = coordsInParent(layer, start);
     img.style.left = `${loc.left}px`;
     img.style.top = `${loc.top}px`;

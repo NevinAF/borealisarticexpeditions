@@ -1634,6 +1634,23 @@ html[data-theme="dark"] .bae_opening_intro {
   z-index: 10;
 }
 
+.bae_scoring_layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  overflow: visible;
+}
+
+.bae_scoring_layer .scored {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.bae_vp_flight {
+  z-index: 1;
+}
+
 .bae_sci_motion_layer {
   position: absolute;
   inset: 0;

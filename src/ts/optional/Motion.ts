@@ -74,6 +74,17 @@ export function scientistMotionLayer(root: HTMLElement): HTMLElement {
   return layer;
 }
 
+/** Above cards/board (and the regular motion layer) for scoring popups and in-flight VP. */
+export function scoringLayer(root: HTMLElement): HTMLElement {
+  let layer = root.querySelector('.bae_scoring_layer') as HTMLElement | null;
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'bae_scoring_layer';
+    root.appendChild(layer);
+  }
+  return layer;
+}
+
 /** Higher on screen (and righter) stays behind; lower (and lefter) paints in front. */
 export function stackByScreenPosition(
   items: Array<{ el: HTMLElement; top: number; left: number }>,
