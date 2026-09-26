@@ -1632,15 +1632,24 @@ class OptionalUi {
     originFromAnchor(anchorId, pid, args) {
         if (!anchorId || anchorId === `bae_playerboard_${pid}`)
             return null;
-        const pile = /^bae_pile_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
-        if (pile)
-            return this.animalCardVpOriginRect(Number(pile[1]), Number(pile[2]), Number(pile[3]), args);
-        const track = /^bae_track_(\d+)_(\d+)_(\d+)$/.exec(anchorId);
-        if (track)
-            return this.trackVpOrigin(Number(track[1]), Number(track[2]), Number(track[3]));
+        const pile = this.numericIdParts(anchorId, 'bae_pile_');
+        if (pile?.length === 3)
+            return this.animalCardVpOriginRect(pile[0], pile[1], pile[2], args);
+        const track = this.numericIdParts(anchorId, 'bae_track_');
+        if (track?.length === 3)
+            return this.trackVpOrigin(track[0], track[1], track[2]);
         const el = (this.host.root.querySelector(`#${anchorId}`)
             ?? document.getElementById(anchorId));
         return rectOf(el);
+    }
+    /** Parse trailing numeric segments of a bae_pile / bae_track element id. */
+    numericIdParts(id, prefix) {
+        if (!id.startsWith(prefix))
+            return null;
+        const nums = id.slice(prefix.length).split('_').map(Number);
+        if (nums.length === 0 || nums.some((n) => !Number.isFinite(n)))
+            return null;
+        return nums;
     }
     locationZoneRect(pid, loc) {
         const zone = this.host.root.querySelector(`.bae_location_zone[data-player-id="${pid}"][data-loc="${loc}"]`);
@@ -5998,13 +6007,13 @@ class Game {
                 ev.stopPropagation();
                 const cur = ev.currentTarget;
                 const slotEl = cur.classList.contains('bae_pile_slot') ? cur : cur.closest('.bae_pile_slot');
-                if (!slotEl)
+                if (!slotEl?.id.startsWith('bae_pile_'))
                     return;
-                const m = slotEl.id.match(/^bae_pile_(\d+)_(\d+)_\d+$/);
-                if (!m)
+                const nums = slotEl.id.slice('bae_pile_'.length).split('_').map(Number);
+                if (nums.length < 2 || !Number.isFinite(nums[0]) || !Number.isFinite(nums[1]))
                     return;
-                const pid = Number(m[1]);
-                const loc = Number(m[2]);
+                const pid = nums[0];
+                const loc = nums[1];
                 if (pid !== myId)
                     return;
                 if (this.isActionBusy())

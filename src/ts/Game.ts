@@ -1912,11 +1912,11 @@ export class Game {
           ev.stopPropagation();
           const cur = ev.currentTarget as HTMLElement;
           const slotEl = cur.classList.contains('bae_pile_slot') ? cur : cur.closest('.bae_pile_slot') as HTMLElement | null;
-          if (!slotEl) return;
-          const m = slotEl.id.match(/^bae_pile_(\d+)_(\d+)_\d+$/);
-          if (!m) return;
-          const pid = Number(m[1]);
-          const loc = Number(m[2]);
+          if (!slotEl?.id.startsWith('bae_pile_')) return;
+          const nums = slotEl.id.slice('bae_pile_'.length).split('_').map(Number);
+          if (nums.length < 2 || !Number.isFinite(nums[0]) || !Number.isFinite(nums[1])) return;
+          const pid = nums[0];
+          const loc = nums[1];
           if (pid !== myId) return;
           if (this.isActionBusy()) return;
           if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {

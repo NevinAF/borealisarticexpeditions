@@ -1,1 +1,7 @@
-This directory is meant to hold PHP / js files for inclusion in your Game.php / Game.js if needed.
+PHP and compiled JavaScript for Borealis: Arctic Expeditions.
+
+- php/Game.php — server game class and board-state helpers
+- php/States/ — turn state classes (opening mulligan, gameplay, regroup, replenish, objectives)
+- js/Game.js — client interface compiled from src/ts (edit TypeScript, not this file)
+
+See https://en.doc.boardgamearena.com/Studio_file_reference#modules.2F

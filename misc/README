@@ -1,0 +1,6 @@
+Studio-only files for Borealis: Arctic Expeditions.
+
+This folder is not deployed to production. Use it for notes, scratch assets, and
+local tooling that should stay with the Studio project (1 MB limit).
+
+Design docs live in docs/. Source art and export configs live in resources/.
