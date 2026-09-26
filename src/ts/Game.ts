@@ -13,6 +13,7 @@ export class Game {
   private static readonly TOP_ROW_REFERENCE_WIDTH_PX = 6124;
   private static readonly MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
   private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 8 + 400;
+  private static readonly TOOLTIP_MAX_WIDTH_PX = 640;
   private static readonly ANIMAL_SPRITE_COLUMNS = 11;
   private static readonly ANIMAL_SPRITE_ROWS = 10;
   private static readonly ANIMAL_SPRITE_LAST_INDEX = 100;
@@ -672,10 +673,7 @@ export class Game {
   confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
     if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
-    if (!this.isObserveSelectionLegal(cardId, location)) {
-      this.optionalUi?.showInvalidObserveHint();
-      return false;
-    }
+    if (!this.isObserveSelectionLegal(cardId, location)) return false;
     void this.sendAction("actObserveAnimal", {
       card_id: cardId,
       location,
@@ -840,7 +838,9 @@ export class Game {
       html += `<div id="bae_animal_loc_vp_${pid}" class="bae_animal_loc_vp_track" data-player-id="${pid}" aria-label="${this.escapeHtml(_('Animal location VP'))}"></div>`;
 
       for (let loc = 0; loc < 3; loc++) {
-        const sel = isSelf && this.selectedLocation === loc && !this.campSelected ? " bae_loc_selected" : "";
+        const locSelected = isSelf && this.selectedLocation === loc && !this.campSelected;
+        const locInvalid = locSelected && this.isGameplayLike() && this.selectedCardId != null && !canConfirmObserve;
+        const sel = locSelected ? (locInvalid ? " bae_loc_invalid" : " bae_loc_selected") : "";
         const posClass = loc === 0 ? " bae_slot_left" : loc === 1 ? " bae_slot_mid" : " bae_slot_right";
         html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}">`;
 
@@ -898,9 +898,10 @@ export class Game {
     const baseScale = Number.isFinite(currentScale) ? currentScale : this.getScale();
     const desired = Math.max(0.18, baseScale * 2);
     const viewport = Math.max(160, Math.min(window.innerWidth, document.documentElement.clientWidth) - 48);
+    const box = Math.min(viewport * 0.92, Game.TOOLTIP_MAX_WIDTH_PX);
     const gap = 8;
     const columns = 2;
-    const maxCardW = (viewport * 0.92 - gap * (columns - 1)) / columns;
+    const maxCardW = (box - gap * (columns - 1)) / columns;
     const cap = maxCardW / Game.CARD_REFERENCE_HEIGHT_PX;
     return Math.max(0.12, Math.min(desired, cap));
   }
@@ -1172,10 +1173,11 @@ export class Game {
           trackVps[loc] ?? [],
           vehicleNames,
         );
+        const trackId = `bae_track_${pid}_${loc}`;
+        try { this.bga.gameui.removeTooltip(trackId); } catch (_) {}
+        this.bga.gameui.addTooltipHtml(trackId, html);
         for (let i = 0; i < 8; i++) {
-          const id = `bae_track_${pid}_${loc}_${i}`;
-          try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-          this.bga.gameui.addTooltipHtml(id, html);
+          try { this.bga.gameui.removeTooltip(`bae_track_${pid}_${loc}_${i}`); } catch (_) {}
         }
       }
     }
@@ -1198,7 +1200,7 @@ export class Game {
   private renderTrackColumn(player_id: number, track: TrackUiClient, location: number, flagDepth: number): string {
     const safeDepth = Math.max(0, Math.min(7, flagDepth));
     const baseUrl = this.bga.images.getImgUrl();
-    let html = `<div class="bae_track">`;
+    let html = `<div id="bae_track_${player_id}_${location}" class="bae_track">`;
     for (let i = 0; i < 8; i++) {
       const jitterLeft = ((player_id * 3 + location * 5 + i * 7) % 9) - 4;
       const jitterTop = ((player_id * 7 + location * 3 + i * 11) % 9) - 4;
@@ -1586,8 +1588,8 @@ export class Game {
       : '';
 
     return `
-      <div class="bae_tooltip_card" style="width:${width}px;max-width:${width}px;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
-        <div class="bae_tooltip_card_face" style="width:${width}px;aspect-ratio:${aspectRatio};">${cardHtml}</div>
+      <div class="bae_tooltip_card" style="width:${width}px;max-width:100%;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
+        <div class="bae_tooltip_card_face" style="width:100%;aspect-ratio:${aspectRatio};">${cardHtml}</div>
         ${scoresBlock}
         ${extraBlock}
       </div>
@@ -1714,11 +1716,14 @@ export class Game {
       for (const c of h) {
         const id = Number(c.id);
         const selObs = !this.campSelected && this.selectedCardId === id ? " bae_card_selected" : "";
+        const selInvalid = selObs && this.isGameplayLike() && this.selectedLocation != null && !this.isObserveSelectionLegal()
+          ? " bae_card_invalid"
+          : "";
         const selRg = (this.campSelected || this.isOpeningMulliganLike()) && this.selectedRegroupIds.has(id) ? " bae_card_regroup" : "";
         const confirmBlurb = this.isGameplayLike() && this.selectedCardId === id && this.isObserveSelectionLegal()
           ? `<span class="bae_confirm_blurb">${this.escapeHtml(_('Confirm?'))}</span>`
           : '';
-        html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}${confirmBlurb}</button>`;
+        html += `<button id="bae_hand_${myId}_${id}" type="button" class="bae_card bae_handcard${selObs}${selInvalid}${selRg}" data-hand-card="${id}">${this.cardFaceById(id)}${confirmBlurb}</button>`;
       }
       for (let i = h.length; i < HAND_RESERVE; i++) {
         html += `<div class="bae_card bae_card_placeholder" aria-hidden="true"></div>`;
