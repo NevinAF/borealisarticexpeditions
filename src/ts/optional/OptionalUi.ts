@@ -216,7 +216,7 @@ export class OptionalUi {
     this.updateActionPreviews();
   }
 
-  playSound(kind: 'select' | 'success' | 'claim'): void {
+  playSoundKind(kind: 'select' | 'success' | 'claim'): void {
     if (this.host.bga.userPreferences?.get(PREF_SOUND) === 0) return;
     try {
       if (!this.audioCtx) this.audioCtx = new AudioContext();
@@ -1232,7 +1232,7 @@ export class OptionalUi {
         this.dragClearedSelection = false;
         ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
         htmlEl.classList.add('bae_dragging');
-        this.playSound('select');
+        this.playSoundKind('select');
       };
       const onDragEnd = () => {
         htmlEl.classList.remove('bae_dragging');
@@ -1480,7 +1480,7 @@ export class OptionalUi {
     motionLayer(this.host.root).appendChild(ghost);
     drag.ghost = ghost;
     this.placePointerGhost(ghost, ev.clientX, ev.clientY);
-    this.playSound('select');
+    this.playSoundKind('select');
   }
 
   private placePointerGhost(ghost: HTMLElement, clientX: number, clientY: number): void {

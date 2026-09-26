@@ -550,7 +550,7 @@ export class Game {
     this.renderAll();
     this.onUpdateActionButtons(this.currentStateName(), null);
     this.optionalUi?.onSelectionChanged();
-    this.optionalUi?.playSound('select');
+    this.optionalUi?.playSoundKind('select');
   }
 
   isActionBusy(): boolean {
@@ -1939,7 +1939,7 @@ export class Game {
         this.selectedRegroupIds.clear();
         this.renderAll();
         this.onUpdateActionButtons(this.currentStateName(), null);
-        this.optionalUi?.playSound('select');
+        this.optionalUi?.playSoundKind('select');
       });
     });
   }
@@ -2150,7 +2150,7 @@ export class Game {
   async notif_observeAnimal(_args: any) {
     const prev = this.gamedatas.boardState;
     try { await this.optionalUi?.playObserveResolution(prev, _args); } catch (_) { /* keep state apply */ }
-    this.optionalUi?.playSound('success');
+    this.optionalUi?.playSoundKind('success');
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
@@ -2231,7 +2231,7 @@ export class Game {
     this.renderAll();
   }
   async notif_objectiveClaimed(_args: any) {
-    this.optionalUi?.playSound('claim');
+    this.optionalUi?.playSoundKind('claim');
     const prev = this.gamedatas.boardState;
     try { await this.optionalUi?.playObjectiveClaimResolution(prev, _args); } catch (_) { /* keep state apply */ }
     if (_args.boardState) {
