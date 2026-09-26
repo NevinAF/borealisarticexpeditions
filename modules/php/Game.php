@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace Bga\Games\BorealisArticExpeditions;
+namespace Bga\Games\BorealisArcticExpeditions;
 
-use Bga\Games\BorealisArticExpeditions\States\Gameplay;
-use Bga\Games\BorealisArticExpeditions\States\OpeningMulligan;
-use Bga\Games\BorealisArticExpeditions\States\PromptClaimObjective;
-use Bga\Games\BorealisArticExpeditions\States\AssignCampScientists;
-use Bga\Games\BorealisArticExpeditions\States\ReplenishAnimalCard;
-use Bga\Games\BorealisArticExpeditions\States\NextPlayer;
+use Bga\Games\BorealisArcticExpeditions\States\Gameplay;
+use Bga\Games\BorealisArcticExpeditions\States\OpeningMulligan;
+use Bga\Games\BorealisArcticExpeditions\States\PromptClaimObjective;
+use Bga\Games\BorealisArcticExpeditions\States\AssignCampScientists;
+use Bga\Games\BorealisArcticExpeditions\States\ReplenishAnimalCard;
+use Bga\Games\BorealisArcticExpeditions\States\NextPlayer;
 
 require_once __DIR__ . '/States/OpeningMulligan.php';
 require_once __DIR__ . '/States/PromptClaimObjective.php';

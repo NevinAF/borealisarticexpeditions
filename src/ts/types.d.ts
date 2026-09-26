@@ -1,4 +1,4 @@
-interface BorealisArticExpeditionsPlayer extends Player {}
+interface BorealisArcticExpeditionsPlayer extends Player {}
 
 interface AnimalCardClient {
   id: number;
@@ -63,7 +63,7 @@ interface BoardState {
   last_returned_counts?: Record<number, number>;
 }
 
-interface BorealisArticExpeditionsGamedatas extends Gamedatas<BorealisArticExpeditionsPlayer> {
+interface BorealisArcticExpeditionsGamedatas extends Gamedatas<BorealisArcticExpeditionsPlayer> {
     boardState: BoardState;
     materials: MaterialsClient;
   playerOrder?: number[];

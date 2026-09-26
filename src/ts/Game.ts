@@ -24,8 +24,8 @@ export class Game {
   private static readonly SCORING_SPRITE_ROWS = 3;
   private static readonly SCORING_SPRITE_LAST_INDEX = 10;
 
-  bga!: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
-  gamedatas!: BorealisArticExpeditionsGamedatas;
+  bga!: Bga<BorealisArcticExpeditionsPlayer, BorealisArcticExpeditionsGamedatas>;
+  gamedatas!: BorealisArcticExpeditionsGamedatas;
   root!: HTMLElement;
   selectedCardId: number | null = null;
   selectedLocation: number | null = null;
@@ -60,12 +60,12 @@ export class Game {
   private static readonly RELEASE_ON_RESOLVE = new Set(['actSkipPromptObjective']);
   private optionalUi: OptionalUi | null = null;
 
-  constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
+  constructor(bga: Bga<BorealisArcticExpeditionsPlayer, BorealisArcticExpeditionsGamedatas>) {
     this.bga = bga;
     this.preloadGameImages();
   }
 
-  setup(gamedatas: BorealisArticExpeditionsGamedatas) {
+  setup(gamedatas: BorealisArcticExpeditionsGamedatas) {
     this.gamedatas = gamedatas;
     this.setupNotifications();
     this.preloadGameImages();
@@ -225,7 +225,7 @@ export class Game {
   }
 
   private syncGamedatas() {
-    this.gamedatas = this.gamedatas as BorealisArticExpeditionsGamedatas;
+    this.gamedatas = this.gamedatas as BorealisArcticExpeditionsGamedatas;
   }
 
   private updateBoardScale(): void {

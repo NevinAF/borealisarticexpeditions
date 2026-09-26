@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Bga\Games\BorealisArticExpeditions\States;
+namespace Bga\Games\BorealisArcticExpeditions\States;
 
 use Bga\GameFramework\StateType;
 use Bga\GameFramework\States\GameState;
-use Bga\Games\BorealisArticExpeditions\Game;
+use Bga\Games\BorealisArcticExpeditions\Game;
 
 const ST_END_GAME = 99;
 

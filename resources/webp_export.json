@@ -18,7 +18,7 @@
                             "name": "output_directory",
                             "default_value": "file:///C:/Users/nevin/Pictures",
                             "display_name": "Output folder",
-                            "value": "file:///C:/Users/nevin/Documents/borealisarticexpeditions/resources/output",
+                            "value": "file:///C:/Users/nevin/Documents/borealisarcticexpeditions/resources/output",
                             "type": "directory"
                         },
                         {
@@ -679,7 +679,7 @@
                             "default_value": [],
                             "gui_type": null,
                             "value": [
-                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\resources\\output",
+                                "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\resources\\output",
                                 "C:\\Users\\nevin\\Downloads\\gemReflection6\\out2"
                             ],
                             "type": "list"
@@ -723,7 +723,7 @@
                         {
                             "name": "selected_items",
                             "value": [
-                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png"
+                                "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0000.png"
                             ],
                             "type": "image_file_tree_items"
                         },
@@ -731,7 +731,7 @@
                             "name": "name_preview_items_collapsed_state",
                             "value": [
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites",
                                     "folder"
                                 ]
                             ],
@@ -740,7 +740,7 @@
                         {
                             "name": "image_preview_displayed_items",
                             "value": [
-                                "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png"
+                                "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0000.png"
                             ],
                             "type": "image_file_tree_items"
                         },
@@ -795,104 +795,104 @@
                             "gui_type": null,
                             "value": [
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img",
                                     null
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0000.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0000.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0001.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0001.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0002.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0002.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0003.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0003.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards\\0004.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Playerboards"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards\\0004.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Playerboards"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\README",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\README",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.webp",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\AnimalCards_sheet_full.webp",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_half.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\AnimalCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\AnimalCards_sheet_quarter.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\AnimalCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_full.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_half.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_quarter.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ObjectiveCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_full.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ScoringCards_sheet_full.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_half.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ScoringCards_sheet_half.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites\\ScoringCards_sheet_quarter.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Sprites"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites\\ScoringCards_sheet_quarter.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Sprites"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\FirstPlayerToken.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens\\FirstPlayerToken.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\FlagToken.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens\\FlagToken.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\PinkMeeple.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens\\PinkMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\TealMeeple.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens\\TealMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens"
                                 ],
                                 [
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens\\YellowMeeple.png",
-                                    "C:\\Users\\nevin\\Documents\\borealisarticexpeditions\\img\\Tokens"
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens\\YellowMeeple.png",
+                                    "C:\\Users\\nevin\\Documents\\borealisarcticexpeditions\\img\\Tokens"
                                 ]
                             ],
                             "type": "list"

@@ -43,8 +43,8 @@ export const PREF_SOUND = 103;
 export const MAX_LOCATION_CARDS = 7;
 
 export interface OptionalUiHost {
-  bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>;
-  gamedatas: BorealisArticExpeditionsGamedatas;
+  bga: Bga<BorealisArcticExpeditionsPlayer, BorealisArcticExpeditionsGamedatas>;
+  gamedatas: BorealisArcticExpeditionsGamedatas;
   root: HTMLElement;
   selectedCardId: number | null;
   selectedLocation: number | null;

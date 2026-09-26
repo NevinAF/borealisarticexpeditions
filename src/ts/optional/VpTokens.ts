@@ -14,7 +14,7 @@ import {
 
 interface VpTokensHost {
   root: HTMLElement;
-  gamedatas: BorealisArticExpeditionsGamedatas;
+  gamedatas: BorealisArcticExpeditionsGamedatas;
   bga: { images: { getImgUrl(filename?: string): string } };
 }
 

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bga\Games\BorealisArticExpeditions;
+namespace Bga\Games\BorealisArcticExpeditions;
 
 final class Material
 {
