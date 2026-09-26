@@ -1892,7 +1892,7 @@ class Game extends \Bga\GameFramework\Table
             }
             $claimedStat = $this->claimedObjectiveStatName($oid);
             if ($claimedStat !== null) {
-                $this->bga->playerStats->init($claimedStat, false);
+                $this->bga->playerStats->init($claimedStat, 0);
             }
         }
     }
@@ -2098,7 +2098,7 @@ class Game extends \Bga\GameFramework\Table
                 }
                 $claimedStat = $this->claimedObjectiveStatName($oid);
                 if ($claimedStat !== null) {
-                    $this->bga->playerStats->set($claimedStat, $wasClaimed, $pid);
+                    $this->bga->playerStats->set($claimedStat, $wasClaimed ? 1 : 0, $pid);
                 }
             }
             $tableClaimed += $claimed;
