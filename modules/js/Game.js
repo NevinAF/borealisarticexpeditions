@@ -1107,6 +1107,7 @@ class OptionalUi {
         this.applyPreferenceCss();
         this.renderRoundBadge();
         this.bindDragAndDrop();
+        this.bindKeyboard();
         this.restoreHoldingFromState();
         this.renderRegroupHold();
         this.host.refreshScientistTooltips();
@@ -2153,6 +2154,50 @@ class OptionalUi {
         bubble.textContent = text;
         anchor.appendChild(bubble);
     }
+    bindKeyboard() {
+        if (this.host.bga.players.isCurrentPlayerSpectator())
+            return;
+        const onKeyDown = (ev) => {
+            if (ev.defaultPrevented || ev.altKey || ev.ctrlKey || ev.metaKey)
+                return;
+            const target = ev.target instanceof Element ? ev.target : null;
+            if (this.isTypingTarget(target))
+                return;
+            if (target?.closest?.('.pref_pop, .debug_info, dialog, .bga-popup, .standard_pop, #ebd-body .dijitDialog'))
+                return;
+            if (ev.key === 'Escape') {
+                if (this.host.isActionBusy())
+                    return;
+                ev.preventDefault();
+                this.host.clearSelection();
+                return;
+            }
+            if (ev.key !== 'Enter' && ev.key !== ' ')
+                return;
+            const interactive = target?.closest?.('.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button');
+            if (interactive) {
+                if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj'))
+                    return;
+                ev.preventDefault();
+                interactive.click();
+                return;
+            }
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                this.host.confirmReadySelectionFromKeyboard();
+            }
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+        this.cleanupFns.push(() => document.removeEventListener('keydown', onKeyDown, true));
+    }
+    isTypingTarget(el) {
+        if (!el)
+            return false;
+        const tag = el.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT')
+            return true;
+        return el.isContentEditable;
+    }
     bindDragAndDrop() {
         if (this.host.bga.players.isCurrentPlayerSpectator())
             return;
@@ -2534,9 +2579,78 @@ class OptionalUi {
         this.host.selectedLocation = snap.location;
         this.host.selectedPoolSlot = snap.poolSlot;
         this.host.selectedObjectiveIdx = snap.objectiveIdx;
-        this.host.renderAll();
+        this.applySelectionGraphics();
         this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
         this.onSelectionChanged();
+    }
+    applySelectionGraphics() {
+        const root = this.host.root;
+        if (!root)
+            return;
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
+            el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
+        });
+        root.querySelectorAll('.bae_card_selected, .bae_card_invalid').forEach((el) => {
+            if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost'))
+                return;
+            el.classList.remove('bae_card_selected', 'bae_card_invalid');
+        });
+        root.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
+        if (this.host.campSelected) {
+            root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+                el.classList.add('bae_camp_selected');
+            });
+        }
+        if (this.host.selectedLocation != null && !this.host.campSelected) {
+            const locEl = root.querySelector(`.bae_location_zone[data-player-id="${myId}"][data-loc="${this.host.selectedLocation}"]`);
+            if (locEl) {
+                const observeLegal = this.host.isGameplayLike() && this.host.isObserveSelectionLegal();
+                const observeInvalid = this.host.isGameplayLike()
+                    && this.host.selectedCardId != null
+                    && !observeLegal;
+                locEl.classList.add(observeInvalid ? 'bae_loc_invalid' : 'bae_loc_selected');
+                if (observeLegal || this.host.isAssignCampLike())
+                    this.addSelectionConfirm(locEl, true);
+            }
+        }
+        if (this.host.selectedCardId != null && !this.host.campSelected) {
+            const card = root.querySelector(`#bae_hand_${myId}_${this.host.selectedCardId}`);
+            if (card) {
+                card.classList.add('bae_card_selected');
+                const observeLegal = this.host.isGameplayLike() && this.host.isObserveSelectionLegal();
+                if (this.host.isGameplayLike() && this.host.selectedLocation != null && !observeLegal) {
+                    card.classList.add('bae_card_invalid');
+                }
+                else if (observeLegal) {
+                    this.addSelectionConfirm(card);
+                }
+            }
+        }
+        if (this.host.selectedPoolSlot != null && this.host.isReplenishLike()) {
+            const poolEl = (this.host.selectedPoolSlot === -1
+                ? root.querySelector('#bae_pool_slot_deck')
+                : root.querySelector(`#bae_pool_slot_${this.host.selectedPoolSlot}`));
+            if (poolEl) {
+                poolEl.classList.add('bae_card_selected');
+                this.addSelectionConfirm(poolEl);
+            }
+        }
+        if (this.host.selectedObjectiveIdx != null) {
+            const obj = root.querySelector(`#bae_obj_${this.host.selectedObjectiveIdx}`);
+            if (obj && !obj.hasAttribute('disabled')) {
+                obj.classList.add('bae_obj_selected');
+                this.addSelectionConfirm(obj);
+            }
+        }
+    }
+    addSelectionConfirm(el, location = false) {
+        if (el.querySelector('.bae_confirm_blurb'))
+            return;
+        const span = document.createElement('span');
+        span.className = location ? 'bae_confirm_blurb bae_location_confirm' : 'bae_confirm_blurb';
+        span.textContent = _('Confirm?');
+        el.appendChild(span);
     }
     markDropHover(el, confirm) {
         if (confirm && el)
@@ -4030,7 +4144,7 @@ class Game {
         this.isShowingLastTurnBanner = false;
         this.openingIntroPage = "objectives";
         this.openingIntroEl = null;
-        this.actionPending = false;
+        this.pendingAction = null;
         this.optionalUi = null;
         this.bga = bga;
         this.preloadGameImages();
@@ -4484,7 +4598,7 @@ class Game {
         });
     }
     enterRegroupMode() {
-        if (this.actionPending)
+        if (this.isActionBusy())
             return;
         this.selectedCardId = null;
         this.selectedLocation = null;
@@ -4498,22 +4612,26 @@ class Game {
         this.optionalUi?.playSoundKind('select');
     }
     isActionBusy() {
-        return this.actionPending;
+        return this.pendingAction != null;
     }
     sendAction(action, args) {
-        if (this.actionPending)
+        if (this.pendingAction)
             return Promise.resolve();
         if (!this.bga.actions.checkAction(action, true)) {
             this.bga.actions.checkAction(action);
             return Promise.resolve();
         }
-        this.beginActionSubmit();
+        this.beginActionSubmit(action);
         const result = this.bga.actions.performAction(action, args, { checkAction: false });
         if (result == null || typeof result.then !== 'function') {
-            this.endActionSubmit();
+            this.endActionSubmit(action);
             return Promise.resolve();
         }
-        return result.catch((err) => {
+        return result.then((value) => {
+            if (Game.RELEASE_ON_RESOLVE.has(action))
+                this.endActionSubmit(action);
+            return value;
+        }).catch((err) => {
             this.endActionSubmit();
             this.optionalUi?.onActionFailed();
             this.renderAll();
@@ -4521,8 +4639,8 @@ class Game {
             throw err;
         });
     }
-    beginActionSubmit() {
-        this.actionPending = true;
+    beginActionSubmit(action) {
+        this.pendingAction = action;
         this.root?.classList.add('bae_action_busy');
         this.optionalUi?.onActionSubmitted();
         this.selectedCardId = null;
@@ -4541,9 +4659,29 @@ class Game {
         this.root?.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
         this.bga.statusBar.removeActionButtons();
     }
-    endActionSubmit() {
-        this.actionPending = false;
+    endActionSubmit(action) {
+        if (action != null && this.pendingAction !== action)
+            return;
+        const wasBusy = this.pendingAction != null;
+        this.pendingAction = null;
         this.root?.classList.remove('bae_action_busy');
+        if (wasBusy)
+            this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
+    }
+    notifPlayerId(args) {
+        const nested = args?.args && typeof args.args === 'object'
+            ? args.args
+            : null;
+        return Number(args?.player_id ?? args?.playerId ?? nested?.player_id ?? nested?.playerId ?? NaN);
+    }
+    releasePendingActionForNotif(notifName, args) {
+        const actions = Game.NOTIF_RELEASE_ACTIONS[notifName];
+        if (!actions || this.pendingAction == null || !actions.includes(this.pendingAction))
+            return;
+        const pid = this.notifPlayerId(args);
+        if (Number.isFinite(pid) && pid !== Number(this.bga.players.getCurrentPlayerId()))
+            return;
+        this.endActionSubmit(this.pendingAction);
     }
     isReplayOrSpectator() {
         try {
@@ -4614,7 +4752,7 @@ class Game {
         return canObserveAtLocation(this.animalDef(cardId), this.gamedatas.boardState.scientists, myId, location);
     }
     confirmObserveIfReady(cardId, location) {
-        if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
+        if (this.isActionBusy() || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
             return false;
         if (cardId == null || location == null)
             return false;
@@ -4626,8 +4764,39 @@ class Game {
         });
         return true;
     }
+    confirmReadySelectionFromKeyboard() {
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
+            return false;
+        if (this.isGameplayLike() && !this.campSelected) {
+            if (this.selectedCardId != null && this.selectedLocation != null) {
+                if (this.isObserveSelectionLegal())
+                    return this.confirmObserveIfReady(this.selectedCardId, this.selectedLocation);
+                this.optionalUi?.showInvalidObserveHint();
+                return false;
+            }
+        }
+        if (this.isReplenishLike() && this.selectedPoolSlot != null) {
+            void this.sendAction('actTakeAnimal', { pool_slot: this.selectedPoolSlot });
+            return true;
+        }
+        if (this.isAssignCampLike() && this.selectedLocation != null) {
+            void this.sendAction('actAssignScientists', { location: this.selectedLocation });
+            return true;
+        }
+        if (this.isPromptClaimObjectiveLike()) {
+            const idx = this.getPromptedObjectiveIndex();
+            if (idx != null) {
+                void this.sendAction('actClaimPromptObjective', { objective_index: idx });
+                return true;
+            }
+        }
+        if (this.selectedObjectiveIdx != null && this.canSelectObjectiveToClaim()) {
+            void this.sendAction('actClaimObjective', { objective_index: this.selectedObjectiveIdx });
+            return true;
+        }
+        return false;
+    }
     renderAll() {
-        this.endActionSubmit();
         this.syncGamedatas();
         let html = "";
         const d = this.gamedatas.boardState;
@@ -4778,7 +4947,7 @@ class Game {
                 const locInvalid = locSelected && this.isGameplayLike() && this.selectedCardId != null && !canConfirmObserve;
                 const sel = locSelected ? (locInvalid ? " bae_loc_invalid" : " bae_loc_selected") : "";
                 const posClass = loc === 0 ? " bae_slot_left" : loc === 1 ? " bae_slot_mid" : " bae_slot_right";
-                html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}">`;
+                html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}" role="button" tabindex="${isSelf ? 0 : -1}">`;
                 html += `<div class="bae_anim_pile">`;
                 const pile = d.boards[pid]?.[loc] ?? [];
                 for (let si = 0; si < animal_card_slots; si++) {
@@ -5597,7 +5766,7 @@ class Game {
                 ev.preventDefault();
                 ev.stopPropagation();
                 const id = Number(ev.currentTarget.dataset.handCard);
-                if (this.actionPending || !this.bga.players.isCurrentPlayerActive())
+                if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
                     return;
                 if (this.isOpeningMulliganLike() || this.campSelected) {
                     if (this.selectedRegroupIds.has(id))
@@ -5643,7 +5812,7 @@ class Game {
                 if (pid !== myId)
                     return;
                 const loc = Number(el.dataset.loc);
-                if (this.actionPending)
+                if (this.isActionBusy())
                     return;
                 if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
                     if (this.selectedLocation === loc) {
@@ -5701,7 +5870,7 @@ class Game {
                 const loc = Number(m[2]);
                 if (pid !== myId)
                     return;
-                if (this.actionPending)
+                if (this.isActionBusy())
                     return;
                 if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
                     if (this.selectedLocation === loc) {
@@ -5745,7 +5914,7 @@ class Game {
                 const pid = Number(el.dataset.playerId);
                 if (pid !== myId)
                     return;
-                if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
+                if (this.isActionBusy() || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive())
                     return;
                 // Camp selection is idempotent: clicking camp again does nothing.
                 if (this.campSelected)
@@ -5755,7 +5924,7 @@ class Game {
         });
         this.root.querySelectorAll("[data-pool-slot]").forEach((el) => {
             el.addEventListener("click", () => {
-                if (this.actionPending || !this.bga.players.isCurrentPlayerActive())
+                if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
                     return;
                 if (!this.isReplenishLike())
                     return;
@@ -5773,7 +5942,7 @@ class Game {
         this.root.querySelectorAll("[data-obj-idx]").forEach((el) => {
             el.addEventListener("click", () => {
                 const idx = Number(el.dataset.objIdx);
-                if (this.actionPending || !this.bga.players.isCurrentPlayerActive())
+                if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
                     return;
                 // Only allow claiming when this player actually 'meets' the objective
                 const obj = this.gamedatas.boardState.objectives?.[idx];
@@ -5837,7 +6006,7 @@ class Game {
         this.cacheStateActionArgs(args);
         const effectiveArgs = args ?? this.cachedActionArgs;
         this.bga.statusBar.removeActionButtons();
-        if (this.actionPending || !this.bga.players.isCurrentPlayerActive())
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
             return;
         const sn = stateName.toLowerCase();
         if (sn.includes("promptclaimobjective") || sn.includes("prompt_claim_objective")) {
@@ -6006,6 +6175,7 @@ class Game {
         }
         this.selectedCardId = null;
         this.selectedLocation = null;
+        this.releasePendingActionForNotif('observeAnimal', _args);
         this.renderAll();
     }
     async notif_takeAnimal(_args) {
@@ -6019,6 +6189,7 @@ class Game {
             this.gamedatas.boardState = args.boardState;
         }
         this.selectedPoolSlot = null;
+        this.releasePendingActionForNotif('takeAnimal', args);
         this.renderAll();
     }
     async notif_mulliganPool(_args) {
@@ -6031,6 +6202,7 @@ class Game {
         if (args.boardState) {
             this.gamedatas.boardState = args.boardState;
         }
+        this.releasePendingActionForNotif('mulliganPool', args);
         this.renderAll();
         const pid = Number(args.player_id ?? args.playerId ?? 0);
         const ctr = this.bga.playerPanels.getScoreCounter(pid);
@@ -6051,6 +6223,7 @@ class Game {
         if (pid === myId || !this.isOpeningMulliganLike()) {
             this.selectedRegroupIds.clear();
         }
+        this.releasePendingActionForNotif('mulliganHand', args);
         this.renderAll();
     }
     async notif_actionUndone(_args) {
@@ -6058,6 +6231,7 @@ class Game {
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
+        this.releasePendingActionForNotif('actionUndone', _args);
         this.renderAll();
         this.syncScoresFromBoardState(this.gamedatas.boardState);
     }
@@ -6074,6 +6248,7 @@ class Game {
         this.selectedLocation = null;
         this.campSelected = false;
         this.selectedRegroupIds.clear();
+        this.releasePendingActionForNotif('regroup', _args);
         this.renderAll();
         const pid = Number(_args.player_id ?? _args.playerId ?? 0);
         const vpGained = Number(_args.vp_from_camps ?? 0);
@@ -6091,6 +6266,7 @@ class Game {
         }
         this.selectedLocation = null;
         this.campSelected = false;
+        this.releasePendingActionForNotif('assignScientists', _args);
         this.renderAll();
     }
     async notif_objectiveClaimed(_args) {
@@ -6103,6 +6279,7 @@ class Game {
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
+        this.releasePendingActionForNotif('objectiveClaimed', _args);
         this.renderAll();
     }
     async notif_objectiveScored(_args) {
@@ -6114,6 +6291,7 @@ class Game {
         if (_args.boardState) {
             this.gamedatas.boardState = _args.boardState;
         }
+        this.releasePendingActionForNotif('objectiveScored', _args);
         this.renderAll();
         const pid = Number(_args.player_id ?? _args.playerId ?? 0);
         const score = Number(_args.score ?? 0);
@@ -6184,5 +6362,17 @@ Game.SCORING_SPRITE_ROWS = 3;
 Game.SCORING_SPRITE_LAST_INDEX = 10;
 Game.ZOOM_STEP = 0.1;
 Game.ZOOM_MIN = 0.4;
+Game.NOTIF_RELEASE_ACTIONS = {
+    observeAnimal: ['actObserveAnimal'],
+    takeAnimal: ['actTakeAnimal'],
+    mulliganPool: ['actMulliganPool'],
+    mulliganHand: ['actMulliganHand'],
+    regroup: ['actRegroup'],
+    assignScientists: ['actAssignScientists'],
+    objectiveClaimed: ['actClaimObjective', 'actClaimPromptObjective'],
+    objectiveScored: ['actClaimObjective', 'actClaimPromptObjective'],
+    actionUndone: ['actUndo'],
+};
+Game.RELEASE_ON_RESOLVE = new Set(['actSkipPromptObjective']);
 
 export { Game };

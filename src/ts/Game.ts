@@ -45,7 +45,19 @@ export class Game {
   private isShowingLastTurnBanner = false;
   private openingIntroPage: "objectives" | "scoring" | null = "objectives";
   private openingIntroEl: HTMLElement | null = null;
-  private actionPending = false;
+  private pendingAction: string | null = null;
+  private static readonly NOTIF_RELEASE_ACTIONS: Record<string, string[]> = {
+    observeAnimal: ['actObserveAnimal'],
+    takeAnimal: ['actTakeAnimal'],
+    mulliganPool: ['actMulliganPool'],
+    mulliganHand: ['actMulliganHand'],
+    regroup: ['actRegroup'],
+    assignScientists: ['actAssignScientists'],
+    objectiveClaimed: ['actClaimObjective', 'actClaimPromptObjective'],
+    objectiveScored: ['actClaimObjective', 'actClaimPromptObjective'],
+    actionUndone: ['actUndo'],
+  };
+  private static readonly RELEASE_ON_RESOLVE = new Set(['actSkipPromptObjective']);
   private optionalUi: OptionalUi | null = null;
 
   constructor(bga: Bga<BorealisArticExpeditionsPlayer, BorealisArticExpeditionsGamedatas>) {
@@ -540,7 +552,7 @@ export class Game {
   }
 
   enterRegroupMode(): void {
-    if (this.actionPending) return;
+    if (this.isActionBusy()) return;
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.selectedPoolSlot = null;
@@ -554,22 +566,25 @@ export class Game {
   }
 
   isActionBusy(): boolean {
-    return this.actionPending;
+    return this.pendingAction != null;
   }
 
   sendAction(action: string, args?: Record<string, unknown>): Promise<unknown> {
-    if (this.actionPending) return Promise.resolve();
+    if (this.pendingAction) return Promise.resolve();
     if (!this.bga.actions.checkAction(action, true)) {
       this.bga.actions.checkAction(action);
       return Promise.resolve();
     }
-    this.beginActionSubmit();
+    this.beginActionSubmit(action);
     const result = this.bga.actions.performAction(action, args, { checkAction: false });
     if (result == null || typeof (result as Promise<unknown>).then !== 'function') {
-      this.endActionSubmit();
+      this.endActionSubmit(action);
       return Promise.resolve();
     }
-    return (result as Promise<unknown>).catch((err) => {
+    return (result as Promise<unknown>).then((value) => {
+      if (Game.RELEASE_ON_RESOLVE.has(action)) this.endActionSubmit(action);
+      return value;
+    }).catch((err) => {
       this.endActionSubmit();
       this.optionalUi?.onActionFailed();
       this.renderAll();
@@ -578,8 +593,8 @@ export class Game {
     });
   }
 
-  private beginActionSubmit(): void {
-    this.actionPending = true;
+  private beginActionSubmit(action: string): void {
+    this.pendingAction = action;
     this.root?.classList.add('bae_action_busy');
     this.optionalUi?.onActionSubmitted();
     this.selectedCardId = null;
@@ -599,9 +614,27 @@ export class Game {
     this.bga.statusBar.removeActionButtons();
   }
 
-  private endActionSubmit(): void {
-    this.actionPending = false;
+  private endActionSubmit(action?: string): void {
+    if (action != null && this.pendingAction !== action) return;
+    const wasBusy = this.pendingAction != null;
+    this.pendingAction = null;
     this.root?.classList.remove('bae_action_busy');
+    if (wasBusy) this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
+  }
+
+  private notifPlayerId(args: Record<string, unknown> | null | undefined): number {
+    const nested = args?.args && typeof args.args === 'object'
+      ? args.args as Record<string, unknown>
+      : null;
+    return Number(args?.player_id ?? args?.playerId ?? nested?.player_id ?? nested?.playerId ?? NaN);
+  }
+
+  private releasePendingActionForNotif(notifName: string, args?: Record<string, unknown>): void {
+    const actions = Game.NOTIF_RELEASE_ACTIONS[notifName];
+    if (!actions || this.pendingAction == null || !actions.includes(this.pendingAction)) return;
+    const pid = this.notifPlayerId(args);
+    if (Number.isFinite(pid) && pid !== Number(this.bga.players.getCurrentPlayerId())) return;
+    this.endActionSubmit(this.pendingAction);
   }
 
   private isReplayOrSpectator(): boolean {
@@ -675,7 +708,7 @@ export class Game {
   }
 
   confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
-    if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
+    if (this.isActionBusy() || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
     if (!this.isObserveSelectionLegal(cardId, location)) return false;
     void this.sendAction("actObserveAnimal", {
@@ -685,8 +718,38 @@ export class Game {
     return true;
   }
 
+  confirmReadySelectionFromKeyboard(): boolean {
+    if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive()) return false;
+    if (this.isGameplayLike() && !this.campSelected) {
+      if (this.selectedCardId != null && this.selectedLocation != null) {
+        if (this.isObserveSelectionLegal()) return this.confirmObserveIfReady(this.selectedCardId, this.selectedLocation);
+        this.optionalUi?.showInvalidObserveHint();
+        return false;
+      }
+    }
+    if (this.isReplenishLike() && this.selectedPoolSlot != null) {
+      void this.sendAction('actTakeAnimal', { pool_slot: this.selectedPoolSlot });
+      return true;
+    }
+    if (this.isAssignCampLike() && this.selectedLocation != null) {
+      void this.sendAction('actAssignScientists', { location: this.selectedLocation });
+      return true;
+    }
+    if (this.isPromptClaimObjectiveLike()) {
+      const idx = this.getPromptedObjectiveIndex();
+      if (idx != null) {
+        void this.sendAction('actClaimPromptObjective', { objective_index: idx });
+        return true;
+      }
+    }
+    if (this.selectedObjectiveIdx != null && this.canSelectObjectiveToClaim()) {
+      void this.sendAction('actClaimObjective', { objective_index: this.selectedObjectiveIdx });
+      return true;
+    }
+    return false;
+  }
+
   renderAll() {
-    this.endActionSubmit();
     this.syncGamedatas();
 
     let html = "";
@@ -846,7 +909,7 @@ export class Game {
         const locInvalid = locSelected && this.isGameplayLike() && this.selectedCardId != null && !canConfirmObserve;
         const sel = locSelected ? (locInvalid ? " bae_loc_invalid" : " bae_loc_selected") : "";
         const posClass = loc === 0 ? " bae_slot_left" : loc === 1 ? " bae_slot_mid" : " bae_slot_right";
-        html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}">`;
+        html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}" role="button" tabindex="${isSelf ? 0 : -1}">`;
 
         html += `<div class="bae_anim_pile">`;
         const pile = d.boards[pid]?.[loc] ?? [];
@@ -1745,7 +1808,7 @@ export class Game {
           ev.preventDefault();
           ev.stopPropagation();
           const id = Number((ev.currentTarget as HTMLElement).dataset.handCard);
-          if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
+          if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive()) return;
           if (this.isOpeningMulliganLike() || this.campSelected) {
             if (this.selectedRegroupIds.has(id)) this.selectedRegroupIds.delete(id);
             else this.selectedRegroupIds.add(id);
@@ -1788,7 +1851,7 @@ export class Game {
           const pid = Number((el as HTMLElement).dataset.playerId);
           if (pid !== myId) return;
           const loc = Number((el as HTMLElement).dataset.loc);
-          if (this.actionPending) return;
+          if (this.isActionBusy()) return;
           if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
             if (this.selectedLocation === loc) {
               void this.sendAction("actAssignScientists", { location: loc });
@@ -1845,7 +1908,7 @@ export class Game {
           const pid = Number(m[1]);
           const loc = Number(m[2]);
           if (pid !== myId) return;
-          if (this.actionPending) return;
+          if (this.isActionBusy()) return;
           if (this.isAssignCampLike() && this.bga.players.isCurrentPlayerActive()) {
             if (this.selectedLocation === loc) {
               void this.sendAction('actAssignScientists', { location: loc });
@@ -1889,7 +1952,7 @@ export class Game {
           ev.stopPropagation();
           const pid = Number((el as HTMLElement).dataset.playerId);
           if (pid !== myId) return;
-          if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return;
+          if (this.isActionBusy() || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return;
           // Camp selection is idempotent: clicking camp again does nothing.
           if (this.campSelected) return;
           this.enterRegroupMode();
@@ -1899,7 +1962,7 @@ export class Game {
     });
     this.root.querySelectorAll("[data-pool-slot]").forEach((el) => {
       el.addEventListener("click", () => {
-        if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive()) return;
         if (!this.isReplenishLike()) return;
         const slot = Number((el as HTMLElement).dataset.poolSlot);
         if (this.selectedPoolSlot === slot) {
@@ -1915,7 +1978,7 @@ export class Game {
     this.root.querySelectorAll("[data-obj-idx]").forEach((el) => {
       el.addEventListener("click", () => {
         const idx = Number((el as HTMLElement).dataset.objIdx);
-        if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive()) return;
         // Only allow claiming when this player actually 'meets' the objective
         const obj = this.gamedatas.boardState.objectives?.[idx];
         if (!obj) return;
@@ -1979,7 +2042,7 @@ export class Game {
     const effectiveArgs = args ?? this.cachedActionArgs;
 
     this.bga.statusBar.removeActionButtons();
-    if (this.actionPending || !this.bga.players.isCurrentPlayerActive()) return;
+    if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive()) return;
     const sn = stateName.toLowerCase();
     if (sn.includes("promptclaimobjective") || sn.includes("prompt_claim_objective")) {
       const myId = Number(this.bga.players.getCurrentPlayerId());
@@ -2159,6 +2222,7 @@ export class Game {
     }
     this.selectedCardId = null;
     this.selectedLocation = null;
+    this.releasePendingActionForNotif('observeAnimal', _args);
     this.renderAll();
   }
   async notif_takeAnimal(_args: any) {
@@ -2169,6 +2233,7 @@ export class Game {
         this.gamedatas.boardState = args.boardState;
     }
     this.selectedPoolSlot = null;
+    this.releasePendingActionForNotif('takeAnimal', args);
     this.renderAll();
   }
   async notif_mulliganPool(_args: any) {
@@ -2178,6 +2243,7 @@ export class Game {
     if (args.boardState) {
         this.gamedatas.boardState = args.boardState;
     }
+    this.releasePendingActionForNotif('mulliganPool', args);
     this.renderAll();
 
     const pid = Number(args.player_id ?? args.playerId ?? 0);
@@ -2196,6 +2262,7 @@ export class Game {
     if (pid === myId || !this.isOpeningMulliganLike()) {
       this.selectedRegroupIds.clear();
     }
+    this.releasePendingActionForNotif('mulliganHand', args);
     this.renderAll();
   }
   async notif_actionUndone(_args: any) {
@@ -2203,6 +2270,7 @@ export class Game {
     if (_args.boardState) {
       this.gamedatas.boardState = _args.boardState;
     }
+    this.releasePendingActionForNotif('actionUndone', _args);
     this.renderAll();
     this.syncScoresFromBoardState(this.gamedatas.boardState);
   }
@@ -2216,6 +2284,7 @@ export class Game {
     this.selectedLocation = null;
     this.campSelected = false;
     this.selectedRegroupIds.clear();
+    this.releasePendingActionForNotif('regroup', _args);
     this.renderAll();
 
     const pid = Number(_args.player_id ?? _args.playerId ?? 0);
@@ -2231,6 +2300,7 @@ export class Game {
     }
     this.selectedLocation = null;
     this.campSelected = false;
+    this.releasePendingActionForNotif('assignScientists', _args);
     this.renderAll();
   }
   async notif_objectiveClaimed(_args: any) {
@@ -2240,6 +2310,7 @@ export class Game {
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
+    this.releasePendingActionForNotif('objectiveClaimed', _args);
     this.renderAll();
   }
   async notif_objectiveScored(_args: any) {
@@ -2248,6 +2319,7 @@ export class Game {
     if (_args.boardState) {
         this.gamedatas.boardState = _args.boardState;
     }
+    this.releasePendingActionForNotif('objectiveScored', _args);
     this.renderAll();
 
     const pid = Number(_args.player_id ?? _args.playerId ?? 0);

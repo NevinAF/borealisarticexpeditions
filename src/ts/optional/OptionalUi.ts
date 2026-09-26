@@ -57,9 +57,11 @@ export interface OptionalUiHost {
   isAssignCampLike(): boolean;
   isOpeningMulliganLike(): boolean;
   isPromptClaimObjectiveLike(): boolean;
+  isObserveSelectionLegal(cardId?: number | null, location?: number | null): boolean;
   clearSelection(): void;
   enterRegroupMode(): void;
   confirmObserveIfReady(cardId: number | null, location: number | null): boolean;
+  confirmReadySelectionFromKeyboard(): boolean;
   currentStateName(): string;
   animalDef(cardId: number): AnimalDefLite | undefined;
   animalCardHtml(cardId: number): string;
@@ -150,6 +152,7 @@ export class OptionalUi {
     this.applyPreferenceCss();
     this.renderRoundBadge();
     this.bindDragAndDrop();
+    this.bindKeyboard();
     this.restoreHoldingFromState();
     this.renderRegroupHold();
     this.host.refreshScientistTooltips();
@@ -1226,6 +1229,47 @@ export class OptionalUi {
     anchor.appendChild(bubble);
   }
 
+  private bindKeyboard(): void {
+    if (this.host.bga.players.isCurrentPlayerSpectator()) return;
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.defaultPrevented || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+      const target = ev.target instanceof Element ? ev.target as HTMLElement : null;
+      if (this.isTypingTarget(target)) return;
+      if (target?.closest?.('.pref_pop, .debug_info, dialog, .bga-popup, .standard_pop, #ebd-body .dijitDialog')) return;
+
+      if (ev.key === 'Escape') {
+        if (this.host.isActionBusy()) return;
+        ev.preventDefault();
+        this.host.clearSelection();
+        return;
+      }
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+
+      const interactive = target?.closest?.(
+        '.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button',
+      ) as HTMLElement | null;
+      if (interactive) {
+        if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj')) return;
+        ev.preventDefault();
+        interactive.click();
+        return;
+      }
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        this.host.confirmReadySelectionFromKeyboard();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    this.cleanupFns.push(() => document.removeEventListener('keydown', onKeyDown, true));
+  }
+
+  private isTypingTarget(el: HTMLElement | null): boolean {
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    return el.isContentEditable;
+  }
+
   private bindDragAndDrop(): void {
     if (this.host.bga.players.isCurrentPlayerSpectator()) return;
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
@@ -1586,9 +1630,82 @@ export class OptionalUi {
     this.host.selectedLocation = snap.location;
     this.host.selectedPoolSlot = snap.poolSlot;
     this.host.selectedObjectiveIdx = snap.objectiveIdx;
-    this.host.renderAll();
+    this.applySelectionGraphics();
     this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
     this.onSelectionChanged();
+  }
+
+  private applySelectionGraphics(): void {
+    const root = this.host.root;
+    if (!root) return;
+    const myId = Number(this.host.bga.players.getCurrentPlayerId());
+    root.querySelectorAll('.bae_loc_selected, .bae_loc_invalid, .bae_camp_selected, .bae_obj_selected').forEach((el) => {
+      el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected', 'bae_obj_selected');
+    });
+    root.querySelectorAll('.bae_card_selected, .bae_card_invalid').forEach((el) => {
+      if (el.classList.contains('bae_dragging') || el.classList.contains('bae_pointer_ghost')) return;
+      el.classList.remove('bae_card_selected', 'bae_card_invalid');
+    });
+    root.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
+
+    if (this.host.campSelected) {
+      root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+        el.classList.add('bae_camp_selected');
+      });
+    }
+
+    if (this.host.selectedLocation != null && !this.host.campSelected) {
+      const locEl = root.querySelector(
+        `.bae_location_zone[data-player-id="${myId}"][data-loc="${this.host.selectedLocation}"]`,
+      ) as HTMLElement | null;
+      if (locEl) {
+        const observeLegal = this.host.isGameplayLike() && this.host.isObserveSelectionLegal();
+        const observeInvalid = this.host.isGameplayLike()
+          && this.host.selectedCardId != null
+          && !observeLegal;
+        locEl.classList.add(observeInvalid ? 'bae_loc_invalid' : 'bae_loc_selected');
+        if (observeLegal || this.host.isAssignCampLike()) this.addSelectionConfirm(locEl, true);
+      }
+    }
+
+    if (this.host.selectedCardId != null && !this.host.campSelected) {
+      const card = root.querySelector(`#bae_hand_${myId}_${this.host.selectedCardId}`) as HTMLElement | null;
+      if (card) {
+        card.classList.add('bae_card_selected');
+        const observeLegal = this.host.isGameplayLike() && this.host.isObserveSelectionLegal();
+        if (this.host.isGameplayLike() && this.host.selectedLocation != null && !observeLegal) {
+          card.classList.add('bae_card_invalid');
+        } else if (observeLegal) {
+          this.addSelectionConfirm(card);
+        }
+      }
+    }
+
+    if (this.host.selectedPoolSlot != null && this.host.isReplenishLike()) {
+      const poolEl = (this.host.selectedPoolSlot === -1
+        ? root.querySelector('#bae_pool_slot_deck')
+        : root.querySelector(`#bae_pool_slot_${this.host.selectedPoolSlot}`)) as HTMLElement | null;
+      if (poolEl) {
+        poolEl.classList.add('bae_card_selected');
+        this.addSelectionConfirm(poolEl);
+      }
+    }
+
+    if (this.host.selectedObjectiveIdx != null) {
+      const obj = root.querySelector(`#bae_obj_${this.host.selectedObjectiveIdx}`) as HTMLElement | null;
+      if (obj && !obj.hasAttribute('disabled')) {
+        obj.classList.add('bae_obj_selected');
+        this.addSelectionConfirm(obj);
+      }
+    }
+  }
+
+  private addSelectionConfirm(el: HTMLElement, location = false): void {
+    if (el.querySelector('.bae_confirm_blurb')) return;
+    const span = document.createElement('span');
+    span.className = location ? 'bae_confirm_blurb bae_location_confirm' : 'bae_confirm_blurb';
+    span.textContent = _('Confirm?');
+    el.appendChild(span);
   }
 
   private markDropHover(el: HTMLElement | null, confirm: boolean): void {

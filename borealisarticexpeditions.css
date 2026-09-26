@@ -555,6 +555,13 @@ html[data-theme=dark] {
   position: absolute;
 }
 
+.bae_location_zone:focus-visible,
+.bae_camp_zone:focus-visible {
+  outline: calc(8px * var(--bae-scale)) solid #2a6fdb;
+  outline-offset: calc(6px * var(--bae-scale));
+  z-index: 6;
+}
+
 .bae_camp_zone {
   top: 3.6538461538%;
   width: 11.0876451954%;

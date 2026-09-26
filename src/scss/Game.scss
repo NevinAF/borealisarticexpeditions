@@ -661,6 +661,13 @@ html[data-theme="dark"] {
   position: absolute;
 }
 
+.bae_location_zone:focus-visible,
+.bae_camp_zone:focus-visible {
+  outline: scaled(8) solid #2a6fdb;
+  outline-offset: scaled(6);
+  z-index: 6;
+}
+
 .bae_camp_zone {
   top: px-to-percent-in-height($camp_top);
   width: px-to-percent-in-width($camp_width);
