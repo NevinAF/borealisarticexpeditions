@@ -1099,13 +1099,14 @@ html[data-theme="dark"] {
   max-width: calc(100% - scaled(16));
 }
 
-.bae_card:hover > .bae_confirm_blurb,
+.notouch-device .bae_card:hover > .bae_confirm_blurb,
 .bae_card:focus-visible > .bae_confirm_blurb,
-.bae_location_zone:hover > .bae_confirm_blurb,
+.notouch-device .bae_location_zone:hover > .bae_confirm_blurb,
 .bae_location_zone:focus-within > .bae_confirm_blurb,
-.bae_obj:hover > .bae_confirm_blurb,
+.notouch-device .bae_obj:hover > .bae_confirm_blurb,
 .bae_obj:focus-visible > .bae_confirm_blurb,
-.bae_obj_selected:not(:disabled) > .bae_confirm_blurb {
+.bae_obj_selected:not(:disabled) > .bae_confirm_blurb,
+.touch-device .bae_confirm_blurb {
   opacity: 1;
   visibility: visible;
 }
@@ -1465,6 +1466,17 @@ html[data-theme="dark"] .bae_opening_intro {
 
 .bae_dragging {
   opacity: 0.55;
+}
+
+.bae_pointer_ghost {
+  pointer-events: none;
+  z-index: 90;
+}
+
+.touch-device .bae_handcard[data-hand-card],
+.touch-device [data-pool-slot] {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .bae_drop_target {

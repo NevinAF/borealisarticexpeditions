@@ -1028,6 +1028,14 @@ class OptionalUi {
         this.tooltipClickY = 0;
         this.tooltipWasBlocked = false;
         this.tooltipRetrigger = false;
+        this.tooltipPointerHeld = false;
+        this.tooltipDragging = false;
+        this.tooltipPinnedId = null;
+        this.lastPointerWasTouch = false;
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+        this.suppressClickUntil = 0;
+        this.pointerDrag = null;
         this.lastHoverEl = null;
         this.previewLocked = false;
         this.lastClaimFlightKey = '';
@@ -1054,6 +1062,7 @@ class OptionalUi {
         this.bindPreferenceListener();
     }
     teardown() {
+        this.cancelPointerDrag();
         for (const fn of this.cleanupFns) {
             try {
                 fn();
@@ -1838,6 +1847,8 @@ class OptionalUi {
         this.host.root.querySelectorAll('.bae_handcard[data-hand-card]').forEach((el) => {
             const htmlEl = el;
             htmlEl.setAttribute('draggable', 'true');
+            if (this.canPointerDragHand())
+                htmlEl.style.touchAction = 'none';
             const onDragStart = (ev) => {
                 if (this.host.isActionBusy()) {
                     ev.preventDefault();
@@ -1851,13 +1862,24 @@ class OptionalUi {
             const onDragEnd = () => {
                 htmlEl.classList.remove('bae_dragging');
                 this.dragCardId = null;
-                this.host.root.querySelectorAll('.bae_drop_target').forEach((t) => t.classList.remove('bae_drop_target'));
+                this.clearDropHighlights();
+            };
+            const onPointerDown = (ev) => {
+                if (ev.pointerType !== 'touch' || this.host.isActionBusy() || !this.canPointerDragHand())
+                    return;
+                this.beginPointerDragWatch(ev, {
+                    kind: 'hand',
+                    cardId: Number(htmlEl.dataset.handCard),
+                    source: htmlEl,
+                });
             };
             htmlEl.addEventListener('dragstart', onDragStart);
             htmlEl.addEventListener('dragend', onDragEnd);
+            htmlEl.addEventListener('pointerdown', onPointerDown);
             this.cleanupFns.push(() => {
                 htmlEl.removeEventListener('dragstart', onDragStart);
                 htmlEl.removeEventListener('dragend', onDragEnd);
+                htmlEl.removeEventListener('pointerdown', onPointerDown);
             });
         });
         this.host.root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
@@ -1873,17 +1895,7 @@ class OptionalUi {
                 ev.preventDefault();
                 htmlEl.classList.remove('bae_drop_target');
                 const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
-                const loc = Number(htmlEl.dataset.loc);
-                if (this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
-                    return;
-                this.host.campSelected = false;
-                this.host.selectedRegroupIds.clear();
-                this.host.selectedCardId = cardId;
-                this.host.selectedLocation = loc;
-                this.host.selectedPoolSlot = null;
-                this.host.renderAll();
-                this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
-                this.onSelectionChanged();
+                this.applyHandDropOnLocation(cardId, Number(htmlEl.dataset.loc));
             };
             htmlEl.addEventListener('dragover', onDragOver);
             htmlEl.addEventListener('dragleave', onDragLeave);
@@ -1906,12 +1918,7 @@ class OptionalUi {
                 ev.preventDefault();
                 htmlEl.classList.remove('bae_drop_target');
                 const cardId = Number(ev.dataTransfer?.getData('text/bae-card') || this.dragCardId);
-                if (this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
-                    return;
-                this.host.enterRegroupMode();
-                this.host.selectedRegroupIds.add(cardId);
-                this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
-                this.onSelectionChanged();
+                this.applyHandDropOnCamp(cardId);
             };
             htmlEl.addEventListener('dragover', onDragOver);
             htmlEl.addEventListener('drop', onDrop);
@@ -1934,7 +1941,7 @@ class OptionalUi {
                 const slotRaw = ev.dataTransfer?.getData('text/bae-pool');
                 if (slotRaw === '' || slotRaw == null)
                     return;
-                void this.host.sendAction('actTakeAnimal', { pool_slot: Number(slotRaw) });
+                this.applyPoolDropOnHand(Number(slotRaw));
             };
             handCol.addEventListener('dragover', onDragOver);
             handCol.addEventListener('drop', onDrop);
@@ -1946,6 +1953,8 @@ class OptionalUi {
         this.host.root.querySelectorAll('[data-pool-slot]').forEach((el) => {
             const htmlEl = el;
             htmlEl.setAttribute('draggable', 'true');
+            if (this.canPointerDragPool())
+                htmlEl.style.touchAction = 'none';
             const onDragStart = (ev) => {
                 if (this.host.isActionBusy() || !this.host.isReplenishLike()) {
                     ev.preventDefault();
@@ -1953,9 +1962,199 @@ class OptionalUi {
                 }
                 ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
             };
+            const onPointerDown = (ev) => {
+                if (ev.pointerType !== 'touch' || this.host.isActionBusy() || !this.canPointerDragPool())
+                    return;
+                this.beginPointerDragWatch(ev, {
+                    kind: 'pool',
+                    poolSlot: Number(htmlEl.dataset.poolSlot),
+                    source: htmlEl,
+                });
+            };
             htmlEl.addEventListener('dragstart', onDragStart);
-            this.cleanupFns.push(() => htmlEl.removeEventListener('dragstart', onDragStart));
+            htmlEl.addEventListener('pointerdown', onPointerDown);
+            this.cleanupFns.push(() => {
+                htmlEl.removeEventListener('dragstart', onDragStart);
+                htmlEl.removeEventListener('pointerdown', onPointerDown);
+            });
         });
+    }
+    canPointerDragHand() {
+        return this.host.isGameplayLike()
+            && this.host.bga.players.isCurrentPlayerActive()
+            && !this.host.isActionBusy();
+    }
+    canPointerDragPool() {
+        return this.host.isReplenishLike()
+            && this.host.bga.players.isCurrentPlayerActive()
+            && !this.host.isActionBusy();
+    }
+    applyHandDropOnLocation(cardId, loc) {
+        if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
+            return;
+        this.host.campSelected = false;
+        this.host.selectedRegroupIds.clear();
+        this.host.selectedPoolSlot = null;
+        this.host.selectedObjectiveIdx = null;
+        if (this.host.confirmObserveIfReady(cardId, loc))
+            return;
+        this.host.selectedCardId = cardId;
+        this.host.selectedLocation = loc;
+        this.host.renderAll();
+        this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+        this.onSelectionChanged();
+    }
+    applyHandDropOnCamp(cardId) {
+        if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive())
+            return;
+        this.host.enterRegroupMode();
+        this.host.selectedRegroupIds.add(cardId);
+        this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+        this.onSelectionChanged();
+    }
+    applyPoolDropOnHand(slot) {
+        if (!Number.isFinite(slot) || this.host.isActionBusy() || !this.host.isReplenishLike() || !this.host.bga.players.isCurrentPlayerActive())
+            return;
+        void this.host.sendAction('actTakeAnimal', { pool_slot: slot });
+    }
+    beginPointerDragWatch(ev, info) {
+        if (!ev.isPrimary)
+            return;
+        this.cancelPointerDrag();
+        this.pointerDrag = {
+            pointerId: ev.pointerId,
+            kind: info.kind,
+            cardId: info.cardId,
+            poolSlot: info.poolSlot,
+            source: info.source,
+            startX: ev.clientX,
+            startY: ev.clientY,
+            ghost: null,
+            active: false,
+        };
+    }
+    tickPointerDrag(ev) {
+        const drag = this.pointerDrag;
+        if (!drag || ev.pointerId !== drag.pointerId)
+            return;
+        const dx = ev.clientX - drag.startX;
+        const dy = ev.clientY - drag.startY;
+        if (!drag.active) {
+            if (dx * dx + dy * dy < OptionalUi.POINTER_DRAG_PX * OptionalUi.POINTER_DRAG_PX)
+                return;
+            this.activatePointerDrag(ev, drag);
+        }
+        if (!drag.active || !drag.ghost)
+            return;
+        ev.preventDefault();
+        this.placePointerGhost(drag.ghost, ev.clientX, ev.clientY);
+        this.highlightPointerDropTarget(ev.clientX, ev.clientY, drag.kind);
+    }
+    activatePointerDrag(ev, drag) {
+        drag.active = true;
+        this.tooltipDragging = true;
+        this.tooltipPointerHeld = true;
+        this.dragCardId = drag.kind === 'hand' ? (drag.cardId ?? null) : null;
+        drag.source.classList.add('bae_dragging');
+        try {
+            drag.source.setPointerCapture(ev.pointerId);
+        }
+        catch { /* ignore */ }
+        const ghost = drag.source.cloneNode(true);
+        ghost.classList.add('bae_pointer_ghost', 'bae_motion_clone');
+        ghost.classList.remove('bae_dragging');
+        ghost.removeAttribute('id');
+        ghost.setAttribute('aria-hidden', 'true');
+        const r = drag.source.getBoundingClientRect();
+        ghost.style.position = 'absolute';
+        ghost.style.width = `${r.width}px`;
+        ghost.style.height = `${r.height}px`;
+        ghost.style.margin = '0';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.zIndex = '90';
+        ghost.style.opacity = '0.92';
+        motionLayer(this.host.root).appendChild(ghost);
+        drag.ghost = ghost;
+        this.placePointerGhost(ghost, ev.clientX, ev.clientY);
+        this.playSound('select');
+    }
+    placePointerGhost(ghost, clientX, clientY) {
+        const layer = motionLayer(this.host.root);
+        const w = ghost.offsetWidth;
+        const h = ghost.offsetHeight;
+        const loc = coordsInParent(layer, new DOMRect(clientX - w / 2, clientY - h / 2, w, h));
+        ghost.style.left = `${loc.left}px`;
+        ghost.style.top = `${loc.top}px`;
+    }
+    highlightPointerDropTarget(clientX, clientY, kind) {
+        this.clearDropHighlights();
+        const target = this.pointerDropTarget(clientX, clientY, kind);
+        target?.classList.add('bae_drop_target');
+    }
+    pointerDropTarget(clientX, clientY, kind) {
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        for (const node of document.elementsFromPoint(clientX, clientY)) {
+            const el = node;
+            if (el.classList.contains('bae_pointer_ghost') || el.classList.contains('bae_motion_clone'))
+                continue;
+            if (kind === 'hand') {
+                const loc = el.closest?.(`.bae_location_zone[data-player-id="${myId}"]`);
+                if (loc && this.host.isGameplayLike())
+                    return loc;
+                const camp = el.closest?.(`.bae_camp_zone[data-player-id="${myId}"]`);
+                if (camp && this.host.isGameplayLike())
+                    return camp;
+            }
+            else {
+                const hand = el.closest?.(`.bae_player_handcol[data-player-id="${myId}"]`);
+                if (hand && this.host.isReplenishLike())
+                    return hand;
+            }
+        }
+        return null;
+    }
+    /** @returns true if a drag was in progress and consumed the pointer. */
+    finishPointerDrag(ev) {
+        const drag = this.pointerDrag;
+        if (!drag || ev.pointerId !== drag.pointerId)
+            return false;
+        const wasActive = drag.active;
+        const { kind, cardId, poolSlot } = drag;
+        if (wasActive) {
+            this.suppressClickUntil = Date.now() + 400;
+            const target = this.pointerDropTarget(ev.clientX, ev.clientY, kind);
+            if (kind === 'hand' && cardId != null && target) {
+                if (target.classList.contains('bae_location_zone')) {
+                    this.applyHandDropOnLocation(cardId, Number(target.dataset.loc));
+                }
+                else if (target.classList.contains('bae_camp_zone')) {
+                    this.applyHandDropOnCamp(cardId);
+                }
+            }
+            else if (kind === 'pool' && poolSlot != null && target) {
+                this.applyPoolDropOnHand(poolSlot);
+            }
+        }
+        this.cancelPointerDrag();
+        return wasActive;
+    }
+    cancelPointerDrag() {
+        const drag = this.pointerDrag;
+        this.pointerDrag = null;
+        this.tooltipDragging = false;
+        if (!drag)
+            return;
+        drag.ghost?.remove();
+        drag.source.classList.remove('bae_dragging');
+        try {
+            drag.source.releasePointerCapture(drag.pointerId);
+        }
+        catch { /* ignore */ }
+        this.dragCardId = null;
+        this.clearDropHighlights();
+    }
+    clearDropHighlights() {
+        this.host.root.querySelectorAll('.bae_drop_target').forEach((t) => t.classList.remove('bae_drop_target'));
     }
     async animateHandReplace(pid, discarded, prev, next, ms) {
         const root = this.host.root;
@@ -2254,6 +2453,8 @@ class OptionalUi {
                 this.tooltipRetrigger = false;
                 return;
             }
+            if (this.tooltipPinnedId)
+                return;
             if (this.isTooltipBlocked()) {
                 ev.stopPropagation();
                 ev.stopImmediatePropagation();
@@ -2261,25 +2462,82 @@ class OptionalUi {
             }
         };
         const onClick = (ev) => {
-            const mouse = ev;
-            this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-            this.tooltipNeedMove = true;
-            this.tooltipClickX = mouse.clientX ?? 0;
-            this.tooltipClickY = mouse.clientY ?? 0;
-            this.tooltipWasBlocked = true;
-            const target = ev.target;
-            if (target && typeof target.closest === 'function') {
-                const interacted = this.interactiveTooltipTarget(target) ?? target;
-                this.tooltipLeaveSelector = this.selectorFor(interacted);
+            if (Date.now() < this.suppressClickUntil) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                ev.stopImmediatePropagation();
+                return;
             }
-            this.cancelDojoTooltips();
-            this.dismissTooltipFrom(this.lastHoverEl);
+            if (this.lastPointerWasTouch && this.tooltipPinnedId)
+                return;
+            this.armTooltipQuiet(ev);
+        };
+        const onPointerDown = (ev) => {
+            const pointer = ev;
+            if (pointer.isPrimary === false) {
+                this.cancelPointerDrag();
+                return;
+            }
+            this.lastPointerWasTouch = pointer.pointerType === 'touch';
+            this.tooltipPointerHeld = true;
+            this.touchStartX = pointer.clientX ?? 0;
+            this.touchStartY = pointer.clientY ?? 0;
+            if (this.lastPointerWasTouch) {
+                const id = this.tooltipHostId(ev.target);
+                if (this.tooltipPinnedId && this.tooltipPinnedId !== id)
+                    this.closePinnedTooltip();
+                return;
+            }
+            this.closePinnedTooltip();
+            this.armTooltipQuiet(ev);
+        };
+        const onPointerUp = (ev) => {
+            const pointer = ev;
+            const dragged = this.finishPointerDrag(pointer);
+            this.tooltipPointerHeld = false;
+            if (dragged) {
+                this.armTooltipQuiet(ev);
+                return;
+            }
+            if (this.lastPointerWasTouch) {
+                this.handleTouchTap(pointer);
+                return;
+            }
+            this.armTooltipQuiet(ev);
+        };
+        const onPointerCancel = (ev) => {
+            this.cancelPointerDrag();
+            this.tooltipPointerHeld = false;
+            this.armTooltipQuiet(ev);
+        };
+        const onDragStart = (ev) => {
+            this.tooltipDragging = true;
+            this.tooltipPointerHeld = true;
+            this.closePinnedTooltip();
+            this.armTooltipQuiet(ev);
+        };
+        const onDragEnd = (ev) => {
+            this.tooltipDragging = false;
+            this.tooltipPointerHeld = false;
+            this.armTooltipQuiet(ev);
         };
         const onMove = (ev) => {
+            if (ev instanceof PointerEvent)
+                this.tickPointerDrag(ev);
             const mouse = ev;
             const target = ev.target;
             this.lastHoverEl = target;
-            if (this.tooltipNeedMove) {
+            const buttons = mouse.buttons ?? 0;
+            if (buttons !== 0) {
+                if (!this.tooltipPointerHeld)
+                    this.tooltipPointerHeld = true;
+            }
+            else if (this.tooltipPointerHeld && !this.tooltipDragging && this.dragCardId == null && !this.pointerDrag) {
+                this.tooltipPointerHeld = false;
+                if (!this.lastPointerWasTouch)
+                    this.armTooltipQuiet(ev);
+            }
+            if (this.tooltipNeedMove && !this.tooltipPointerHeld && !this.tooltipDragging) {
                 const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
                 const dy = (mouse.clientY ?? 0) - this.tooltipClickY;
                 if (dx * dx + dy * dy >= 16)
@@ -2289,19 +2547,148 @@ class OptionalUi {
                 this.tooltipLeaveSelector = null;
             }
             const blocked = this.isTooltipBlocked();
+            if (blocked)
+                this.cancelDojoTooltips();
             if (this.tooltipWasBlocked && !blocked)
                 this.retriggerTooltipHover();
             this.tooltipWasBlocked = blocked;
         };
+        const onMouseOut = (ev) => {
+            if (!this.tooltipPinnedId)
+                return;
+            ev.stopPropagation();
+            ev.stopImmediatePropagation();
+        };
         document.addEventListener('mouseover', onHover, true);
         document.addEventListener('mouseenter', onHover, true);
+        document.addEventListener('mouseout', onMouseOut, true);
+        document.addEventListener('pointerdown', onPointerDown, true);
+        document.addEventListener('pointerup', onPointerUp, true);
+        document.addEventListener('pointercancel', onPointerCancel, true);
+        document.addEventListener('pointermove', onMove, { capture: true, passive: false });
+        document.addEventListener('dragstart', onDragStart, true);
+        document.addEventListener('dragend', onDragEnd, true);
+        document.addEventListener('drag', onMove, true);
         document.addEventListener('click', onClick, true);
         document.addEventListener('mousemove', onMove, true);
+    }
+    armTooltipQuiet(ev) {
+        this.tooltipPinnedId = null;
+        const mouse = ev;
+        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
+        this.tooltipNeedMove = true;
+        this.tooltipClickX = mouse.clientX ?? 0;
+        this.tooltipClickY = mouse.clientY ?? 0;
+        this.tooltipWasBlocked = true;
+        const target = ev.target ?? this.lastHoverEl;
+        if (target && typeof target.closest === 'function') {
+            const interacted = this.interactiveTooltipTarget(target) ?? target;
+            this.tooltipLeaveSelector = this.selectorFor(interacted);
+        }
+        this.cancelDojoTooltips();
+        this.dismissTooltipFrom(this.lastHoverEl);
+    }
+    handleTouchTap(ev) {
+        const dx = (ev.clientX ?? 0) - this.touchStartX;
+        const dy = (ev.clientY ?? 0) - this.touchStartY;
+        if (dx * dx + dy * dy >= OptionalUi.TOUCH_TAP_PX * OptionalUi.TOUCH_TAP_PX) {
+            this.closePinnedTooltip();
+            this.armTooltipQuiet(ev);
+            return;
+        }
+        const target = ev.target ?? this.lastHoverEl;
+        if (this.isTapActionTarget(target)) {
+            this.closePinnedTooltip();
+            this.armTooltipQuiet(ev);
+            return;
+        }
+        const id = this.tooltipHostId(target);
+        if (!id) {
+            this.closePinnedTooltip();
+            this.armTooltipQuiet(ev);
+            return;
+        }
+        if (this.tooltipPinnedId === id) {
+            this.closePinnedTooltip();
+            return;
+        }
+        this.openPinnedTooltip(id);
+    }
+    isTapActionTarget(el) {
+        if (!el || typeof el.closest !== 'function')
+            return false;
+        if (el.closest('.bae_zoom_btn, .bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info'))
+            return true;
+        const myId = Number(this.host.bga.players.getCurrentPlayerId());
+        const active = this.host.bga.players.isCurrentPlayerActive() && !this.host.isActionBusy();
+        if (!active)
+            return false;
+        if (el.closest(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`)
+            && (this.host.isGameplayLike() || this.host.isOpeningMulliganLike() || this.host.campSelected))
+            return true;
+        if (el.closest(`.bae_location_zone[data-player-id="${myId}"]`)
+            && (this.host.isGameplayLike() || this.host.isAssignCampLike()))
+            return true;
+        if (el.closest(`.bae_camp_zone[data-player-id="${myId}"], [data-camp-wrap][data-player-id="${myId}"]`)
+            && this.host.isGameplayLike())
+            return true;
+        if (el.closest('[data-pool-slot]') && this.host.isReplenishLike())
+            return true;
+        const objBtn = el.closest('[data-obj-idx]');
+        if (!objBtn)
+            return false;
+        const idx = Number(objBtn.dataset.objIdx);
+        const obj = this.host.gamedatas.boardState.objectives?.[idx];
+        if (!obj?.active || (obj.players?.[myId] ?? 'unmet') !== 'meets')
+            return false;
+        if (this.host.isPromptClaimObjectiveLike())
+            return objBtn.classList.contains('bae_obj_prompt_target');
+        if (this.host.isOpeningMulliganLike())
+            return false;
+        return this.host.isGameplayLike() || this.host.isReplenishLike() || this.host.isAssignCampLike();
+    }
+    tooltipHostId(el) {
+        const tooltips = this.host.bga.gameui.tooltips;
+        if (!tooltips)
+            return null;
+        let node = el;
+        while (node && node !== document.body) {
+            const id = node.id;
+            if (id && tooltips[id])
+                return id;
+            if (node === this.host.root)
+                break;
+            node = node.parentElement;
+        }
+        return null;
+    }
+    openPinnedTooltip(id) {
+        this.tooltipPinnedId = id;
+        this.tooltipQuietUntil = 0;
+        this.tooltipNeedMove = false;
+        this.tooltipWasBlocked = false;
+        const show = () => {
+            if (this.tooltipPinnedId !== id)
+                return;
+            try {
+                this.host.bga.gameui.tooltips?.[id]?.open?.(id);
+            }
+            catch { /* ignore */ }
+        };
+        show();
+        window.setTimeout(show, 50);
+    }
+    closePinnedTooltip() {
+        if (!this.tooltipPinnedId)
+            return;
+        this.tooltipPinnedId = null;
+        this.cancelDojoTooltips();
     }
     beginTooltipGuard(zones) {
         const hoverZone = this.hoverTooltipZone();
         const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
         const hover = this.lastHoverEl;
+        this.tooltipPinnedId = null;
         this.tooltipNeedMove = true;
         this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
         this.tooltipWasBlocked = true;
@@ -2324,6 +2711,10 @@ class OptionalUi {
     }
     isTooltipBlocked() {
         if (this.resolving)
+            return true;
+        if (this.tooltipPinnedId)
+            return false;
+        if (this.tooltipPointerHeld || this.tooltipDragging || this.dragCardId != null)
             return true;
         if (Date.now() < this.tooltipQuietUntil)
             return true;
@@ -2707,6 +3098,8 @@ class OptionalUi {
     }
 }
 OptionalUi.DISCARD_LOOP_MS = 1850;
+OptionalUi.POINTER_DRAG_PX = 16;
+OptionalUi.TOUCH_TAP_PX = 24;
 OptionalUi.TOOLTIP_CLICK_MS = 500;
 
 const SPECIES_COUNT = 5;

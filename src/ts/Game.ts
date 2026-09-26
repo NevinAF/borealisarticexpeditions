@@ -674,7 +674,7 @@ export class Game {
     );
   }
 
-  private confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
+  confirmObserveIfReady(cardId: number | null, location: number | null): boolean {
     if (this.actionPending || !this.isGameplayLike() || !this.bga.players.isCurrentPlayerActive()) return false;
     if (cardId == null || location == null) return false;
     if (!this.isObserveSelectionLegal(cardId, location)) {
