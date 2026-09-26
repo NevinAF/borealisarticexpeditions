@@ -29,18 +29,13 @@ class EndOfRound extends GameState
         $g->clearPendingObjectivePrompts();
         $endedRound = $g->getRoundNumber();
 
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'endOfRound',
-                clienttranslate('End of round ${round_number}'),
-                [
-                    'round_number' => $endedRound,
-                    'boardState' => $g->getBoardState((int)$pid),
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'endOfRound',
+            clienttranslate('End of round ${round_number}'),
+            [
+                'round_number' => $endedRound,
+            ]
+        );
 
         $g->recordRoundEnded();
         $g->incrementRoundNumber();

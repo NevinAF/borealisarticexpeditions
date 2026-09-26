@@ -397,7 +397,7 @@ export class OptionalUi {
     this.resolving = true;
     this.prepareResolution([`player:${pid}`]);
     try {
-      const discarded = (args.discarded as number[] | undefined) ?? [];
+      const discarded = this.discardedIdsFromNotif(args);
       const leftHold = this.ensureRegroupHold(pid, 'left');
       const rightHold = this.ensureRegroupHold(pid, 'right');
       const leftCamp = this.host.root.querySelector(`#bae_camp_${pid}_left`) as HTMLElement | null;
@@ -536,7 +536,7 @@ export class OptionalUi {
     const keepRegroupSelection = this.host.isOpeningMulliganLike() && pid !== myId;
     this.prepareResolution([`player:${pid}`], keepRegroupSelection);
     try {
-      const discarded = (args.discarded as number[] | undefined) ?? [];
+      const discarded = this.discardedIdsFromNotif(args);
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
     } finally {
       this.endResolution();
@@ -1817,6 +1817,14 @@ export class OptionalUi {
   }
 
   /** Facedown hands always drop the first N cards; own hand uses the discarded ids. */
+  private discardedIdsFromNotif(args: Record<string, unknown>): number[] {
+    const ids = (args.discarded as number[] | undefined) ?? [];
+    if (ids.length > 0) return ids.map(Number);
+    const n = Number(args.discard_count ?? 0);
+    if (!Number.isFinite(n) || n <= 0) return [];
+    return Array.from({ length: n }, (_, i) => -1 - i);
+  }
+
   private leavingHandCards(pid: number, discarded: number[]): HTMLElement[] {
     const cards = this.handCards(pid);
     if (discarded.length <= 0 || cards.length === 0) return [];

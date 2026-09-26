@@ -93,23 +93,18 @@ class Gameplay extends GameState
         $speciesName = Material::getSpeciesNames()[$def['species'] ?? 0] ?? '';
         $locationName = Material::getLocationNames()[$location] ?? (string) $location;
 
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'observeAnimal',
-                clienttranslate('${player_name} observes a ${species_name} at the ${location_name} location'),
-                [
-                    'player_id' => $activePlayerId,
-                    'player_name' => $g->getPlayerNameById($activePlayerId),
-                    'card_id' => $card_id,
-                    'location' => $location,
-                    'boardState' => $g->getBoardState((int)$pid),
-                    'species_name' => $speciesName,
-                    'location_name' => $locationName,
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'observeAnimal',
+            clienttranslate('${player_name} observes a ${species_name} at the ${location_name} location'),
+            [
+                'player_id' => $activePlayerId,
+                'player_name' => $g->getPlayerNameById($activePlayerId),
+                'card_id' => $card_id,
+                'location' => $location,
+                'species_name' => $speciesName,
+                'location_name' => $locationName,
+            ]
+        );
 
         $pendingAfter = $g->getPendingObjectivePrompts();
         $newPending = array_diff($pendingAfter[$activePlayerId] ?? [], $pendingBefore[$activePlayerId] ?? []);
@@ -172,22 +167,19 @@ class Gameplay extends GameState
         $g->setLastReturnedCounts($last);
         $g->updateObjectiveConditions();
 
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'regroup',
-                clienttranslate('${player_name} regrouped ${vp_from_camps} scientists for ${vp_from_camps} VP, and discarded ${discard_count} card(s)'),
-                [
-                    'player_id' => $activePlayerId,
-                    'player_name' => $g->getPlayerNameById($activePlayerId),
-                    'discarded' => $ids,
-                    'discard_count' => count($ids),
-                    'vp_from_camps' => $camp,
-                    'boardState' => $g->getBoardState((int)$pid),
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'regroup',
+            clienttranslate('${player_name} regrouped ${vp_from_camps} scientists for ${vp_from_camps} VP, and discarded ${discard_count} card(s)'),
+            [
+                'player_id' => $activePlayerId,
+                'player_name' => $g->getPlayerNameById($activePlayerId),
+                'discard_count' => count($ids),
+                'vp_from_camps' => $camp,
+            ],
+            [
+                $activePlayerId => ['discarded' => $ids],
+            ]
+        );
 
         if ($undoSnapshot !== null && $camp > 0) {
             $g->setUndoSnapshot($undoSnapshot, [

@@ -181,6 +181,46 @@ class Game extends \Bga\GameFramework\Table
     }
 
     /**
+     * Spectator-safe board (all hands as counts). Player 0 is never a seated player.
+     *
+     * @return array<string, mixed>
+     */
+    public function getPublicBoardState(): array
+    {
+        return $this->getBoardState(0);
+    }
+
+    /**
+     * One public notification for players and spectators, with a private boardState
+     * (own hand revealed) merged in for each seated player.
+     *
+     * @param array<string, mixed> $publicArgs
+     * @param array<int, array<string, mixed>> $privateArgsByPlayer
+     */
+    public function notifyAllWithBoardState(
+        string $notifName,
+        string $message,
+        array $publicArgs = [],
+        array $privateArgsByPlayer = [],
+    ): void {
+        $args = $publicArgs;
+        $args['boardState'] = $this->getPublicBoardState();
+        $private = [];
+        foreach ($this->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) {
+                continue;
+            }
+            $pid = (int) $pid;
+            $priv = $privateArgsByPlayer[$pid] ?? [];
+            $priv['boardState'] = $this->getBoardState($pid);
+            $private[$pid] = $priv;
+        }
+        $args['_private'] = $private;
+        $args['_merge_private'] = true;
+        $this->bga->notify->all($notifName, $message, $args);
+    }
+
+    /**
      * @return array<int, array<int, list<int>>>
      */
     public function getScientists(): array
@@ -594,22 +634,15 @@ class Game extends \Bga\GameFramework\Table
         $this->setReplenishUndoBlocked(false);
 
         $playerName = $this->getPlayerNameById($playerId);
-        foreach ($this->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) {
-                continue;
-            }
-            $this->bga->notify->player(
-                (int) $pid,
-                'actionUndone',
-                clienttranslate('${player_name} undid their ${undo_type} action'),
-                [
-                    'player_id' => $playerId,
-                    'player_name' => $playerName,
-                    'undo_type' => $undoType,
-                    'boardState' => $this->getBoardState((int) $pid),
-                ]
-            );
-        }
+        $this->notifyAllWithBoardState(
+            'actionUndone',
+            clienttranslate('${player_name} undid their ${undo_type} action'),
+            [
+                'player_id' => $playerId,
+                'player_name' => $playerName,
+                'undo_type' => $undoType,
+            ]
+        );
 
         return Gameplay::class;
     }
@@ -1202,41 +1235,31 @@ class Game extends \Bga\GameFramework\Table
         $this->setPendingObjectivePrompts($pending);
 
         if ($firstClaim) {
-            foreach ($this->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'objectiveClaimed',
-                    clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
-                    [
-                        'player_id' => $activePlayerId,
-                        'player_name' => $claimerName,
-                        'objective_index' => $objectiveIndex,
-                        'objective_id' => $oid,
-                        'objective_title' => $objectiveTitle,
-                        'boardState' => $this->getBoardState((int)$pid),
-                    ]
-                );
-            }
-        }
-
-        foreach ($this->getNextPlayerTable() as $pid2 => $_2) {
-            if ($pid2 === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid2,
-                'objectiveScored',
-                clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
+            $this->notifyAllWithBoardState(
+                'objectiveClaimed',
+                clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
                 [
                     'player_id' => $activePlayerId,
                     'player_name' => $claimerName,
                     'objective_index' => $objectiveIndex,
                     'objective_id' => $oid,
                     'objective_title' => $objectiveTitle,
-                    'score' => 5,
-                    'boardState' => $this->getBoardState((int)$pid2),
                 ]
             );
         }
+
+        $this->notifyAllWithBoardState(
+            'objectiveScored',
+            clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
+            [
+                'player_id' => $activePlayerId,
+                'player_name' => $claimerName,
+                'objective_index' => $objectiveIndex,
+                'objective_id' => $oid,
+                'objective_title' => $objectiveTitle,
+                'score' => 5,
+            ]
+        );
 
     }
 
@@ -1272,41 +1295,31 @@ class Game extends \Bga\GameFramework\Table
             $this->bga->playerScore->inc($playerId, 5, null);
 
             if ($firstClaim) {
-                foreach ($this->getNextPlayerTable() as $pid => $_) {
-                    if ($pid === 0) continue;
-                    $this->bga->notify->player(
-                        (int)$pid,
-                        'objectiveClaimed',
-                        clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
-                        [
-                            'player_id' => $playerId,
-                            'player_name' => $playerName,
-                            'objective_index' => $objectiveIndex,
-                            'objective_id' => $oid,
-                            'objective_title' => $title,
-                            'boardState' => $this->getBoardState((int)$pid),
-                        ]
-                    );
-                }
-            }
-
-            foreach ($this->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'objectiveScored',
-                    clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
+                $this->notifyAllWithBoardState(
+                    'objectiveClaimed',
+                    clienttranslate('Objective ${objective_title} has been marked as claimed by ${player_name}'),
                     [
                         'player_id' => $playerId,
                         'player_name' => $playerName,
                         'objective_index' => $objectiveIndex,
                         'objective_id' => $oid,
                         'objective_title' => $title,
-                        'score' => 5,
-                        'boardState' => $this->getBoardState((int)$pid),
                     ]
                 );
             }
+
+            $this->notifyAllWithBoardState(
+                'objectiveScored',
+                clienttranslate('${player_name} gained ${score} VP for claiming objective ${objective_title}'),
+                [
+                    'player_id' => $playerId,
+                    'player_name' => $playerName,
+                    'objective_index' => $objectiveIndex,
+                    'objective_id' => $oid,
+                    'objective_title' => $title,
+                    'score' => 5,
+                ]
+            );
         }
 
         $this->removePendingObjectivePrompt($playerId, $objectiveIndex);
@@ -1399,25 +1412,20 @@ class Game extends \Bga\GameFramework\Table
                 $vp = $this->scoreSpeciesSets($boards[$pid][$loc] ?? []);
                 if ($vp === 0) continue;
                 $this->bga->playerScore->inc($pid, $vp, null);
-                foreach ($this->getNextPlayerTable() as $recipient => $_2) {
-                    if ($recipient === 0) continue;
-                    $this->bga->notify->player(
-                        (int)$recipient,
-                        'scoringStep',
-                        clienttranslate('${player_name} gains ${amount} VP from species sets'),
-                        [
-                            'player_id' => $pid,
-                            'scoring_kind' => 'species_sets',
-                            'kind' => 'species_sets',
-                            'amount' => $vp,
-                            'location' => $loc,
-                            'player_name' => $playerName,
-                            'anchor_id' => "bae_animal_loc_vp_{$pid}",
-                            'color' => $color,
-                            'boardState' => $this->getBoardState((int)$recipient),
-                        ]
-                    );
-                }
+                $this->notifyAllWithBoardState(
+                    'scoringStep',
+                    clienttranslate('${player_name} gains ${amount} VP from species sets'),
+                    [
+                        'player_id' => $pid,
+                        'scoring_kind' => 'species_sets',
+                        'kind' => 'species_sets',
+                        'amount' => $vp,
+                        'location' => $loc,
+                        'player_name' => $playerName,
+                        'anchor_id' => "bae_animal_loc_vp_{$pid}",
+                        'color' => $color,
+                    ]
+                );
             }
 
             // Track VP per location
@@ -1426,26 +1434,21 @@ class Game extends \Bga\GameFramework\Table
                 $vp = (Material::TRACK_SPACE_VP[$loc] ?? [])[$fi] ?? 0;
                 if ($vp === 0) continue;
                 $this->bga->playerScore->inc($pid, $vp, null);
-                foreach ($this->getNextPlayerTable() as $recipient => $_2) {
-                    if ($recipient === 0) continue;
-                    $this->bga->notify->player(
-                        (int)$recipient,
-                        'scoringStep',
-                        clienttranslate('${player_name} gains ${amount} VP from the exploration track'),
-                        [
-                            'player_id' => $pid,
-                            'scoring_kind' => 'exploration_track',
-                            'kind' => 'exploration_track',
-                            'amount' => $vp,
-                            'location' => $loc,
-                            'flag_space' => $fi,
-                            'player_name' => $playerName,
-                            'anchor_id' => "bae_track_{$pid}_{$loc}_{$fi}",
-                            'color' => $color,
-                            'boardState' => $this->getBoardState((int)$recipient),
-                        ]
-                    );
-                }
+                $this->notifyAllWithBoardState(
+                    'scoringStep',
+                    clienttranslate('${player_name} gains ${amount} VP from the exploration track'),
+                    [
+                        'player_id' => $pid,
+                        'scoring_kind' => 'exploration_track',
+                        'kind' => 'exploration_track',
+                        'amount' => $vp,
+                        'location' => $loc,
+                        'flag_space' => $fi,
+                        'player_name' => $playerName,
+                        'anchor_id' => "bae_track_{$pid}_{$loc}_{$fi}",
+                        'color' => $color,
+                    ]
+                );
             }
 
             // Bonus VP from animal cards (animate per card)
@@ -1454,27 +1457,22 @@ class Game extends \Bga\GameFramework\Table
                     $def = self::animalDefById((int) $c['id']);
                     $bonus = (int) ($def['bonus_vp'] ?? 0);
                     if ($bonus === 0) continue;
-                    foreach ($this->getNextPlayerTable() as $recipient => $_2) {
-                        if ($recipient === 0) continue;
-                        $this->bga->notify->player(
-                            (int)$recipient,
-                            'scoringStep',
-                            clienttranslate('${player_name} gains ${amount} VP from animal cards'),
-                            [
-                                'player_id' => $pid,
-                                'scoring_kind' => 'animal_card',
-                                'kind' => 'animal_card',
-                                'amount' => $bonus,
-                                'location' => (int) $loc,
-                                'slot' => (int) $si,
-                                'card_id' => (int) $c['id'],
-                                'player_name' => $playerName,
-                                'anchor_id' => "bae_pile_{$pid}_{$loc}_{$si}",
-                                'color' => $color,
-                                'boardState' => $this->getBoardState((int)$recipient),
-                            ]
-                        );
-                    }
+                    $this->notifyAllWithBoardState(
+                        'scoringStep',
+                        clienttranslate('${player_name} gains ${amount} VP from animal cards'),
+                        [
+                            'player_id' => $pid,
+                            'scoring_kind' => 'animal_card',
+                            'kind' => 'animal_card',
+                            'amount' => $bonus,
+                            'location' => (int) $loc,
+                            'slot' => (int) $si,
+                            'card_id' => (int) $c['id'],
+                            'player_name' => $playerName,
+                            'anchor_id' => "bae_pile_{$pid}_{$loc}_{$si}",
+                            'color' => $color,
+                        ]
+                    );
                     $this->bga->playerScore->inc($pid, $bonus, null);
                 }
             }
@@ -1483,27 +1481,22 @@ class Game extends \Bga\GameFramework\Table
             foreach ($scoringIds as $scoringIndex => $sid) {
                 $delta = $this->scoreEndCard($sid, $pid, $boards, $flags, $sci);
                 if ($delta === 0) continue;
-                foreach ($this->getNextPlayerTable() as $recipient => $_2) {
-                    if ($recipient === 0) continue;
-                    $this->bga->notify->player(
-                        (int)$recipient,
-                        'scoringStep',
-                        clienttranslate('${player_name} gains ${amount} VP from scoring card ${scoring_name}'),
-                        [
-                            'player_id' => $pid,
-                            'scoring_kind' => 'scoring_card',
-                            'kind' => 'scoring_card',
-                            'amount' => $delta,
-                            'scoring_id' => $sid,
-                            'scoring_index' => (int) $scoringIndex,
-                            'player_name' => $playerName,
-                            'scoring_name' => Material::getScoringCardsData()[$sid]['title'] ?? '',
-                            'anchor_id' => "bae_score_{$scoringIndex}",
-                            'color' => $color,
-                            'boardState' => $this->getBoardState((int)$recipient),
-                        ]
-                    );
-                }
+                $this->notifyAllWithBoardState(
+                    'scoringStep',
+                    clienttranslate('${player_name} gains ${amount} VP from scoring card ${scoring_name}'),
+                    [
+                        'player_id' => $pid,
+                        'scoring_kind' => 'scoring_card',
+                        'kind' => 'scoring_card',
+                        'amount' => $delta,
+                        'scoring_id' => $sid,
+                        'scoring_index' => (int) $scoringIndex,
+                        'player_name' => $playerName,
+                        'scoring_name' => Material::getScoringCardsData()[$sid]['title'] ?? '',
+                        'anchor_id' => "bae_score_{$scoringIndex}",
+                        'color' => $color,
+                    ]
+                );
                 $this->bga->playerScore->inc($pid, $delta, null);
             }
         }

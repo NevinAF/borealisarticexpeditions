@@ -76,23 +76,18 @@ class OpeningMulligan extends GameState
             $g->drawFromAnimalDeckFor($currentPlayerId);
         }
 
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) {
-                continue;
-            }
-            $this->bga->notify->player(
-                (int) $pid,
-                'mulliganHand',
-                clienttranslate('${player_name} mulligans ${discard_count} card(s)'),
-                [
-                    'player_id' => $currentPlayerId,
-                    'player_name' => $g->getPlayerNameById($currentPlayerId),
-                    'discard_count' => count($ids),
-                    'discarded' => $ids,
-                    'boardState' => $g->getBoardState((int) $pid),
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'mulliganHand',
+            clienttranslate('${player_name} mulligans ${discard_count} card(s)'),
+            [
+                'player_id' => $currentPlayerId,
+                'player_name' => $g->getPlayerNameById($currentPlayerId),
+                'discard_count' => count($ids),
+            ],
+            [
+                $currentPlayerId => ['discarded' => $ids],
+            ]
+        );
 
         $g->recordOpeningMulliganStats($currentPlayerId, count($ids));
 

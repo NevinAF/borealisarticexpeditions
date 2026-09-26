@@ -52,20 +52,15 @@ class ReplenishAnimalCard extends GameState
         if ($pool_slot === -1) {
             $g->drawFromAnimalDeckFor($activePlayerId);
             $g->recordDeckCardsDrawn($activePlayerId);
-            foreach ($g->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'takeAnimal',
-                    clienttranslate('${player_name} draws from the deck'),
-                    [
-                        'player_id' => $activePlayerId,
-                        'player_name' => $g->getPlayerNameById($activePlayerId),
-                        'from_deck' => true,
-                        'boardState' => $g->getBoardState((int)$pid),
-                    ]
-                );
-            }
+            $g->notifyAllWithBoardState(
+                'takeAnimal',
+                clienttranslate('${player_name} draws from the deck'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $g->getPlayerNameById($activePlayerId),
+                    'from_deck' => true,
+                ]
+            );
         } else {
             $pool = $g->getPool();
             if (! isset($pool[$pool_slot])) {
@@ -79,21 +74,16 @@ class ReplenishAnimalCard extends GameState
             $g->setHands($hands);
             $g->drawFromAnimalDeckToPool($pool_slot);
             $g->recordPoolCardTaken($activePlayerId);
-            foreach ($g->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'takeAnimal',
-                    clienttranslate('${player_name} takes a card from the pool'),
-                    [
-                        'player_id' => $activePlayerId,
-                        'player_name' => $g->getPlayerNameById($activePlayerId),
-                        'from_deck' => false,
-                        'pool_slot' => $pool_slot,
-                        'boardState' => $g->getBoardState((int)$pid),
-                    ]
-                );
-            }
+            $g->notifyAllWithBoardState(
+                'takeAnimal',
+                clienttranslate('${player_name} takes a card from the pool'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $g->getPlayerNameById($activePlayerId),
+                    'from_deck' => false,
+                    'pool_slot' => $pool_slot,
+                ]
+            );
         }
         $g->updateObjectiveConditions();
         $g->clearUndoSnapshot();
@@ -129,19 +119,14 @@ class ReplenishAnimalCard extends GameState
         $g->clearUndoSnapshot();
         $g->recordPoolMulliganStats($pid);
 
-        foreach ($g->getNextPlayerTable() as $otherPid => $_) {
-            if ($otherPid === 0) continue;
-            $this->bga->notify->player(
-                (int)$otherPid,
-                'mulliganPool',
-                clienttranslate('${player_name} pays 1 VP to refresh the pool'),
-                [
-                    'player_id' => $pid,
-                    'player_name' => $g->getPlayerNameById($pid),
-                    'boardState' => $g->getBoardState((int)$otherPid),
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'mulliganPool',
+            clienttranslate('${player_name} pays 1 VP to refresh the pool'),
+            [
+                'player_id' => $pid,
+                'player_name' => $g->getPlayerNameById($pid),
+            ]
+        );
 
         return ReplenishAnimalCard::class;
     }

@@ -50,21 +50,16 @@ class AssignCampScientists extends GameState
         $g->setScientists($sci);
         $g->updateObjectiveConditions();
 
-        foreach ($g->getNextPlayerTable() as $pid => $_) {
-            if ($pid === 0) continue;
-            $this->bga->notify->player(
-                (int)$pid,
-                'assignScientists',
-                clienttranslate('${player_name} assigns scientists from camps to the ${location_name} location'),
-                [
-                    'player_id' => $activePlayerId,
-                    'player_name' => $g->getPlayerNameById($activePlayerId),
-                    'location' => $location,
-                    'location_name' => Material::getLocationNames()[$location] ?? (string) $location,
-                    'boardState' => $g->getBoardState((int)$pid),
-                ]
-            );
-        }
+        $g->notifyAllWithBoardState(
+            'assignScientists',
+            clienttranslate('${player_name} assigns scientists from camps to the ${location_name} location'),
+            [
+                'player_id' => $activePlayerId,
+                'player_name' => $g->getPlayerNameById($activePlayerId),
+                'location' => $location,
+                'location_name' => Material::getLocationNames()[$location] ?? (string) $location,
+            ]
+        );
 
         return NextPlayer::class;
     }

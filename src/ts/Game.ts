@@ -622,11 +622,20 @@ export class Game {
     if (wasBusy) this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
   }
 
+  private unwrapNotif(raw: any): Record<string, unknown> {
+    const nested = raw?.args;
+    const a = (nested && typeof nested === 'object' && raw?.boardState == null && raw?.player_id == null)
+      ? nested as Record<string, unknown>
+      : ((raw ?? {}) as Record<string, unknown>);
+    const priv = a._private;
+    if (priv && typeof priv === 'object' && !Array.isArray(priv)) {
+      return { ...a, ...(priv as Record<string, unknown>) };
+    }
+    return a;
+  }
+
   private notifPlayerId(args: Record<string, unknown> | null | undefined): number {
-    const nested = args?.args && typeof args.args === 'object'
-      ? args.args as Record<string, unknown>
-      : null;
-    return Number(args?.player_id ?? args?.playerId ?? nested?.player_id ?? nested?.playerId ?? NaN);
+    return Number(args?.player_id ?? args?.playerId ?? NaN);
   }
 
   private releasePendingActionForNotif(notifName: string, args?: Record<string, unknown>): void {
@@ -2214,35 +2223,30 @@ export class Game {
   }
 
   async notif_observeAnimal(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playObserveResolution(prev, _args); } catch (_) { /* keep state apply */ }
+    try { await this.optionalUi?.playObserveResolution(prev, args); } catch (_) { /* keep state apply */ }
     this.optionalUi?.playSoundKind('success');
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.selectedCardId = null;
     this.selectedLocation = null;
-    this.releasePendingActionForNotif('observeAnimal', _args);
+    this.releasePendingActionForNotif('observeAnimal', args);
     this.renderAll();
   }
   async notif_takeAnimal(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    const args = _args?.args ?? _args;
     try { await this.optionalUi?.playTakeResolution(prev, args); } catch (_) { /* keep state apply */ }
-    if (args.boardState) {
-        this.gamedatas.boardState = args.boardState;
-    }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.selectedPoolSlot = null;
     this.releasePendingActionForNotif('takeAnimal', args);
     this.renderAll();
   }
   async notif_mulliganPool(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    const args = _args?.args ?? _args;
     try { await this.optionalUi?.playMulliganPoolResolution(prev, args); } catch (_) { /* keep state apply */ }
-    if (args.boardState) {
-        this.gamedatas.boardState = args.boardState;
-    }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.releasePendingActionForNotif('mulliganPool', args);
     this.renderAll();
 
@@ -2251,12 +2255,10 @@ export class Game {
     ctr.incValue(-1);
   }
   async notif_mulliganHand(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    const args = _args?.args ?? _args;
     try { await this.optionalUi?.playMulliganHandResolution(prev, args); } catch (_) { /* keep state apply */ }
-    if (args.boardState) {
-        this.gamedatas.boardState = args.boardState;
-    }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     const pid = Number(args.player_id ?? args.playerId ?? 0);
     const myId = Number(this.bga.players.getCurrentPlayerId());
     if (pid === myId || !this.isOpeningMulliganLike()) {
@@ -2266,86 +2268,77 @@ export class Game {
     this.renderAll();
   }
   async notif_actionUndone(_args: any) {
+    const args = this.unwrapNotif(_args);
     this.optionalUi?.clearHolding();
-    if (_args.boardState) {
-      this.gamedatas.boardState = _args.boardState;
-    }
-    this.releasePendingActionForNotif('actionUndone', _args);
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
+    this.releasePendingActionForNotif('actionUndone', args);
     this.renderAll();
     this.syncScoresFromBoardState(this.gamedatas.boardState);
   }
   async notif_regroup(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playRegroupResolution(prev, _args); } catch (_) { /* keep state apply */ }
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
+    try { await this.optionalUi?.playRegroupResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.selectedCardId = null;
     this.selectedLocation = null;
     this.campSelected = false;
     this.selectedRegroupIds.clear();
-    this.releasePendingActionForNotif('regroup', _args);
+    this.releasePendingActionForNotif('regroup', args);
     this.renderAll();
 
-    const pid = Number(_args.player_id ?? _args.playerId ?? 0);
-    const vpGained = Number(_args.vp_from_camps ?? 0);
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const vpGained = Number(args.vp_from_camps ?? 0);
     const ctr = this.bga.playerPanels.getScoreCounter(pid);
     ctr.incValue(vpGained);
   }
   async notif_assignScientists(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playAssignResolution(prev, _args); } catch (_) { /* keep state apply */ }
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
+    try { await this.optionalUi?.playAssignResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.selectedLocation = null;
     this.campSelected = false;
-    this.releasePendingActionForNotif('assignScientists', _args);
+    this.releasePendingActionForNotif('assignScientists', args);
     this.renderAll();
   }
   async notif_objectiveClaimed(_args: any) {
+    const args = this.unwrapNotif(_args);
     this.optionalUi?.playSoundKind('claim');
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playObjectiveClaimResolution(prev, _args); } catch (_) { /* keep state apply */ }
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
-    this.releasePendingActionForNotif('objectiveClaimed', _args);
+    try { await this.optionalUi?.playObjectiveClaimResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
+    this.releasePendingActionForNotif('objectiveClaimed', args);
     this.renderAll();
   }
   async notif_objectiveScored(_args: any) {
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
-    try { await this.optionalUi?.playObjectiveClaimResolution(prev, _args); } catch (_) { /* keep state apply */ }
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
-    this.releasePendingActionForNotif('objectiveScored', _args);
+    try { await this.optionalUi?.playObjectiveClaimResolution(prev, args); } catch (_) { /* keep state apply */ }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
+    this.releasePendingActionForNotif('objectiveScored', args);
     this.renderAll();
 
-    const pid = Number(_args.player_id ?? _args.playerId ?? 0);
-    const score = Number(_args.score ?? 0);
+    const pid = Number(args.player_id ?? args.playerId ?? 0);
+    const score = Number(args.score ?? 0);
     const ctr = this.bga.playerPanels.getScoreCounter(pid);
     ctr.incValue(score);
   }
   async notif_endOfRound(_args: any) {
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
+    const args = this.unwrapNotif(_args);
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.renderAll();
   }
   async notif_finalScoring(_args: any) {
-    if (_args.boardState) {
-        this.gamedatas.boardState = _args.boardState;
-    }
+    const args = this.unwrapNotif(_args);
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.renderAll();
   }
   async notif_scoringStep(_args: any) {
-    const args = _args?.args ?? _args;
+    const args = this.unwrapNotif(_args);
     const prev = this.gamedatas.boardState;
     try { await this.optionalUi?.playScoringStepResolution(prev, args); } catch (_) { /* keep state apply */ }
-    if (args.boardState) {
-      this.gamedatas.boardState = args.boardState;
-    }
+    if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.renderAll();
 
     const pid = Number(args.player_id ?? args.playerId ?? 0);
