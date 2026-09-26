@@ -186,8 +186,22 @@ class Game extends \Bga\GameFramework\Table
     public function getScientists(): array
     {
         $v = $this->bga->globals->get(self::GLOBAL_SCIENTISTS, []);
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $pid => $colors) {
+            $pid = (int) $pid;
+            $out[$pid] = [];
+            if (! is_array($colors)) {
+                continue;
+            }
+            foreach ($colors as $color => $list) {
+                $out[$pid][(int) $color] = is_array($list) ? array_values(array_map('intval', $list)) : [];
+            }
+        }
 
-        return is_array($v) ? $v : [];
+        return $out;
     }
 
     /**
@@ -204,8 +218,22 @@ class Game extends \Bga\GameFramework\Table
     public function getFlags(): array
     {
         $v = $this->bga->globals->get(self::GLOBAL_FLAGS, []);
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $pid => $locs) {
+            $pid = (int) $pid;
+            $out[$pid] = [];
+            if (! is_array($locs)) {
+                continue;
+            }
+            foreach ($locs as $loc => $space) {
+                $out[$pid][(int) $loc] = (int) $space;
+            }
+        }
 
-        return is_array($v) ? $v : [];
+        return $out;
     }
 
     /**
@@ -222,8 +250,15 @@ class Game extends \Bga\GameFramework\Table
     public function getLastReturnedCounts(): array
     {
         $v = $this->bga->globals->get(self::GLOBAL_LAST_RETURNED, []);
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $pid => $n) {
+            $out[(int) $pid] = (int) $n;
+        }
 
-        return is_array($v) ? array_map('intval', $v) : [];
+        return $out;
     }
 
     /**
@@ -721,8 +756,15 @@ class Game extends \Bga\GameFramework\Table
     public function getHands(): array
     {
         $v = $this->bga->globals->get(self::GLOBAL_HANDS, []);
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $pid => $hand) {
+            $out[(int) $pid] = is_array($hand) ? array_values(array_map('intval', $hand)) : [];
+        }
 
-        return is_array($v) ? $v : [];
+        return $out;
     }
 
     /**
@@ -739,8 +781,22 @@ class Game extends \Bga\GameFramework\Table
     public function getBoards(): array
     {
         $v = $this->bga->globals->get(self::GLOBAL_BOARDS, []);
+        if (! is_array($v)) {
+            return [];
+        }
+        $out = [];
+        foreach ($v as $pid => $locs) {
+            $pid = (int) $pid;
+            $out[$pid] = [];
+            if (! is_array($locs)) {
+                continue;
+            }
+            foreach ($locs as $loc => $pile) {
+                $out[$pid][(int) $loc] = is_array($pile) ? array_values(array_map('intval', $pile)) : [];
+            }
+        }
 
-        return is_array($v) ? $v : [];
+        return $out;
     }
 
     /**

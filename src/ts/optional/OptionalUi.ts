@@ -113,6 +113,12 @@ export class OptionalUi {
     active: boolean;
   } | null = null;
   private dragClearedSelection = false;
+  private dragDidDrop = false;
+  private dragSelectionSnapshot: {
+    location: number | null;
+    poolSlot: number | null;
+    objectiveIdx: number | null;
+  } | null = null;
   private lastHoverEl: Element | null = null;
   private static readonly POINTER_DRAG_PX = 16;
   private static readonly TOUCH_TAP_PX = 24;
@@ -156,9 +162,15 @@ export class OptionalUi {
   }
 
   teardown(): void {
-    this.cancelPointerDrag();
+    this.cancelPointerDrag(false);
     this.clearTouchHit();
     this.clearTooltipFitTimers();
+    this.pendingDiscard.forEach((id) => window.clearTimeout(id));
+    this.pendingDiscard.clear();
+    if (this.layoutChromeRaf) {
+      cancelAnimationFrame(this.layoutChromeRaf);
+      this.layoutChromeRaf = 0;
+    }
     document.body.classList.remove('bae_tooltip_placing');
     this.touchHitBox?.remove();
     this.touchHitBox = null;
@@ -179,6 +191,10 @@ export class OptionalUi {
       el.classList.remove('bae_loc_selected', 'bae_loc_invalid', 'bae_camp_selected');
     });
     this.host.root?.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
+  }
+
+  onActionFailed(): void {
+    this.previewLocked = false;
   }
 
   onSelectionChanged(): void {
@@ -266,6 +282,7 @@ export class OptionalUi {
 
   clearHolding(): void {
     this.holdingPid = null;
+    this.lastClaimFlightKey = '';
   }
 
   private duration(): number {
@@ -1115,26 +1132,20 @@ export class OptionalUi {
     return out;
   }
 
-  private ghostMeeple(color: number): HTMLElement | null {
-    const exact = this.host.root.querySelector(`.bae_meeple_img[data-scientist="${color}"]`) as HTMLElement | null;
-    const any = exact ?? this.host.root.querySelector('.bae_meeple_img') as HTMLElement | null;
-    if (!any) return null;
-    const clone = any.cloneNode(true) as HTMLElement;
-    clone.removeAttribute('id');
-    clone.dataset.scientist = String(color);
-    clone.classList.remove('bae_preview_fade_left', 'bae_motion_clone', 'bae_missing_sci');
-    if (!exact) {
-      clone.classList.remove('bae_meeple_yellow', 'bae_meeple_pink', 'bae_meeple_teal');
-      clone.classList.add(['bae_meeple_yellow', 'bae_meeple_pink', 'bae_meeple_teal'][color] ?? 'bae_meeple_yellow');
-      const files = ['YellowMeeple', 'PinkMeeple', 'TealMeeple'];
-      (clone as HTMLImageElement).src = `${this.host.bga.images.getImgUrl()}Tokens/${files[color] ?? files[0]}.webp`;
-    }
-    return clone;
+  private ghostMeeple(color: number): HTMLElement {
+    const files = ['YellowMeeple', 'PinkMeeple', 'TealMeeple'];
+    const classes = ['bae_meeple_yellow', 'bae_meeple_pink', 'bae_meeple_teal'];
+    const img = document.createElement('img');
+    img.className = `bae_meeple_img ${classes[color] ?? classes[0]}`;
+    img.dataset.scientist = String(color);
+    img.src = `${this.host.bga.images.getImgUrl()}Tokens/${files[color] ?? files[0]}.webp`;
+    img.alt = '';
+    img.draggable = false;
+    return img;
   }
 
   private placeMissingScientist(color: number, dest: DOMRect, ms: number): void {
     const ghost = this.ghostMeeple(color);
-    if (!ghost) return;
     const layer = motionLayer(this.host.root);
     const loc = coordsInParent(layer, dest);
     const wrap = document.createElement('div');
@@ -1230,6 +1241,8 @@ export class OptionalUi {
         }
         this.dragCardId = Number(htmlEl.dataset.handCard);
         this.dragClearedSelection = false;
+        this.dragDidDrop = false;
+        this.dragSelectionSnapshot = null;
         ev.dataTransfer?.setData('text/bae-card', String(this.dragCardId));
         htmlEl.classList.add('bae_dragging');
         this.playSoundKind('select');
@@ -1237,8 +1250,7 @@ export class OptionalUi {
       const onDragEnd = () => {
         htmlEl.classList.remove('bae_dragging');
         this.dragCardId = null;
-        this.dragClearedSelection = false;
-        this.clearDropHighlights();
+        this.finishDragSelectionChrome();
       };
       const onPointerDown = (ev: PointerEvent) => {
         if (ev.pointerType !== 'touch' || this.host.isActionBusy() || !this.canPointerDragHand()) return;
@@ -1355,10 +1367,11 @@ export class OptionalUi {
         }
         ev.dataTransfer?.setData('text/bae-pool', String(htmlEl.dataset.poolSlot));
         this.dragClearedSelection = false;
+        this.dragDidDrop = false;
+        this.dragSelectionSnapshot = null;
       };
       const onDragEnd = () => {
-        this.dragClearedSelection = false;
-        this.clearDropHighlights();
+        this.finishDragSelectionChrome();
       };
       const onPointerDown = (ev: PointerEvent) => {
         if (ev.pointerType !== 'touch' || this.host.isActionBusy() || !this.canPointerDragPool()) return;
@@ -1393,6 +1406,7 @@ export class OptionalUi {
 
   private applyHandDropOnLocation(cardId: number, loc: number): void {
     if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+    this.dragDidDrop = true;
     this.host.campSelected = false;
     this.host.selectedRegroupIds.clear();
     this.host.selectedPoolSlot = null;
@@ -1410,6 +1424,7 @@ export class OptionalUi {
 
   private applyHandDropOnCamp(cardId: number): void {
     if (!Number.isFinite(cardId) || this.host.isActionBusy() || !this.host.isGameplayLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+    this.dragDidDrop = true;
     this.host.enterRegroupMode();
     this.host.selectedRegroupIds.add(cardId);
     this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
@@ -1418,6 +1433,7 @@ export class OptionalUi {
 
   private applyPoolDropOnHand(slot: number): void {
     if (!Number.isFinite(slot) || this.host.isActionBusy() || !this.host.isReplenishLike() || !this.host.bga.players.isCurrentPlayerActive()) return;
+    this.dragDidDrop = true;
     void this.host.sendAction('actTakeAnimal', { pool_slot: slot });
   }
 
@@ -1461,6 +1477,8 @@ export class OptionalUi {
     this.tooltipPointerHeld = true;
     this.dragCardId = drag.kind === 'hand' ? (drag.cardId ?? null) : null;
     this.dragClearedSelection = false;
+    this.dragDidDrop = false;
+    this.dragSelectionSnapshot = null;
     drag.source.classList.add('bae_dragging');
     this.clearTouchHit();
     try { drag.source.setPointerCapture(ev.pointerId); } catch { /* ignore */ }
@@ -1535,11 +1553,11 @@ export class OptionalUi {
         this.applyPoolDropOnHand(poolSlot);
       }
     }
-    this.cancelPointerDrag();
+    this.cancelPointerDrag(true);
     return wasActive;
   }
 
-  private cancelPointerDrag(): void {
+  private cancelPointerDrag(restoreSelection = true): void {
     const drag = this.pointerDrag;
     this.pointerDrag = null;
     this.tooltipDragging = false;
@@ -1548,9 +1566,29 @@ export class OptionalUi {
     drag.source.classList.remove('bae_dragging');
     try { drag.source.releasePointerCapture(drag.pointerId); } catch { /* ignore */ }
     this.dragCardId = null;
-    this.dragClearedSelection = false;
-    this.clearDropHighlights();
     this.clearTouchHit();
+    if (restoreSelection) this.finishDragSelectionChrome();
+    else this.discardDragSelectionChrome();
+  }
+
+  private discardDragSelectionChrome(): void {
+    this.dragClearedSelection = false;
+    this.dragDidDrop = false;
+    this.dragSelectionSnapshot = null;
+    this.clearDropHighlights();
+  }
+
+  private finishDragSelectionChrome(): void {
+    const snap = this.dragSelectionSnapshot;
+    const restore = !this.dragDidDrop && snap != null && !this.host.isActionBusy();
+    this.discardDragSelectionChrome();
+    if (!restore || !snap) return;
+    this.host.selectedLocation = snap.location;
+    this.host.selectedPoolSlot = snap.poolSlot;
+    this.host.selectedObjectiveIdx = snap.objectiveIdx;
+    this.host.renderAll();
+    this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+    this.onSelectionChanged();
   }
 
   private markDropHover(el: HTMLElement | null, confirm: boolean): void {
@@ -1594,6 +1632,11 @@ export class OptionalUi {
   private suppressSelectionGraphicsForDrag(): void {
     if (this.dragClearedSelection) return;
     this.dragClearedSelection = true;
+    this.dragSelectionSnapshot = {
+      location: this.host.selectedLocation,
+      poolSlot: this.host.selectedPoolSlot,
+      objectiveIdx: this.host.selectedObjectiveIdx,
+    };
     this.host.selectedLocation = null;
     this.host.selectedObjectiveIdx = null;
     this.host.selectedPoolSlot = null;
@@ -2739,8 +2782,11 @@ export class OptionalUi {
   }
 
   private cardEl(pid: number, cardId: number): HTMLElement | null {
-    return this.host.root.querySelector(`#bae_hand_${pid}_${cardId}`) as HTMLElement | null
-      ?? this.host.root.querySelector(`.bae_player_handcol[data-player-id="${pid}"] .bae_handcard, .bae_player_handcol[data-player-id="${pid}"] .bae_handcard_hidden`) as HTMLElement | null;
+    const exact = this.host.root.querySelector(`#bae_hand_${pid}_${cardId}`) as HTMLElement | null;
+    if (exact) return exact;
+    const col = this.host.root.querySelector(`.bae_player_handcol[data-player-id="${pid}"]`) as HTMLElement | null;
+    if (!col) return null;
+    return (col.querySelector('.bae_handcard_hidden') as HTMLElement | null) ?? col;
   }
 
   private shelfEl(pid: number, pos: number): HTMLElement | null {

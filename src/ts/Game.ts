@@ -571,6 +571,9 @@ export class Game {
     }
     return (result as Promise<unknown>).catch((err) => {
       this.endActionSubmit();
+      this.optionalUi?.onActionFailed();
+      this.renderAll();
+      this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
       throw err;
     });
   }
@@ -2119,7 +2122,7 @@ export class Game {
           void this.sendAction("actMulliganPool", {});
         }, {
             disabled: !can,
-            tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan once per turn, only if you have at least 1 VP."),
+            tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
         });
       this.addUndoActionButton(
         replenishArgs?.canUndo ?? this.cachedUndoCanUndo,

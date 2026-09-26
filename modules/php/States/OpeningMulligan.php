@@ -59,13 +59,7 @@ class OpeningMulligan extends GameState
         $playerHand = $hands[$currentPlayerId] ?? [];
         foreach ($ids as $cid) {
             if (array_search($cid, $playerHand, true) === false) {
-                // Dump the hands, cids, and active player ID for debugging
-                throw new UserException(clienttranslate('Invalid card for mulligan: ' . json_encode([
-                    'currentPlayerId' => $currentPlayerId,
-                    'playerHand' => $playerHand,
-                    'hands' => $hands,
-                    'selectedIds' => $ids,
-                ])));
+                throw new UserException(clienttranslate('Invalid card for mulligan'));
             }
         }
 

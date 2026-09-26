@@ -859,6 +859,10 @@ html[data-theme="dark"] {
   margin-top: 0;
 }
 
+#bae_playarea button.bae_card {
+  width: scaled($card_width);
+}
+
 #bae_playarea button.bae_obj {
   display: inline-flex;
   flex: none;

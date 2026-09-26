@@ -111,7 +111,7 @@ class ReplenishAnimalCard extends GameState
         }
         $mull = $g->getMulliganUsed();
         if (! empty($mull[$pid])) {
-            throw new UserException(clienttranslate('You can only mulligan the pool once per game'));
+            throw new UserException(clienttranslate('You can only mulligan the pool once per round'));
         }
         $this->bga->playerScore->inc($pid, -1, null);
         $poolCards = $g->getPool();
@@ -152,6 +152,7 @@ class ReplenishAnimalCard extends GameState
         int $activePlayerId,
         array $args,
     ) {
+        $this->game->clearUndoSnapshot();
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {

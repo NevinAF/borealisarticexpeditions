@@ -166,28 +166,28 @@ class Gameplay extends GameState
         if ($camp > 0) {
             $this->bga->playerScore->inc($activePlayerId, $camp, null);
         }
-            foreach ($g->getNextPlayerTable() as $pid => $_) {
-                if ($pid === 0) continue;
-                $this->bga->notify->player(
-                    (int)$pid,
-                    'regroup',
-                    // Include number of cards discarded and VP gained in the notification
-                    clienttranslate('${player_name} regrouped ${vp_from_camps} scientists for ${vp_from_camps} VP, and discarded ${discard_count} card(s)'),
-                    [
-                        'player_id' => $activePlayerId,
-                        'player_name' => $g->getPlayerNameById($activePlayerId),
-                        'discarded' => $ids,
-                        'discard_count' => count($ids),
-                        'vp_from_camps' => $camp,
-                        'boardState' => $g->getBoardState((int)$pid),
-                    ]
-                );
-            }
 
-        // Set the last returned count for "Morning Shift" objective.
         $last = $g->getLastReturnedCounts();
-        $last[$activePlayerId] = $camp;
+        $last[$activePlayerId] = max((int) ($last[$activePlayerId] ?? 0), $camp);
         $g->setLastReturnedCounts($last);
+        $g->updateObjectiveConditions();
+
+        foreach ($g->getNextPlayerTable() as $pid => $_) {
+            if ($pid === 0) continue;
+            $this->bga->notify->player(
+                (int)$pid,
+                'regroup',
+                clienttranslate('${player_name} regrouped ${vp_from_camps} scientists for ${vp_from_camps} VP, and discarded ${discard_count} card(s)'),
+                [
+                    'player_id' => $activePlayerId,
+                    'player_name' => $g->getPlayerNameById($activePlayerId),
+                    'discarded' => $ids,
+                    'discard_count' => count($ids),
+                    'vp_from_camps' => $camp,
+                    'boardState' => $g->getBoardState((int)$pid),
+                ]
+            );
+        }
 
         if ($undoSnapshot !== null && $camp > 0) {
             $g->setUndoSnapshot($undoSnapshot, [
