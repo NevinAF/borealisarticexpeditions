@@ -83,7 +83,6 @@ class PromptClaimObjective extends GameState
         array $args,
     ): mixed {
         $this->ensurePlayerCanResolveObjective($currentPlayerId, $objective_index);
-        $this->game->clearUndoSnapshot();
         $this->game->resolveObjectivePrompt($currentPlayerId, $objective_index, true);
 
         $remaining = $this->game->getEligiblePendingObjectivePromptsByPlayer()[$currentPlayerId] ?? [];

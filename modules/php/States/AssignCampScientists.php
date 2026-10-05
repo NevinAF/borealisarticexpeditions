@@ -70,7 +70,6 @@ class AssignCampScientists extends GameState
         int $activePlayerId,
         array $args,
     ) {
-        $this->game->clearUndoSnapshot();
         $this->game->claimObjective($activePlayerId, $objective_index);
 
         if ($this->game->hasPendingObjectivePrompts()) {

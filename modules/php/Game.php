@@ -529,6 +529,16 @@ class Game extends \Bga\GameFramework\Table
         $this->bga->globals->set(self::GLOBAL_UNDO_SNAPSHOT, null);
     }
 
+    public function blockUndoAfterClaimingObjective(): void
+    {
+        $undo = $this->getUndoSnapshot();
+        if ($undo === null) {
+            return;
+        }
+        $undo['blocked_by_claim'] = true;
+        $this->bga->globals->set(self::GLOBAL_UNDO_SNAPSHOT, $undo);
+    }
+
     /**
      * @return array<string, mixed>|null
      */
@@ -559,15 +569,19 @@ class Game extends \Bga\GameFramework\Table
             return ['canUndo' => false, 'undoType' => null];
         }
 
+        $type = (string) ($undo['type'] ?? '');
+        $undoType = $type === 'observe' || $type === 'regroup' ? $type : null;
+        if (! empty($undo['blocked_by_claim'])) {
+            return ['canUndo' => false, 'undoType' => $undoType];
+        }
+
         if (! $this->isUndoAllowedInContext($undo, $context)) {
             return ['canUndo' => false, 'undoType' => null];
         }
 
-        $type = (string) ($undo['type'] ?? '');
-
         return [
-            'canUndo' => $type === 'observe' || $type === 'regroup',
-            'undoType' => $type === 'observe' || $type === 'regroup' ? $type : null,
+            'canUndo' => $undoType !== null,
+            'undoType' => $undoType,
         ];
     }
 
@@ -576,6 +590,9 @@ class Game extends \Bga\GameFramework\Table
      */
     private function isUndoAllowedInContext(array $undo, string $context): bool
     {
+        if (! empty($undo['blocked_by_claim'])) {
+            return false;
+        }
         $type = (string) ($undo['type'] ?? '');
         if ($type === 'observe') {
             if ($context === 'replenish') {
@@ -605,6 +622,9 @@ class Game extends \Bga\GameFramework\Table
         }
         if ((int) ($undo['player_id'] ?? 0) !== $playerId) {
             throw new \Bga\GameFramework\UserException(clienttranslate('You cannot undo this action'));
+        }
+        if (! empty($undo['blocked_by_claim'])) {
+            throw new \Bga\GameFramework\UserException(clienttranslate('Cannot undo after claiming objective'));
         }
         if (! $this->isUndoAllowedInContext($undo, $context)) {
             throw new \Bga\GameFramework\UserException(clienttranslate('Undo is not available right now'));
@@ -1233,6 +1253,7 @@ class Game extends \Bga\GameFramework\Table
 
         $this->setObjectivesState($objectives);
         $this->setPendingObjectivePrompts($pending);
+        $this->blockUndoAfterClaimingObjective();
 
         if ($firstClaim) {
             $this->notifyAllWithBoardState(
@@ -1323,6 +1344,9 @@ class Game extends \Bga\GameFramework\Table
         }
 
         $this->removePendingObjectivePrompt($playerId, $objectiveIndex);
+        if ($claim) {
+            $this->blockUndoAfterClaimingObjective();
+        }
 
     }
 

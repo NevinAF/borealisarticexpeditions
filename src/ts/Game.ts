@@ -685,17 +685,34 @@ export class Game {
   }
 
   private addUndoActionButton(canUndo: boolean | undefined, undoType: "observe" | "regroup" | null | undefined): void {
-    if (!canUndo || !undoType) return;
+    if (!undoType) return;
+    const enabled = Boolean(canUndo);
     const label = undoType === "observe" ? _("Undo: Observe") : _("Undo: Regroup");
-    const tooltip = undoType === "observe"
-      ? _("Undo observing an animal and return to choosing your main action. Only available before drawing a replacement card.")
-      : _("Undo regrouping and return to choosing your main action. Only available when no cards were discarded.");
+    const tooltip = !enabled
+      ? _("Cannot undo after claiming objective")
+      : (undoType === "observe"
+        ? _("Undo observing an animal and return to choosing your main action. Only available before drawing a replacement card.")
+        : _("Undo regrouping and return to choosing your main action. Only available when no cards were discarded."));
     this.bga.statusBar.addActionButton(label, () => {
       void this.sendAction("actUndo", {});
     }, {
-      disabled: false,
+      disabled: !enabled,
       tooltip,
     });
+  }
+
+  private markUndoBlockedByClaim(): void {
+    this.cachedUndoCanUndo = false;
+    const args = this.cachedActionArgs;
+    if (args) {
+      if ("canUndo" in args) args.canUndo = false;
+      const byPlayer = args.undoByPlayer as PromptClaimArgs["undoByPlayer"] | undefined;
+      if (byPlayer) {
+        for (const info of Object.values(byPlayer)) {
+          info.canUndo = false;
+        }
+      }
+    }
   }
 
   private syncScoresFromBoardState(boardState: BoardState): void {
@@ -2310,7 +2327,9 @@ export class Game {
     try { await this.optionalUi?.playObjectiveClaimResolution(prev, args); } catch (_) { /* keep state apply */ }
     if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.releasePendingActionForNotif('objectiveClaimed', args);
+    this.markUndoBlockedByClaim();
     this.renderAll();
+    this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
   }
   async notif_objectiveScored(_args: any) {
     const args = this.unwrapNotif(_args);
@@ -2318,7 +2337,9 @@ export class Game {
     try { await this.optionalUi?.playObjectiveClaimResolution(prev, args); } catch (_) { /* keep state apply */ }
     if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
     this.releasePendingActionForNotif('objectiveScored', args);
+    this.markUndoBlockedByClaim();
     this.renderAll();
+    this.onUpdateActionButtons(this.currentStateName(), this.cachedActionArgs);
 
     const pid = Number(args.player_id ?? args.playerId ?? 0);
     const score = Number(args.score ?? 0);
