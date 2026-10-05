@@ -1,15 +1,14 @@
 html {
   background-color: #dfeaf5;
-  background-image: radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.12) 38%, rgba(255, 255, 255, 0) 62%), radial-gradient(circle at 84% 10%, rgba(203, 224, 246, 0.62) 0%, rgba(203, 224, 246, 0.1) 45%, rgba(203, 224, 246, 0) 66%), radial-gradient(circle at 76% 74%, rgba(168, 198, 228, 0.46) 0%, rgba(168, 198, 228, 0.08) 44%, rgba(168, 198, 228, 0) 68%), linear-gradient(160deg, #f3f8fc 0%, #d7e7f5 42%, #c3daec 72%, #b7d1e7 100%), radial-gradient(circle, rgba(255, 255, 255, 0.3) 0 1px, transparent 1.4px);
-  background-size: auto, auto, auto, auto, 10px 10px;
+  background-image: radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.12) 38%, rgba(255, 255, 255, 0) 62%), radial-gradient(circle at 84% 10%, rgba(203, 224, 246, 0.62) 0%, rgba(203, 224, 246, 0.1) 45%, rgba(203, 224, 246, 0) 66%), radial-gradient(circle at 76% 74%, rgba(168, 198, 228, 0.46) 0%, rgba(168, 198, 228, 0.08) 44%, rgba(168, 198, 228, 0) 68%), linear-gradient(160deg, rgba(243, 248, 252, 0.3) 0%, rgba(215, 231, 245, 0.3) 42%, rgba(195, 218, 236, 0.3) 72%, rgba(183, 209, 231, 0.3) 100%), radial-gradient(circle, rgba(255, 255, 255, 0.1) 0 1px, transparent 1.4px), url("img/background.jpg");
+  background-size: auto, auto, auto, auto, 10px 10px, cover;
   background-attachment: fixed;
+  background-position: center;
 }
 
 html[data-theme=dark] {
-  background-color: #1a2431;
-  background-image: radial-gradient(circle at 20% 16%, rgba(122, 157, 189, 0.3) 0%, rgba(122, 157, 189, 0.06) 40%, rgba(122, 157, 189, 0) 66%), radial-gradient(circle at 82% 12%, rgba(171, 147, 102, 0.2) 0%, rgba(171, 147, 102, 0.05) 36%, rgba(171, 147, 102, 0) 64%), linear-gradient(165deg, #233043 0%, #1b2737 48%, #162231 100%), radial-gradient(circle, rgba(236, 245, 255, 0.12) 0 1px, transparent 1.4px);
-  background-size: auto, auto, auto, 11px 11px;
-  background-attachment: fixed;
+  background-color: #0b1120;
+  background-image: radial-gradient(circle at 18% 14%, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0.04) 38%, rgba(56, 189, 248, 0) 62%), radial-gradient(circle at 84% 10%, rgba(30, 58, 138, 0.35) 0%, rgba(30, 58, 138, 0.08) 45%, rgba(30, 58, 138, 0) 66%), radial-gradient(circle at 76% 74%, rgba(76, 29, 149, 0.25) 0%, rgba(76, 29, 149, 0.06) 44%, rgba(76, 29, 149, 0) 68%), linear-gradient(160deg, rgba(15, 23, 42, 0.7) 0%, rgba(11, 17, 32, 0.75) 42%, rgba(7, 11, 20, 0.8) 72%, rgba(3, 5, 10, 0.85) 100%), radial-gradient(circle, rgba(255, 255, 255, 0.07) 0 1px, transparent 1.4px), url("img/background.jpg");
 }
 
 #bae_playarea button:not(.bgabutton) {
@@ -416,6 +415,7 @@ html[data-theme=dark] {
   text-align: center;
   pointer-events: none;
   white-space: nowrap;
+  color: black;
 }
 
 .bae_playerboard {
@@ -428,6 +428,26 @@ html[data-theme=dark] {
   margin: 0;
   padding: calc(20px * var(--bae-scale));
   box-shadow: none;
+}
+
+html[data-theme=dark] .bae {
+  color: #e6edf5;
+  background-image: radial-gradient(ellipse at 20% 0%, rgba(148, 197, 232, 0.12) 0%, transparent 55%), linear-gradient(180deg, rgba(11, 17, 32, 0.42) 0%, rgba(11, 17, 32, 0) 28%);
+}
+
+html[data-theme=dark] .bae_zoom_controls,
+html[data-theme=dark] #bae_playarea button.bae_round_badge {
+  border-color: rgba(186, 214, 236, 0.38);
+  background: rgba(15, 23, 42, 0.88);
+  color: #e6edf5;
+}
+
+html[data-theme=dark] #bae_playarea .bae_zoom_btn {
+  color: #e6edf5;
+}
+
+html[data-theme=dark] .bae_playerboard {
+  background: rgba(8, 14, 26, 0.46);
 }
 
 .bae_playerboard_inner {
