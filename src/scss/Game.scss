@@ -135,6 +135,18 @@ html[data-theme="dark"] {
   caret-color: transparent;
 }
 
+/* BGA's #page-title sits above the play area in document flow. Action
+   buttons, wrapping, and the "not playing" help row change its height and
+   shove .bae. Reserve two lines; JS also ratchets min-height so it does not
+   shrink during a table. */
+#page-title {
+  box-sizing: border-box;
+}
+
+#page-title #generalactions {
+  max-width: 100%;
+}
+
 .bae_toprow {
   display: flex;
   flex-wrap: wrap;

@@ -39,6 +39,9 @@ export class Game {
   private cachedCanMulligan: boolean | undefined = undefined;
   private boardScaleTimeoutId: number | null = null;
   private boardScaleTimeoutAccInterval: number | null = null;
+  private pageTitleMinHeightPx = 0;
+  private pageTitleResizeTimer: number | null = null;
+  private pageTitleStabilized = false;
   private static readonly ZOOM_STEP = 0.1;
   private static readonly ZOOM_MIN = 0.4;
   private zoomFactor = 1;
@@ -79,6 +82,7 @@ export class Game {
     this.openingIntroPage = this.isReplayOrSpectator() ? null : "objectives";
     // Keep --board-scale up to date when the window resizes
     window.addEventListener('resize', () => this.updateBoardScale());
+    this.stabilizePageTitle();
     this.zoomFactor = this.firstZoomOutFromFit();
     this.renderAll();
   }
@@ -226,6 +230,33 @@ export class Game {
 
   private syncGamedatas() {
     this.gamedatas = this.gamedatas as BorealisArcticExpeditionsGamedatas;
+  }
+
+  private stabilizePageTitle(attempt = 0): void {
+    if (this.pageTitleStabilized) return;
+    const title = document.getElementById('page-title');
+    if (!(title instanceof HTMLElement)) {
+      if (attempt < 40) window.setTimeout(() => this.stabilizePageTitle(attempt + 1), 80);
+      return;
+    }
+    this.pageTitleStabilized = true;
+    const lockHeight = (): void => {
+      const h = Math.ceil(title.getBoundingClientRect().height);
+      if (h <= this.pageTitleMinHeightPx) return;
+      this.pageTitleMinHeightPx = h;
+      title.style.minHeight = `${h}px`;
+    };
+    const onViewportResize = (): void => {
+      if (this.pageTitleResizeTimer != null) window.clearTimeout(this.pageTitleResizeTimer);
+      this.pageTitleResizeTimer = window.setTimeout(() => {
+        this.pageTitleMinHeightPx = 0;
+        title.style.minHeight = '';
+        lockHeight();
+      }, 120);
+    };
+    new ResizeObserver(lockHeight).observe(title);
+    window.addEventListener('resize', onViewportResize);
+    lockHeight();
   }
 
   private updateBoardScale(): void {

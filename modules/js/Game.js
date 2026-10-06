@@ -4310,6 +4310,9 @@ class Game {
         this.cachedCanMulligan = undefined;
         this.boardScaleTimeoutId = null;
         this.boardScaleTimeoutAccInterval = null;
+        this.pageTitleMinHeightPx = 0;
+        this.pageTitleResizeTimer = null;
+        this.pageTitleStabilized = false;
         this.zoomFactor = 1;
         this.isShowingLastTurnBanner = false;
         this.openingIntroPage = "objectives";
@@ -4333,6 +4336,7 @@ class Game {
         this.openingIntroPage = this.isReplayOrSpectator() ? null : "objectives";
         // Keep --board-scale up to date when the window resizes
         window.addEventListener('resize', () => this.updateBoardScale());
+        this.stabilizePageTitle();
         this.zoomFactor = this.firstZoomOutFromFit();
         this.renderAll();
     }
@@ -4468,6 +4472,36 @@ class Game {
     }
     syncGamedatas() {
         this.gamedatas = this.gamedatas;
+    }
+    stabilizePageTitle(attempt = 0) {
+        if (this.pageTitleStabilized)
+            return;
+        const title = document.getElementById('page-title');
+        if (!(title instanceof HTMLElement)) {
+            if (attempt < 40)
+                window.setTimeout(() => this.stabilizePageTitle(attempt + 1), 80);
+            return;
+        }
+        this.pageTitleStabilized = true;
+        const lockHeight = () => {
+            const h = Math.ceil(title.getBoundingClientRect().height);
+            if (h <= this.pageTitleMinHeightPx)
+                return;
+            this.pageTitleMinHeightPx = h;
+            title.style.minHeight = `${h}px`;
+        };
+        const onViewportResize = () => {
+            if (this.pageTitleResizeTimer != null)
+                window.clearTimeout(this.pageTitleResizeTimer);
+            this.pageTitleResizeTimer = window.setTimeout(() => {
+                this.pageTitleMinHeightPx = 0;
+                title.style.minHeight = '';
+                lockHeight();
+            }, 120);
+        };
+        new ResizeObserver(lockHeight).observe(title);
+        window.addEventListener('resize', onViewportResize);
+        lockHeight();
     }
     updateBoardScale() {
         if (!this.root)
