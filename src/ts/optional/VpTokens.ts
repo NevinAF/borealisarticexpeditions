@@ -321,6 +321,24 @@ export class VpTokens {
     el.dataset.row = String(slot.row);
   }
 
+  /** FLIP with transform so restacks do not snap left/top to whole pixels. */
+  private slideTokenToSlot(el: HTMLElement, slot: VpTokenSlot, ms: number): void {
+    const first = el.getBoundingClientRect();
+    el.style.transition = 'none';
+    this.writeSlot(el, slot);
+    const last = el.getBoundingClientRect();
+    const dx = first.left - last.left;
+    const dy = first.top - last.top;
+    if (ms <= 0 || (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05)) {
+      el.style.transform = '';
+      return;
+    }
+    el.style.transform = `translate(-50%, -50%) translate3d(${dx}px, ${dy}px, 0)`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${ms}ms ${EASE}`;
+    el.style.transform = 'translate(-50%, -50%) translate3d(0px, 0px, 0)';
+  }
+
   private slotRect(
     pid: number,
     slot: VpTokenSlot,
@@ -357,15 +375,9 @@ export class VpTokens {
     slots: VpTokenSlot[],
     ms: number,
   ): Promise<void> {
-    els.forEach((el) => { el.style.transition = 'none'; });
-    if (els[0]) void els[0].offsetWidth;
     els.forEach((el, i) => {
       const slot = slots[i];
-      if (!slot) return;
-      el.style.transition = ms > 0
-        ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
-        : 'none';
-      this.writeSlot(el, slot);
+      if (slot) this.slideTokenToSlot(el, slot, ms);
     });
     const pid = Number(els[0]?.closest('[data-player-id]')?.getAttribute('data-player-id') ?? 0);
     if (pid) this.restack(pid);
@@ -392,18 +404,7 @@ export class VpTokens {
     keep.forEach(({ oldI, nextI }) => {
       const el = oldEls[oldI];
       const slot = slots[nextI];
-      if (!el || !slot) return;
-      el.style.transition = 'none';
-    });
-    if (oldEls[0]) void oldEls[0].offsetWidth;
-    keep.forEach(({ oldI, nextI }) => {
-      const el = oldEls[oldI];
-      const slot = slots[nextI];
-      if (!el || !slot) return;
-      el.style.transition = ms > 0
-        ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
-        : 'none';
-      this.writeSlot(el, slot);
+      if (el && slot) this.slideTokenToSlot(el, slot, ms);
     });
     drop.forEach((oldI) => {
       const el = oldEls[oldI];

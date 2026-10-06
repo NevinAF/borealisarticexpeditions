@@ -129,6 +129,70 @@ function containingBlock(clone: HTMLElement, fallback: HTMLElement): HTMLElement
   return parent instanceof HTMLElement ? parent : fallback;
 }
 
+const FLY_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+
+function readLocalLeftTop(el: HTMLElement, parent: HTMLElement): { left: number; top: number } {
+  const left = Number.parseFloat(el.style.left);
+  const top = Number.parseFloat(el.style.top);
+  if (Number.isFinite(left) && Number.isFinite(top)) return { left, top };
+  return localOffset(parent, el.getBoundingClientRect().left, el.getBoundingClientRect().top);
+}
+
+/** Animate with transform so Chrome/Firefox do not snap each frame to a whole CSS pixel. */
+function flyByTransform(
+  clone: HTMLElement,
+  dest: { left: number; top: number },
+  durationMs: number,
+  parent: HTMLElement,
+  extra: {
+    width?: number;
+    height?: number;
+    opacity?: string;
+    fadeMs?: number;
+    fadeEase?: string;
+  } = {},
+): Promise<void> {
+  const from = readLocalLeftTop(clone, parent);
+  const dx = dest.left - from.left;
+  const dy = dest.top - from.top;
+  const size = extra.width != null && extra.height != null;
+  const fade = extra.opacity != null && extra.fadeMs != null;
+  if (durationMs <= 0) {
+    clone.style.left = `${dest.left}px`;
+    clone.style.top = `${dest.top}px`;
+    clone.style.transform = 'none';
+    if (size) {
+      clone.style.width = `${extra.width}px`;
+      clone.style.height = `${extra.height}px`;
+    }
+    if (extra.opacity != null) clone.style.opacity = extra.opacity;
+    return Promise.resolve();
+  }
+  const parts = [`transform ${durationMs}ms ${FLY_EASE}`];
+  if (size) {
+    parts.push(`width ${durationMs}ms ${FLY_EASE}`, `height ${durationMs}ms ${FLY_EASE}`);
+  }
+  if (fade) {
+    parts.push(`opacity ${extra.fadeMs}ms ${extra.fadeEase ?? 'ease'}`);
+  }
+  clone.style.transition = 'none';
+  clone.style.transform = 'translate3d(0px, 0px, 0)';
+  void clone.offsetWidth;
+  clone.style.transition = parts.join(', ');
+  clone.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+  if (size) {
+    clone.style.width = `${extra.width}px`;
+    clone.style.height = `${extra.height}px`;
+  }
+  if (extra.opacity != null) clone.style.opacity = extra.opacity;
+  return wait(durationMs).then(() => {
+    clone.style.transition = 'none';
+    clone.style.left = `${dest.left}px`;
+    clone.style.top = `${dest.top}px`;
+    clone.style.transform = 'none';
+  });
+}
+
 type PreviewDestFn = () => DOMRect | null;
 
 type PreviewAnchor = {
@@ -264,21 +328,9 @@ export function flyClone(
   const destLeft = to.left + (to.width - destW) / 2;
   const destTop = to.top + (to.height - destH) / 2;
   const parked = localOffset(parent, destLeft, destTop);
-  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
-  clone.style.transform = 'none';
-  void clone.offsetWidth;
-  clone.style.transition = matchSize
-    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
-    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
-  clone.style.left = `${parked.left}px`;
-  clone.style.top = `${parked.top}px`;
-  if (matchSize) {
-    clone.style.width = `${destW}px`;
-    clone.style.height = `${destH}px`;
-  }
-  return wait(durationMs).then(() => {
-    clone.style.transition = 'none';
-  });
+  return flyByTransform(clone, parked, durationMs, parent, matchSize
+    ? { width: destW, height: destH }
+    : {});
 }
 
 /** Fly a clone that fades in as it leaves the source. */
@@ -298,23 +350,13 @@ export function flyCloneFadingIn(
   const destLeft = to.left + (to.width - destW) / 2;
   const destTop = to.top + (to.height - destH) / 2;
   const parked = localOffset(parent, destLeft, destTop);
-  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
   const fadeMs = Math.max(1, Math.round(durationMs * 0.32));
-  clone.style.transform = 'none';
   clone.style.opacity = '0';
-  void clone.offsetWidth;
-  clone.style.transition = matchSize
-    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`
-    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`;
-  clone.style.left = `${parked.left}px`;
-  clone.style.top = `${parked.top}px`;
-  clone.style.opacity = '1';
-  if (matchSize) {
-    clone.style.width = `${destW}px`;
-    clone.style.height = `${destH}px`;
-  }
-  return wait(durationMs).then(() => {
-    clone.style.transition = 'none';
+  return flyByTransform(clone, parked, durationMs, parent, {
+    ...(matchSize ? { width: destW, height: destH } : {}),
+    opacity: '1',
+    fadeMs,
+    fadeEase: 'ease-out',
   });
 }
 
@@ -330,22 +372,12 @@ export function flyCloneFading(
   const destLeft = to.left + (matchSize ? 0 : (to.width - clone.getBoundingClientRect().width) / 2);
   const destTop = to.top + (matchSize ? 0 : (to.height - clone.getBoundingClientRect().height) / 2);
   const parked = localOffset(parent, destLeft, destTop);
-  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
   const fadeMs = Math.max(1, Math.round(durationMs * 0.62));
-  clone.style.transform = 'none';
-  void clone.offsetWidth;
-  clone.style.transition = matchSize
-    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`
-    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`;
-  clone.style.left = `${parked.left}px`;
-  clone.style.top = `${parked.top}px`;
-  clone.style.opacity = '0';
-  if (matchSize) {
-    clone.style.width = `${to.width}px`;
-    clone.style.height = `${to.height}px`;
-  }
-  return wait(durationMs).then(() => {
-    clone.style.transition = 'none';
+  return flyByTransform(clone, parked, durationMs, parent, {
+    ...(matchSize ? { width: to.width, height: to.height } : {}),
+    opacity: '0',
+    fadeMs,
+    fadeEase: 'ease-in',
   });
 }
 
@@ -358,21 +390,9 @@ export function flyCloneToLocal(
   matchSize = false,
 ): Promise<void> {
   adoptClone(clone, host);
-  const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
-  clone.style.transform = 'none';
-  void clone.offsetWidth;
-  clone.style.transition = matchSize
-    ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
-    : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
-  clone.style.left = `${dest.left}px`;
-  clone.style.top = `${dest.top}px`;
-  if (matchSize) {
-    clone.style.width = `${dest.width}px`;
-    clone.style.height = `${dest.height}px`;
-  }
-  return wait(durationMs).then(() => {
-    clone.style.transition = 'none';
-  });
+  return flyByTransform(clone, dest, durationMs, host, matchSize
+    ? { width: dest.width, height: dest.height }
+    : {});
 }
 
 export function wait(ms: number): Promise<void> {
@@ -489,10 +509,8 @@ export function startTrailToRect(
   clone.style.pointerEvents = 'none';
   clone.style.zIndex = '70';
   clone.style.transform = 'none';
-  clone.style.setProperty('--from-l', `${loc.left}px`);
-  clone.style.setProperty('--from-t', `${loc.top}px`);
-  clone.style.setProperty('--to-l', `${loc.left + dx}px`);
-  clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+  clone.style.setProperty('--dx', `${dx}px`);
+  clone.style.setProperty('--dy', `${dy}px`);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   layer.appendChild(clone);
   startCssVarAnimation(clone, 'bae_trail_ghost');
@@ -565,14 +583,12 @@ export function retargetPreviewClones(root: HTMLElement): void {
     clone.style.top = `${loc.top}px`;
     clone.style.width = `${loc.width}px`;
     clone.style.height = `${loc.height}px`;
-    clone.style.setProperty('--from-l', `${loc.left}px`);
-    clone.style.setProperty('--from-t', `${loc.top}px`);
     const to = anchor.dest?.() ?? null;
     if (!to) return;
     const dx = to.left + to.width / 2 - (from.left + from.width / 2);
     const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-    clone.style.setProperty('--to-l', `${loc.left + dx}px`);
-    clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+    clone.style.setProperty('--dx', `${dx}px`);
+    clone.style.setProperty('--dy', `${dy}px`);
   });
 }
 
@@ -599,14 +615,14 @@ function freezeComputedMotion(el: HTMLElement, root: HTMLElement): void {
   const r = el.getBoundingClientRect();
   const parent = containingBlock(el, root);
   const { left, top } = localOffset(parent, r.left, r.top);
-  el.style.left = `${left}px`;
-  el.style.top = `${top}px`;
-  el.style.transform = 'none';
   el.style.opacity = cs.opacity;
-  void el.offsetWidth;
   el.classList.add('bae_preview_settling');
   el.style.animation = 'none';
   el.style.transition = 'none';
+  el.style.transform = 'none';
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  void el.offsetWidth;
 }
 
 function freezeOpacityOnly(el: HTMLElement): void {

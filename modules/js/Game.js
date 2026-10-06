@@ -234,6 +234,58 @@ function containingBlock(clone, fallback) {
     const parent = clone.offsetParent;
     return parent instanceof HTMLElement ? parent : fallback;
 }
+const FLY_EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
+function readLocalLeftTop(el, parent) {
+    const left = Number.parseFloat(el.style.left);
+    const top = Number.parseFloat(el.style.top);
+    if (Number.isFinite(left) && Number.isFinite(top))
+        return { left, top };
+    return localOffset(parent, el.getBoundingClientRect().left, el.getBoundingClientRect().top);
+}
+/** Animate with transform so Chrome/Firefox do not snap each frame to a whole CSS pixel. */
+function flyByTransform(clone, dest, durationMs, parent, extra = {}) {
+    const from = readLocalLeftTop(clone, parent);
+    const dx = dest.left - from.left;
+    const dy = dest.top - from.top;
+    const size = extra.width != null && extra.height != null;
+    const fade = extra.opacity != null && extra.fadeMs != null;
+    if (durationMs <= 0) {
+        clone.style.left = `${dest.left}px`;
+        clone.style.top = `${dest.top}px`;
+        clone.style.transform = 'none';
+        if (size) {
+            clone.style.width = `${extra.width}px`;
+            clone.style.height = `${extra.height}px`;
+        }
+        if (extra.opacity != null)
+            clone.style.opacity = extra.opacity;
+        return Promise.resolve();
+    }
+    const parts = [`transform ${durationMs}ms ${FLY_EASE}`];
+    if (size) {
+        parts.push(`width ${durationMs}ms ${FLY_EASE}`, `height ${durationMs}ms ${FLY_EASE}`);
+    }
+    if (fade) {
+        parts.push(`opacity ${extra.fadeMs}ms ${extra.fadeEase ?? 'ease'}`);
+    }
+    clone.style.transition = 'none';
+    clone.style.transform = 'translate3d(0px, 0px, 0)';
+    void clone.offsetWidth;
+    clone.style.transition = parts.join(', ');
+    clone.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    if (size) {
+        clone.style.width = `${extra.width}px`;
+        clone.style.height = `${extra.height}px`;
+    }
+    if (extra.opacity != null)
+        clone.style.opacity = extra.opacity;
+    return wait(durationMs).then(() => {
+        clone.style.transition = 'none';
+        clone.style.left = `${dest.left}px`;
+        clone.style.top = `${dest.top}px`;
+        clone.style.transform = 'none';
+    });
+}
 const previewAnchors = new WeakMap();
 function baeScale(root) {
     const n = Number.parseFloat(getComputedStyle(root).getPropertyValue('--bae-scale'));
@@ -333,21 +385,9 @@ function flyClone(clone, to, durationMs, root, matchSize = false, destScale = 1,
     const destLeft = to.left + (to.width - destW) / 2;
     const destTop = to.top + (to.height - destH) / 2;
     const parked = localOffset(parent, destLeft, destTop);
-    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
-    clone.style.transform = 'none';
-    void clone.offsetWidth;
-    clone.style.transition = matchSize
-        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
-        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
-    clone.style.left = `${parked.left}px`;
-    clone.style.top = `${parked.top}px`;
-    if (matchSize) {
-        clone.style.width = `${destW}px`;
-        clone.style.height = `${destH}px`;
-    }
-    return wait(durationMs).then(() => {
-        clone.style.transition = 'none';
-    });
+    return flyByTransform(clone, parked, durationMs, parent, matchSize
+        ? { width: destW, height: destH }
+        : {});
 }
 /** Fly a clone that fades in as it leaves the source. */
 function flyCloneFadingIn(clone, to, durationMs, root, matchSize = false, destScale = 1, host) {
@@ -359,23 +399,13 @@ function flyCloneFadingIn(clone, to, durationMs, root, matchSize = false, destSc
     const destLeft = to.left + (to.width - destW) / 2;
     const destTop = to.top + (to.height - destH) / 2;
     const parked = localOffset(parent, destLeft, destTop);
-    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
     const fadeMs = Math.max(1, Math.round(durationMs * 0.32));
-    clone.style.transform = 'none';
     clone.style.opacity = '0';
-    void clone.offsetWidth;
-    clone.style.transition = matchSize
-        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`
-        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-out`;
-    clone.style.left = `${parked.left}px`;
-    clone.style.top = `${parked.top}px`;
-    clone.style.opacity = '1';
-    if (matchSize) {
-        clone.style.width = `${destW}px`;
-        clone.style.height = `${destH}px`;
-    }
-    return wait(durationMs).then(() => {
-        clone.style.transition = 'none';
+    return flyByTransform(clone, parked, durationMs, parent, {
+        ...(matchSize ? { width: destW, height: destH } : {}),
+        opacity: '1',
+        fadeMs,
+        fadeEase: 'ease-out',
     });
 }
 /** Fly toward dest and fade out before arriving. */
@@ -384,42 +414,20 @@ function flyCloneFading(clone, to, durationMs, root, matchSize = false) {
     const destLeft = to.left + (matchSize ? 0 : (to.width - clone.getBoundingClientRect().width) / 2);
     const destTop = to.top + (matchSize ? 0 : (to.height - clone.getBoundingClientRect().height) / 2);
     const parked = localOffset(parent, destLeft, destTop);
-    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
     const fadeMs = Math.max(1, Math.round(durationMs * 0.62));
-    clone.style.transform = 'none';
-    void clone.offsetWidth;
-    clone.style.transition = matchSize
-        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`
-        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, opacity ${fadeMs}ms ease-in`;
-    clone.style.left = `${parked.left}px`;
-    clone.style.top = `${parked.top}px`;
-    clone.style.opacity = '0';
-    if (matchSize) {
-        clone.style.width = `${to.width}px`;
-        clone.style.height = `${to.height}px`;
-    }
-    return wait(durationMs).then(() => {
-        clone.style.transition = 'none';
+    return flyByTransform(clone, parked, durationMs, parent, {
+        ...(matchSize ? { width: to.width, height: to.height } : {}),
+        opacity: '0',
+        fadeMs,
+        fadeEase: 'ease-in',
     });
 }
 /** Fly using destination coordinates already expressed in `host`'s local space. */
 function flyCloneToLocal(clone, dest, durationMs, host, matchSize = false) {
     adoptClone(clone, host);
-    const ease = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
-    clone.style.transform = 'none';
-    void clone.offsetWidth;
-    clone.style.transition = matchSize
-        ? `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}, width ${durationMs}ms ${ease}, height ${durationMs}ms ${ease}`
-        : `left ${durationMs}ms ${ease}, top ${durationMs}ms ${ease}`;
-    clone.style.left = `${dest.left}px`;
-    clone.style.top = `${dest.top}px`;
-    if (matchSize) {
-        clone.style.width = `${dest.width}px`;
-        clone.style.height = `${dest.height}px`;
-    }
-    return wait(durationMs).then(() => {
-        clone.style.transition = 'none';
-    });
+    return flyByTransform(clone, dest, durationMs, host, matchSize
+        ? { width: dest.width, height: dest.height }
+        : {});
 }
 function wait(ms) {
     if (ms <= 0)
@@ -490,10 +498,8 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn)
     clone.style.pointerEvents = 'none';
     clone.style.zIndex = '70';
     clone.style.transform = 'none';
-    clone.style.setProperty('--from-l', `${loc.left}px`);
-    clone.style.setProperty('--from-t', `${loc.top}px`);
-    clone.style.setProperty('--to-l', `${loc.left + dx}px`);
-    clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+    clone.style.setProperty('--dx', `${dx}px`);
+    clone.style.setProperty('--dy', `${dy}px`);
     clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
     layer.appendChild(clone);
     startCssVarAnimation(clone, 'bae_trail_ghost');
@@ -558,15 +564,13 @@ function retargetPreviewClones(root) {
         clone.style.top = `${loc.top}px`;
         clone.style.width = `${loc.width}px`;
         clone.style.height = `${loc.height}px`;
-        clone.style.setProperty('--from-l', `${loc.left}px`);
-        clone.style.setProperty('--from-t', `${loc.top}px`);
         const to = anchor.dest?.() ?? null;
         if (!to)
             return;
         const dx = to.left + to.width / 2 - (from.left + from.width / 2);
         const dy = to.top + to.height / 2 - (from.top + from.height / 2);
-        clone.style.setProperty('--to-l', `${loc.left + dx}px`);
-        clone.style.setProperty('--to-t', `${loc.top + dy}px`);
+        clone.style.setProperty('--dx', `${dx}px`);
+        clone.style.setProperty('--dy', `${dy}px`);
     });
 }
 /** One-shot slide-off used when a hand card is actually discarded. */
@@ -587,14 +591,14 @@ function freezeComputedMotion(el, root) {
     const r = el.getBoundingClientRect();
     const parent = containingBlock(el, root);
     const { left, top } = localOffset(parent, r.left, r.top);
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-    el.style.transform = 'none';
     el.style.opacity = cs.opacity;
-    void el.offsetWidth;
     el.classList.add('bae_preview_settling');
     el.style.animation = 'none';
     el.style.transition = 'none';
+    el.style.transform = 'none';
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    void el.offsetWidth;
 }
 function freezeOpacityOnly(el) {
     const cs = getComputedStyle(el);
@@ -906,6 +910,23 @@ class VpTokens {
         el.dataset.col = String(slot.col);
         el.dataset.row = String(slot.row);
     }
+    /** FLIP with transform so restacks do not snap left/top to whole pixels. */
+    slideTokenToSlot(el, slot, ms) {
+        const first = el.getBoundingClientRect();
+        el.style.transition = 'none';
+        this.writeSlot(el, slot);
+        const last = el.getBoundingClientRect();
+        const dx = first.left - last.left;
+        const dy = first.top - last.top;
+        if (ms <= 0 || (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05)) {
+            el.style.transform = '';
+            return;
+        }
+        el.style.transform = `translate(-50%, -50%) translate3d(${dx}px, ${dy}px, 0)`;
+        void el.offsetWidth;
+        el.style.transition = `transform ${ms}ms ${EASE}`;
+        el.style.transform = 'translate(-50%, -50%) translate3d(0px, 0px, 0)';
+    }
     slotRect(pid, slot, value) {
         const shelf = this.shelf(pid);
         if (!shelf)
@@ -933,17 +954,10 @@ class VpTokens {
         return { w, h: w };
     }
     applyLayout(els, slots, ms) {
-        els.forEach((el) => { el.style.transition = 'none'; });
-        if (els[0])
-            void els[0].offsetWidth;
         els.forEach((el, i) => {
             const slot = slots[i];
-            if (!slot)
-                return;
-            el.style.transition = ms > 0
-                ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
-                : 'none';
-            this.writeSlot(el, slot);
+            if (slot)
+                this.slideTokenToSlot(el, slot, ms);
         });
         const pid = Number(els[0]?.closest('[data-player-id]')?.getAttribute('data-player-id') ?? 0);
         if (pid)
@@ -970,21 +984,8 @@ class VpTokens {
         keep.forEach(({ oldI, nextI }) => {
             const el = oldEls[oldI];
             const slot = slots[nextI];
-            if (!el || !slot)
-                return;
-            el.style.transition = 'none';
-        });
-        if (oldEls[0])
-            void oldEls[0].offsetWidth;
-        keep.forEach(({ oldI, nextI }) => {
-            const el = oldEls[oldI];
-            const slot = slots[nextI];
-            if (!el || !slot)
-                return;
-            el.style.transition = ms > 0
-                ? `left ${ms}ms ${EASE}, top ${ms}ms ${EASE}`
-                : 'none';
-            this.writeSlot(el, slot);
+            if (el && slot)
+                this.slideTokenToSlot(el, slot, ms);
         });
         drop.forEach((oldI) => {
             const el = oldEls[oldI];
