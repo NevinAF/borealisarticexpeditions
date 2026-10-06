@@ -357,6 +357,8 @@ export class VpTokens {
     slots: VpTokenSlot[],
     ms: number,
   ): Promise<void> {
+    els.forEach((el) => { el.style.transition = 'none'; });
+    if (els[0]) void els[0].offsetWidth;
     els.forEach((el, i) => {
       const slot = slots[i];
       if (!slot) return;
@@ -387,6 +389,13 @@ export class VpTokens {
     const slots = vpTokenLayout(next.length, pid);
     const { keep, drop, add } = assignMatches(oldVals, next);
     const fade = Math.max(120, Math.round(ms * 0.7));
+    keep.forEach(({ oldI, nextI }) => {
+      const el = oldEls[oldI];
+      const slot = slots[nextI];
+      if (!el || !slot) return;
+      el.style.transition = 'none';
+    });
+    if (oldEls[0]) void oldEls[0].offsetWidth;
     keep.forEach(({ oldI, nextI }) => {
       const el = oldEls[oldI];
       const slot = slots[nextI];

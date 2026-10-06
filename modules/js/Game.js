@@ -294,6 +294,13 @@ function placeClone(source, extraClass, root) {
     layer.appendChild(clone);
     return clone;
 }
+/** Start a @keyframes animation that reads CSS vars. Vars must be set first or the first frame can paint the 100% keyframe. */
+function startCssVarAnimation(el, className) {
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+    el.classList.add(className);
+}
 function placeScientistClone(source, extraClass, root) {
     const clone = placeClone(source, extraClass, root);
     const layer = scientistMotionLayer(root);
@@ -452,13 +459,13 @@ function startTrail(source, dest, durationMs, root, extraClass = '') {
 }
 /** Leave a faded scientist in place and loop an opaque copy toward the destination. */
 function startScientistTrail(source, dest, durationMs, root) {
-    source.classList.add('bae_preview_fade_left');
     source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+    source.classList.add('bae_preview_fade_left');
     return startTrailToRect(source, visualRect(dest), durationMs, root, 'bae_sci_mover', () => dest.isConnected ? visualRect(dest) : null);
 }
 function startScientistTrailToRect(source, to, durationMs, root, destFn) {
-    source.classList.add('bae_preview_fade_left');
     source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+    source.classList.add('bae_preview_fade_left');
     return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover', destFn);
 }
 function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn) {
@@ -466,7 +473,7 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn)
     const layer = motionLayer(root);
     const loc = localRect(layer, from);
     const clone = source.cloneNode(true);
-    clone.classList.add('bae_motion_clone', 'bae_trail_ghost', ...extraClass.split(/\s+/).filter(Boolean));
+    clone.classList.add('bae_motion_clone', ...extraClass.split(/\s+/).filter(Boolean));
     clone.removeAttribute('id');
     clone.setAttribute('aria-hidden', 'true');
     stripChrome(clone);
@@ -489,6 +496,7 @@ function startTrailToRect(source, to, durationMs, root, extraClass = '', destFn)
     clone.style.setProperty('--to-t', `${loc.top + dy}px`);
     clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
     layer.appendChild(clone);
+    startCssVarAnimation(clone, 'bae_trail_ghost');
     previewAnchors.set(clone, {
         source,
         dest: destFn ?? (() => to),
@@ -512,7 +520,7 @@ function placeCloneAt(source, extraClass, root, at) {
 }
 /** Soft, slow discard preview: ghost only, real card stays put. */
 function startDiscardGhost(source, root, cardId, delayMs = 0) {
-    const clone = placeClone(source, 'bae_discard_ghost', root);
+    const clone = placeClone(source, '', root);
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
     clone.style.setProperty('--dur', '1.85s');
@@ -521,6 +529,7 @@ function startDiscardGhost(source, root, cardId, delayMs = 0) {
         clone.style.animationDelay = `-${Math.round(delayMs)}ms`;
     if (cardId != null)
         clone.dataset.previewCard = String(cardId);
+    startCssVarAnimation(clone, 'bae_discard_ghost');
     previewAnchors.set(clone, { source });
     return clone;
 }
@@ -563,13 +572,14 @@ function retargetPreviewClones(root) {
 /** One-shot slide-off used when a hand card is actually discarded. */
 function flyDiscardAway(source, root, durationMs) {
     const from = visualRect(source);
-    const clone = placeClone(source, 'bae_discard_resolve', root);
+    const clone = placeClone(source, '', root);
     clone.style.setProperty('--from-l', clone.style.left);
     clone.style.setProperty('--from-t', clone.style.top);
     clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
     const minDx = (48 / 0.12) * baeScale(root);
     clone.style.setProperty('--dx', `${-Math.max(minDx, from.width * 0.4)}px`);
     source.style.visibility = 'hidden';
+    startCssVarAnimation(clone, 'bae_discard_resolve');
     return wait(durationMs).then(() => { clone.remove(); });
 }
 function freezeComputedMotion(el, root) {
@@ -577,22 +587,22 @@ function freezeComputedMotion(el, root) {
     const r = el.getBoundingClientRect();
     const parent = containingBlock(el, root);
     const { left, top } = localOffset(parent, r.left, r.top);
-    el.classList.add('bae_preview_settling');
-    el.style.animation = 'none';
-    el.style.transition = 'none';
     el.style.left = `${left}px`;
     el.style.top = `${top}px`;
     el.style.transform = 'none';
     el.style.opacity = cs.opacity;
     void el.offsetWidth;
-}
-function freezeOpacityOnly(el) {
-    const cs = getComputedStyle(el);
     el.classList.add('bae_preview_settling');
     el.style.animation = 'none';
     el.style.transition = 'none';
+}
+function freezeOpacityOnly(el) {
+    const cs = getComputedStyle(el);
     el.style.opacity = cs.opacity;
     void el.offsetWidth;
+    el.classList.add('bae_preview_settling');
+    el.style.animation = 'none';
+    el.style.transition = 'none';
 }
 /** Freeze looping previews at the current frame, then ease back toward rest. */
 function freezeAndFadePreviews(root, durationMs = 320) {
@@ -603,18 +613,21 @@ function freezeAndFadePreviews(root, durationMs = 320) {
         const el = node;
         freezeComputedMotion(el, root);
         el.style.transition = `opacity ${fadeMs}ms ease`;
+        void el.offsetWidth;
         el.style.opacity = '0';
     });
     root.querySelectorAll('.bae_card_place_preview').forEach((node) => {
         const el = node;
         freezeOpacityOnly(el);
         el.style.transition = `opacity ${fadeMs}ms ease`;
+        void el.offsetWidth;
         el.style.opacity = '0';
     });
     root.querySelectorAll('.bae_preview_fade_left').forEach((node) => {
         const el = node;
         freezeOpacityOnly(el);
         el.style.transition = `opacity ${fadeMs}ms ease`;
+        void el.offsetWidth;
         el.style.opacity = '1';
         el.classList.remove('bae_preview_fade_left');
     });
@@ -920,6 +933,9 @@ class VpTokens {
         return { w, h: w };
     }
     applyLayout(els, slots, ms) {
+        els.forEach((el) => { el.style.transition = 'none'; });
+        if (els[0])
+            void els[0].offsetWidth;
         els.forEach((el, i) => {
             const slot = slots[i];
             if (!slot)
@@ -951,6 +967,15 @@ class VpTokens {
         const slots = vpTokenLayout(next.length, pid);
         const { keep, drop, add } = assignMatches(oldVals, next);
         const fade = Math.max(120, Math.round(ms * 0.7));
+        keep.forEach(({ oldI, nextI }) => {
+            const el = oldEls[oldI];
+            const slot = slots[nextI];
+            if (!el || !slot)
+                return;
+            el.style.transition = 'none';
+        });
+        if (oldEls[0])
+            void oldEls[0].offsetWidth;
         keep.forEach(({ oldI, nextI }) => {
             const el = oldEls[oldI];
             const slot = slots[nextI];

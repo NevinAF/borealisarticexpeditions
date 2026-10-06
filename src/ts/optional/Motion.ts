@@ -207,6 +207,14 @@ export function placeClone(
   return clone;
 }
 
+/** Start a @keyframes animation that reads CSS vars. Vars must be set first or the first frame can paint the 100% keyframe. */
+function startCssVarAnimation(el: HTMLElement, className: string): void {
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = '';
+  el.classList.add(className);
+}
+
 export function placeScientistClone(
   source: HTMLElement,
   extraClass: string,
@@ -428,8 +436,8 @@ export function startScientistTrail(
   durationMs: number,
   root: HTMLElement,
 ): HTMLElement {
-  source.classList.add('bae_preview_fade_left');
   source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+  source.classList.add('bae_preview_fade_left');
   return startTrailToRect(
     source,
     visualRect(dest),
@@ -447,8 +455,8 @@ export function startScientistTrailToRect(
   root: HTMLElement,
   destFn?: PreviewDestFn,
 ): HTMLElement {
-  source.classList.add('bae_preview_fade_left');
   source.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
+  source.classList.add('bae_preview_fade_left');
   return startTrailToRect(source, to, durationMs, root, 'bae_sci_mover', destFn);
 }
 
@@ -464,7 +472,7 @@ export function startTrailToRect(
   const layer = motionLayer(root);
   const loc = localRect(layer, from);
   const clone = source.cloneNode(true) as HTMLElement;
-  clone.classList.add('bae_motion_clone', 'bae_trail_ghost', ...extraClass.split(/\s+/).filter(Boolean));
+  clone.classList.add('bae_motion_clone', ...extraClass.split(/\s+/).filter(Boolean));
   clone.removeAttribute('id');
   clone.setAttribute('aria-hidden', 'true');
   stripChrome(clone);
@@ -487,6 +495,7 @@ export function startTrailToRect(
   clone.style.setProperty('--to-t', `${loc.top + dy}px`);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   layer.appendChild(clone);
+  startCssVarAnimation(clone, 'bae_trail_ghost');
   previewAnchors.set(clone, {
     source,
     dest: destFn ?? (() => to),
@@ -522,13 +531,14 @@ export function startDiscardGhost(
   cardId?: number,
   delayMs = 0,
 ): HTMLElement {
-  const clone = placeClone(source, 'bae_discard_ghost', root);
+  const clone = placeClone(source, '', root);
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', '1.85s');
   clone.style.setProperty('--dx', animDx(-60));
   if (delayMs > 0) clone.style.animationDelay = `-${Math.round(delayMs)}ms`;
   if (cardId != null) clone.dataset.previewCard = String(cardId);
+  startCssVarAnimation(clone, 'bae_discard_ghost');
   previewAnchors.set(clone, { source });
   return clone;
 }
@@ -573,13 +583,14 @@ export function flyDiscardAway(
   durationMs: number,
 ): Promise<void> {
   const from = visualRect(source);
-  const clone = placeClone(source, 'bae_discard_resolve', root);
+  const clone = placeClone(source, '', root);
   clone.style.setProperty('--from-l', clone.style.left);
   clone.style.setProperty('--from-t', clone.style.top);
   clone.style.setProperty('--dur', `${Math.max(1, durationMs)}ms`);
   const minDx = (48 / 0.12) * baeScale(root);
   clone.style.setProperty('--dx', `${-Math.max(minDx, from.width * 0.4)}px`);
   source.style.visibility = 'hidden';
+  startCssVarAnimation(clone, 'bae_discard_resolve');
   return wait(durationMs).then(() => { clone.remove(); });
 }
 
@@ -588,23 +599,23 @@ function freezeComputedMotion(el: HTMLElement, root: HTMLElement): void {
   const r = el.getBoundingClientRect();
   const parent = containingBlock(el, root);
   const { left, top } = localOffset(parent, r.left, r.top);
-  el.classList.add('bae_preview_settling');
-  el.style.animation = 'none';
-  el.style.transition = 'none';
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;
   el.style.transform = 'none';
   el.style.opacity = cs.opacity;
   void el.offsetWidth;
+  el.classList.add('bae_preview_settling');
+  el.style.animation = 'none';
+  el.style.transition = 'none';
 }
 
 function freezeOpacityOnly(el: HTMLElement): void {
   const cs = getComputedStyle(el);
+  el.style.opacity = cs.opacity;
+  void el.offsetWidth;
   el.classList.add('bae_preview_settling');
   el.style.animation = 'none';
   el.style.transition = 'none';
-  el.style.opacity = cs.opacity;
-  void el.offsetWidth;
 }
 
 /** Freeze looping previews at the current frame, then ease back toward rest. */
@@ -615,18 +626,21 @@ export function freezeAndFadePreviews(root: HTMLElement, durationMs = 320): void
     const el = node as HTMLElement;
     freezeComputedMotion(el, root);
     el.style.transition = `opacity ${fadeMs}ms ease`;
+    void el.offsetWidth;
     el.style.opacity = '0';
   });
   root.querySelectorAll('.bae_card_place_preview').forEach((node) => {
     const el = node as HTMLElement;
     freezeOpacityOnly(el);
     el.style.transition = `opacity ${fadeMs}ms ease`;
+    void el.offsetWidth;
     el.style.opacity = '0';
   });
   root.querySelectorAll('.bae_preview_fade_left').forEach((node) => {
     const el = node as HTMLElement;
     freezeOpacityOnly(el);
     el.style.transition = `opacity ${fadeMs}ms ease`;
+    void el.offsetWidth;
     el.style.opacity = '1';
     el.classList.remove('bae_preview_fade_left');
   });
