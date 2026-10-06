@@ -1125,7 +1125,10 @@ class OptionalUi {
         this.layoutChromeRaf = 0;
         this.tooltipFitTimers = [];
         this.tooltipFitGen = 0;
+        this.scoringLiftBound = false;
+        this.scoreAnchorSeq = 0;
         this.vp = new VpTokens(host);
+        this.bindScoringLift();
     }
     vpTokensFor(pid) {
         return this.vp.tokensFor(pid);
@@ -1578,6 +1581,29 @@ class OptionalUi {
             this.endResolution();
         }
     }
+    /** Host BGA displayScoring on the overlay so +XX is not trapped in a stacked/clipped pile slot. */
+    placeScoringAnchor(anchorId, durationMs = 1200) {
+        const root = this.host.root;
+        const layer = scoringLayer(root);
+        const source = this.scoringAnchorById(anchorId)
+            ?? root.querySelector(`#${anchorId}`)
+            ?? document.getElementById(anchorId);
+        const box = source ? source.getBoundingClientRect() : layer.getBoundingClientRect();
+        const loc = coordsInParent(layer, box);
+        const id = `bae_score_popup_${++this.scoreAnchorSeq}`;
+        const el = document.createElement('div');
+        el.id = id;
+        el.className = 'bae_score_popup_anchor';
+        el.setAttribute('aria-hidden', 'true');
+        el.style.position = 'absolute';
+        el.style.left = `${loc.left}px`;
+        el.style.top = `${loc.top}px`;
+        el.style.width = `${Math.max(1, loc.width)}px`;
+        el.style.height = `${Math.max(1, loc.height)}px`;
+        layer.appendChild(el);
+        window.setTimeout(() => el.remove(), Math.max(800, durationMs) + 800);
+        return id;
+    }
     /** Move BGA +XX popups onto the scoring overlay so they paint above cards and tokens. */
     liftScoringPopups() {
         const root = this.host.root;
@@ -1587,7 +1613,12 @@ class OptionalUi {
         document.querySelectorAll('.scored').forEach((node) => {
             if (!(node instanceof HTMLElement) || layer.contains(node))
                 return;
-            const r = node.getBoundingClientRect();
+            let r = node.getBoundingClientRect();
+            if (r.width < 1 && r.height < 1) {
+                const parent = node.parentElement;
+                if (parent)
+                    r = parent.getBoundingClientRect();
+            }
             if (r.width < 1 && r.height < 1)
                 return;
             layer.appendChild(node);
@@ -1599,9 +1630,28 @@ class OptionalUi {
             node.style.bottom = 'auto';
             node.style.margin = '0';
             node.style.transform = 'none';
-            node.style.zIndex = '2';
+            node.style.zIndex = '4';
             node.style.pointerEvents = 'none';
         });
+    }
+    bindScoringLift() {
+        if (this.scoringLiftBound)
+            return;
+        this.scoringLiftBound = true;
+        const liftIfScored = (records) => {
+            for (const rec of records) {
+                for (const node of rec.addedNodes) {
+                    if (!(node instanceof HTMLElement))
+                        continue;
+                    if (node.classList.contains('scored') || node.querySelector('.scored')) {
+                        this.liftScoringPopups();
+                        return;
+                    }
+                }
+            }
+        };
+        const mo = new MutationObserver(liftIfScored);
+        mo.observe(document.body, { childList: true, subtree: true });
     }
     scoringTokenFlights(pid, args) {
         const kind = scoringStepKind(args);
@@ -6583,8 +6633,9 @@ class Game {
         const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
         const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
         try {
+            const liveAnchor = this.optionalUi?.placeScoringAnchor(anchorId, duration) ?? anchorId;
             if (this.bga && this.bga.gameui && typeof this.bga.gameui.displayScoring === 'function') {
-                this.bga.gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
+                this.bga.gameui.displayScoring(liveAnchor, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
             }
             this.optionalUi?.liftScoringPopups();
             requestAnimationFrame(() => this.optionalUi?.liftScoringPopups());

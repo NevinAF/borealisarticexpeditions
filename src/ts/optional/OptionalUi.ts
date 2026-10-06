@@ -140,9 +140,12 @@ export class OptionalUi {
   private tooltipFitTimers: number[] = [];
   private tooltipFitGen = 0;
   private vp: VpTokens;
+  private scoringLiftBound = false;
+  private scoreAnchorSeq = 0;
 
   constructor(private host: OptionalUiHost) {
     this.vp = new VpTokens(host);
+    this.bindScoringLift();
   }
 
   vpTokensFor(pid: number): VpValue[] {
@@ -599,6 +602,30 @@ export class OptionalUi {
     }
   }
 
+  /** Host BGA displayScoring on the overlay so +XX is not trapped in a stacked/clipped pile slot. */
+  placeScoringAnchor(anchorId: string, durationMs = 1200): string {
+    const root = this.host.root;
+    const layer = scoringLayer(root);
+    const source = this.scoringAnchorById(anchorId)
+      ?? (root.querySelector(`#${anchorId}`) as HTMLElement | null)
+      ?? document.getElementById(anchorId);
+    const box = source ? source.getBoundingClientRect() : layer.getBoundingClientRect();
+    const loc = coordsInParent(layer, box);
+    const id = `bae_score_popup_${++this.scoreAnchorSeq}`;
+    const el = document.createElement('div');
+    el.id = id;
+    el.className = 'bae_score_popup_anchor';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.position = 'absolute';
+    el.style.left = `${loc.left}px`;
+    el.style.top = `${loc.top}px`;
+    el.style.width = `${Math.max(1, loc.width)}px`;
+    el.style.height = `${Math.max(1, loc.height)}px`;
+    layer.appendChild(el);
+    window.setTimeout(() => el.remove(), Math.max(800, durationMs) + 800);
+    return id;
+  }
+
   /** Move BGA +XX popups onto the scoring overlay so they paint above cards and tokens. */
   liftScoringPopups(): void {
     const root = this.host.root;
@@ -606,7 +633,11 @@ export class OptionalUi {
     const layer = scoringLayer(root);
     document.querySelectorAll('.scored').forEach((node) => {
       if (!(node instanceof HTMLElement) || layer.contains(node)) return;
-      const r = node.getBoundingClientRect();
+      let r = node.getBoundingClientRect();
+      if (r.width < 1 && r.height < 1) {
+        const parent = node.parentElement;
+        if (parent) r = parent.getBoundingClientRect();
+      }
       if (r.width < 1 && r.height < 1) return;
       layer.appendChild(node);
       const loc = coordsInParent(layer, r);
@@ -617,9 +648,27 @@ export class OptionalUi {
       node.style.bottom = 'auto';
       node.style.margin = '0';
       node.style.transform = 'none';
-      node.style.zIndex = '2';
+      node.style.zIndex = '4';
       node.style.pointerEvents = 'none';
     });
+  }
+
+  private bindScoringLift(): void {
+    if (this.scoringLiftBound) return;
+    this.scoringLiftBound = true;
+    const liftIfScored = (records: MutationRecord[]): void => {
+      for (const rec of records) {
+        for (const node of rec.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          if (node.classList.contains('scored') || node.querySelector('.scored')) {
+            this.liftScoringPopups();
+            return;
+          }
+        }
+      }
+    };
+    const mo = new MutationObserver(liftIfScored);
+    mo.observe(document.body, { childList: true, subtree: true });
   }
 
   private scoringTokenFlights(

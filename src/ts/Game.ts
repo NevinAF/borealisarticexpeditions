@@ -2424,8 +2424,9 @@ export class Game {
     const offset_x = typeof args.offset_x === 'number' ? Number(args.offset_x) : undefined;
     const offset_y = typeof args.offset_y === 'number' ? Number(args.offset_y) : undefined;
     try {
+      const liveAnchor = this.optionalUi?.placeScoringAnchor(anchorId, duration) ?? anchorId;
       if (this.bga && (this.bga as any).gameui && typeof (this.bga as any).gameui.displayScoring === 'function') {
-        (this.bga as any).gameui.displayScoring(anchorId, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
+        (this.bga as any).gameui.displayScoring(liveAnchor, color, scoreStr, duration, offset_x ?? null, offset_y ?? null);
       }
       this.optionalUi?.liftScoringPopups();
       requestAnimationFrame(() => this.optionalUi?.liftScoringPopups());

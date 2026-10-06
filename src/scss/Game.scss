@@ -323,7 +323,7 @@ html[data-theme="dark"] {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 12px;
+  gap: 3px;
   font-family: 'BaeCardSerif', serif;
   width: 100%;
   max-width: 100%;
@@ -350,10 +350,6 @@ html[data-theme="dark"] {
 .bae_tooltip_extra {
   font-size: 13px;
   line-height: 1.35;
-}
-
-.bae_tooltip_scores + .bae_tooltip_extra {
-  padding-top: 8px;
 }
 
 .dijitTooltipContainer:has(.bae_tooltip_grid),
@@ -944,15 +940,15 @@ html[data-theme="dark"] .bae_playerboard {
   border-radius: scaled(45);
   pointer-events: none;
   z-index: 1;
-  border: #{$border}px solid #9a7b1a;
-  background: rgba(201, 162, 39, 0.4);
-  box-shadow: inset 0 0 scaled(10) rgba(201, 162, 39, 0.18);
+  border: #{$border}px solid rgba(133, 201, 39);
+  background: rgba(133, 201, 39, 0.7);
+  box-shadow: inset 0 0 scaled(10) rgba(133, 201, 39, 1);
   animation: bae_obj_claimed_pulse 1.8s ease-in-out infinite;
 }
 
 .bae_obj_claimed_by_you:not(:disabled)::after {
-  border-color: #7a5f10;
-  background: rgba(201, 162, 39, 0.34);
+  border-color: rgb(100, 151, 29);
+  background: rgba(133, 201, 39, 0.34);
 }
 
 .bae_anim_off .bae_obj_claimed_by_you:not(:disabled)::after,
@@ -1677,13 +1673,21 @@ html[data-theme="dark"] .bae_opening_intro {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 90;
+  z-index: 200;
   overflow: visible;
 }
 
-.bae_scoring_layer .scored {
-  z-index: 2;
+.bae_score_popup_anchor {
+  position: absolute;
+  overflow: visible;
   pointer-events: none;
+  z-index: 4;
+}
+
+.bae_scoring_layer .scored {
+  z-index: 4;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .bae_vp_flight {
