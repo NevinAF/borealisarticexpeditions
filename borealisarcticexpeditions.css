@@ -603,13 +603,13 @@ html[data-theme=dark] .bae_playerboard {
   height: 100%;
 }
 .bae_camp_zone .bae_meeple_yellow {
-  width: 50.9523809524%;
+  width: 55.9523809524%;
 }
 .bae_camp_zone .bae_meeple_teal {
-  width: 49.7619047619%;
+  width: 53.5714285714%;
 }
 .bae_camp_zone .bae_meeple_pink {
-  width: 57.8571428571%;
+  width: 62.1428571429%;
 }
 
 .bae_camp_left {
@@ -648,13 +648,13 @@ html[data-theme=dark] .bae_playerboard {
   height: 100%;
 }
 .bae_regroup_hold .bae_meeple_yellow {
-  width: 50.9523809524%;
+  width: 55.9523809524%;
 }
 .bae_regroup_hold .bae_meeple_teal {
-  width: 49.7619047619%;
+  width: 53.5714285714%;
 }
 .bae_regroup_hold .bae_meeple_pink {
-  width: 57.8571428571%;
+  width: 62.1428571429%;
 }
 
 .bae_regroup_hold_left {
@@ -701,13 +701,13 @@ html[data-theme=dark] .bae_playerboard {
   pointer-events: auto;
 }
 .bae_location_zone .bae_meeple_yellow {
-  width: 29.8050139276%;
+  width: 32.7298050139%;
 }
 .bae_location_zone .bae_meeple_teal {
-  width: 29.1086350975%;
+  width: 31.3370473538%;
 }
 .bae_location_zone .bae_meeple_pink {
-  width: 33.8440111421%;
+  width: 36.3509749304%;
 }
 
 .bae_slot_left {
