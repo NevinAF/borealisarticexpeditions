@@ -71,6 +71,7 @@ export interface OptionalUiHost {
   renderAll(): void;
   sendAction(action: string, args?: Record<string, unknown>): Promise<unknown>;
   isActionBusy(): boolean;
+  syncSelectableAuras(): void;
 }
 
 /**
@@ -205,6 +206,7 @@ export class OptionalUi {
   }
 
   onSelectionChanged(): void {
+    this.host.syncSelectableAuras();
     if (this.previewLocked) return;
     if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
       const myId = Number(this.host.bga.players.getCurrentPlayerId());
@@ -1500,6 +1502,11 @@ export class OptionalUi {
       && !this.host.isActionBusy();
   }
 
+  draggingHandCardId(): number | null {
+    if (this.dragDidDrop) return null;
+    return this.dragCardId ?? this.pointerDrag?.cardId ?? null;
+  }
+
   private beginHandDragChrome(cardId: number): void {
     this.dragPoolSlot = null;
     this.dragCardId = cardId;
@@ -1511,6 +1518,7 @@ export class OptionalUi {
     this.captureDragSelectionSnapshot();
     this.syncRegroupCardChrome();
     if (this.host.campSelected) this.clearDiscardGhosts();
+    this.host.syncSelectableAuras();
   }
 
   private captureDragSelectionSnapshot(): void {
@@ -1888,6 +1896,7 @@ export class OptionalUi {
     });
     root.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
     this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+    this.host.syncSelectableAuras();
   }
 
   private addDropConfirm(el: HTMLElement): void {

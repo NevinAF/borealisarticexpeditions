@@ -742,7 +742,7 @@ html[data-theme="dark"] .bae_playerboard {
     top: calc(-1 * var(--bae_board_top_margin));
     bottom: 0;
     background: rgba(245, 250, 255, 0.2);
-    border-radius: #{$radius_3}px;
+    border-radius: scaled($radius_4);
     border: #{$border}px dashed rgba(42, 111, 219, 0.28);
     box-sizing: border-box;
     cursor: pointer;
@@ -845,7 +845,8 @@ html[data-theme="dark"] .bae_playerboard {
 
 /* Objective highlight states */
 .bae_obj_selected:not(:disabled)::before,
-.bae_obj_prompt_target:not(:disabled)::before {
+.bae_obj_prompt_target:not(:disabled)::before,
+.bae_obj.bae_aura:not(.bae_aura_discard)::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -961,6 +962,40 @@ html[data-theme="dark"] .bae_playerboard {
   border: #{$border}px solid #c0392b;
   background: rgba(192, 57, 43, 0.22);
   z-index: 3;
+}
+
+/* Pulse sits on its own layer so the dashed rest outline stays visible. */
+.bae_location_zone.bae_aura::after,
+.bae_camp_zone.bae_aura::after {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.bae_location_zone.bae_aura::after {
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--bae_board_top_margin));
+  bottom: 0;
+  border-radius: scaled($radius_4);
+}
+
+.bae_camp_zone.bae_aura::after {
+  inset: 0;
+  border-radius: #{$radius_3}px;
+}
+
+.bae_location_zone.bae_aura:not(.bae_aura_discard)::after,
+.bae_camp_zone.bae_aura:not(.bae_aura_discard)::after {
+  border: #{$border}px solid #2a6fdb;
+  background: rgba(42, 111, 219, 0.25);
+}
+
+.bae_location_zone.bae_aura.bae_aura_discard::after {
+  border: #{$border}px solid #c0392b;
+  background: rgba(192, 57, 43, 0.22);
 }
 
 .bae_loc_head {
@@ -1097,16 +1132,19 @@ html[data-theme="dark"] .bae_playerboard {
   overflow: hidden;
 }
 
-.bae_card_selected {
-  border-radius: scaled(45);
-}
-
-.bae_card_regroup {
+.bae_card_selected,
+.bae_card_regroup,
+.bae_card_invalid,
+.bae_handcard.bae_aura,
+.bae_pool_slot.bae_aura {
   border-radius: scaled(45);
 }
 
 .bae_card_selected::after,
-.bae_card_regroup::after {
+.bae_card_regroup::after,
+.bae_card_invalid::after,
+.bae_handcard.bae_aura::after,
+.bae_pool_slot.bae_aura::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -1116,24 +1154,16 @@ html[data-theme="dark"] .bae_playerboard {
   z-index: 1;
 }
 
-.bae_card_selected::after {
+.bae_card_selected::after,
+.bae_handcard.bae_aura:not(.bae_aura_discard)::after,
+.bae_pool_slot.bae_aura:not(.bae_aura_discard)::after {
   border: #{$border}px solid #2a6fdb;
   background: rgba(42, 111, 219, 0.25);
 }
 
-.bae_card_invalid {
-  border-radius: scaled(45);
-}
-
 .bae_card_invalid::after,
-.bae_card_selected.bae_card_invalid::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  box-sizing: border-box;
-  border-radius: scaled(45);
-  pointer-events: none;
-  z-index: 1;
+.bae_card_selected.bae_card_invalid::after,
+.bae_handcard.bae_aura.bae_aura_discard::after {
   border: #{$border}px solid #c0392b;
   background: rgba(192, 57, 43, 0.22);
 }
@@ -1141,6 +1171,91 @@ html[data-theme="dark"] .bae_playerboard {
 .bae_card_regroup::after {
   border: #{$border}px solid #c45c00;
   background: rgba(196, 92, 0, 0.25);
+}
+
+@keyframes bae_aura_pulse_card {
+  0%, 100% { opacity: 0.05; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes bae_aura_pulse_loc {
+  0%, 100% { opacity: 0.05; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes bae_aura_pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.0; }
+}
+
+.bae_handcard.bae_aura::after,
+.bae_pool_slot.bae_aura::after {
+  animation: bae_aura_pulse_card 1.6s ease-in-out infinite;
+}
+
+.bae_location_zone.bae_aura::after,
+.bae_camp_zone.bae_aura::after {
+  animation: bae_aura_pulse_loc 1.6s ease-in-out infinite;
+}
+
+.bae_obj.bae_aura::before {
+  animation: bae_aura_pulse 1.6s ease-in-out infinite;
+}
+
+.bae_location_zone.bae_drop_hover::before,
+.bae_camp_zone.bae_drop_hover::before,
+.bae_location_zone.bae_drop_hover_invalid::before {
+  animation: none;
+  opacity: 1;
+}
+
+.bae_location_zone.bae_drop_hover::after,
+.bae_camp_zone.bae_drop_hover::after,
+.bae_location_zone.bae_drop_hover_invalid::after {
+  content: none;
+  animation: none;
+}
+
+.bae_motion_clone.bae_aura::after,
+.bae_pointer_ghost.bae_aura::after {
+  content: none;
+  animation: none;
+}
+
+.bae_anim_off .bae_handcard.bae_aura::after,
+.bae_anim_off .bae_pool_slot.bae_aura::after {
+  animation: none;
+  opacity: 0.45;
+}
+
+.bae_anim_off .bae_location_zone.bae_aura::after,
+.bae_anim_off .bae_camp_zone.bae_aura::after {
+  animation: none;
+  opacity: 0.3;
+}
+
+.bae_anim_off .bae_obj.bae_aura::before {
+  animation: none;
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bae_handcard.bae_aura::after,
+  .bae_pool_slot.bae_aura::after {
+    animation: none;
+    opacity: 0.45;
+  }
+
+  .bae_location_zone.bae_aura::after,
+  .bae_camp_zone.bae_aura::after {
+    animation: none;
+    opacity: 0.3;
+  }
+
+  .bae_obj.bae_aura::before {
+    animation: none;
+    opacity: 0.35;
+  }
 }
 
 .bae_card_placeholder {

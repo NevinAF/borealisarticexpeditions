@@ -1187,6 +1187,7 @@ class OptionalUi {
         this.previewLocked = false;
     }
     onSelectionChanged() {
+        this.host.syncSelectableAuras();
         if (this.previewLocked)
             return;
         if (this.host.campSelected || this.host.isOpeningMulliganLike()) {
@@ -2460,6 +2461,11 @@ class OptionalUi {
             && this.host.bga.players.isCurrentPlayerActive()
             && !this.host.isActionBusy();
     }
+    draggingHandCardId() {
+        if (this.dragDidDrop)
+            return null;
+        return this.dragCardId ?? this.pointerDrag?.cardId ?? null;
+    }
     beginHandDragChrome(cardId) {
         this.dragPoolSlot = null;
         this.dragCardId = cardId;
@@ -2472,6 +2478,7 @@ class OptionalUi {
         this.syncRegroupCardChrome();
         if (this.host.campSelected)
             this.clearDiscardGhosts();
+        this.host.syncSelectableAuras();
     }
     captureDragSelectionSnapshot() {
         if (this.dragSelectionSnapshot)
@@ -2861,6 +2868,7 @@ class OptionalUi {
         });
         root.querySelectorAll('.bae_confirm_blurb:not(.bae_drop_confirm)').forEach((el) => el.remove());
         this.host.onUpdateActionButtons(this.host.currentStateName(), this.host.cachedActionArgs);
+        this.host.syncSelectableAuras();
     }
     addDropConfirm(el) {
         if (el.querySelector('.bae_drop_confirm'))
@@ -4846,6 +4854,7 @@ class Game {
         this.root?.querySelectorAll('.bae_card_invalid').forEach((el) => el.classList.remove('bae_card_invalid'));
         this.root?.querySelectorAll('.bae_confirm_blurb').forEach((el) => el.remove());
         this.bga.statusBar.removeActionButtons();
+        this.syncSelectableAuras();
     }
     endActionSubmit(action) {
         if (action != null && this.pendingAction !== action)
@@ -5009,6 +5018,95 @@ class Game {
             return true;
         }
         return false;
+    }
+    /** Pulsing aura on cards and locations the active player can still choose. */
+    syncSelectableAuras() {
+        const root = this.root;
+        if (!root)
+            return;
+        root.querySelectorAll('.bae_aura').forEach((el) => {
+            el.classList.remove('bae_aura', 'bae_aura_discard');
+        });
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
+            return;
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        const mark = (el, discard = false) => {
+            if (el.classList.contains('bae_motion_clone') || el.classList.contains('bae_pointer_ghost'))
+                return;
+            if (el.disabled)
+                return;
+            el.classList.add('bae_aura');
+            if (discard)
+                el.classList.add('bae_aura_discard');
+        };
+        const selected = (el) => el.classList.contains('bae_card_selected')
+            || el.classList.contains('bae_card_regroup')
+            || el.classList.contains('bae_card_invalid')
+            || el.classList.contains('bae_loc_selected')
+            || el.classList.contains('bae_loc_invalid')
+            || el.classList.contains('bae_camp_selected')
+            || el.classList.contains('bae_obj_selected');
+        const discarding = this.campSelected || this.isOpeningMulliganLike();
+        if (discarding && (this.isGameplayLike() || this.isOpeningMulliganLike())) {
+            root.querySelectorAll(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`).forEach((el) => {
+                if (!selected(el))
+                    mark(el, true);
+            });
+            return;
+        }
+        if (this.isGameplayLike()) {
+            const draggedId = this.optionalUi?.draggingHandCardId() ?? null;
+            const focusCardId = draggedId ?? this.selectedCardId;
+            const focusLoc = this.selectedLocation;
+            root.querySelectorAll(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`).forEach((el) => {
+                if (selected(el) || el.classList.contains('bae_dragging'))
+                    return;
+                const id = Number(el.dataset.handCard);
+                if (focusCardId != null && id === focusCardId)
+                    return;
+                const illegal = focusLoc != null && !this.isObserveSelectionLegal(id, focusLoc);
+                mark(el, illegal);
+            });
+            root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
+                if (selected(el))
+                    return;
+                const loc = Number(el.dataset.loc);
+                const illegal = focusCardId != null && !this.isObserveSelectionLegal(focusCardId, loc);
+                mark(el, illegal);
+            });
+            root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
+                if (!selected(el))
+                    mark(el);
+            });
+        }
+        if (this.isReplenishLike()) {
+            root.querySelectorAll('[data-pool-slot]').forEach((el) => {
+                if (!selected(el))
+                    mark(el);
+            });
+        }
+        if (this.isAssignCampLike()) {
+            root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
+                if (!selected(el))
+                    mark(el);
+            });
+        }
+        if (this.isPromptClaimObjectiveLike()) {
+            const idx = this.getPromptedObjectiveIndex();
+            const obj = idx == null ? null : root.querySelector(`#bae_obj_${idx}`);
+            if (obj && !selected(obj))
+                mark(obj);
+            return;
+        }
+        if (this.canSelectObjectiveToClaim()) {
+            (this.gamedatas.boardState.objectives ?? []).forEach((obj, idx) => {
+                if ((obj.players?.[myId] ?? 'unmet') !== 'meets' || !obj.active)
+                    return;
+                const el = root.querySelector(`#bae_obj_${idx}`);
+                if (el && !selected(el))
+                    mark(el);
+            });
+        }
     }
     renderAll() {
         this.syncGamedatas();
@@ -5191,6 +5289,7 @@ class Game {
         this.updateOpeningIntroOverlay();
         // OPTIONAL: previews, invalid-action hints, DnD
         this.optionalUi?.afterRender();
+        this.syncSelectableAuras();
     }
     getTooltipScale() {
         const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
