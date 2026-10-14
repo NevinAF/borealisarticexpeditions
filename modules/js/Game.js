@@ -1118,8 +1118,6 @@ class OptionalUi {
         this.lastHoverEl = null;
         this.previewLocked = false;
         this.lastClaimFlightKey = '';
-        this.roundBadgeForced = null;
-        this.roundBadgeCompact = false;
         this.touchHitEl = null;
         this.touchHitBox = null;
         this.layoutChromeRaf = 0;
@@ -1140,7 +1138,6 @@ class OptionalUi {
             return;
         this.bindTooltipGate();
         this.applyPreferenceCss();
-        this.renderRoundBadge();
         this.bindDragAndDrop();
         this.bindKeyboard();
         this.restoreHoldingFromState();
@@ -1149,7 +1146,6 @@ class OptionalUi {
         if (this.isTooltipBlocked())
             this.cancelDojoTooltips();
         this.syncTopRowWrap();
-        this.syncRoundBadge();
         this.updateActionPreviews();
         this.bindPreferenceListener();
         this.scheduleLayoutChrome();
@@ -1758,30 +1754,12 @@ class OptionalUi {
             this.updateActionPreviews();
         };
     }
-    renderRoundBadge() {
-        let badge = this.host.root.querySelector('.bae_round_badge');
-        if (!badge) {
-            badge = document.createElement('button');
-            badge.type = 'button';
-            badge.className = 'bae_round_badge';
-            badge.setAttribute('aria-live', 'polite');
-            badge.addEventListener('click', (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-                this.roundBadgeForced = !this.roundBadgeCompact;
-                this.syncRoundBadge();
-            });
-            this.host.root.appendChild(badge);
-        }
-        this.syncRoundBadge();
-    }
     scheduleLayoutChrome() {
         if (this.layoutChromeRaf)
             return;
         this.layoutChromeRaf = requestAnimationFrame(() => {
             this.layoutChromeRaf = 0;
             const wrapChanged = this.syncTopRowWrap();
-            this.syncRoundBadge();
             if (wrapChanged)
                 this.updateActionPreviews();
             else
@@ -1808,44 +1786,6 @@ class OptionalUi {
             return false;
         row.classList.toggle('bae_toprow_wrapped', wrapped);
         return true;
-    }
-    syncRoundBadge() {
-        const badge = this.host.root.querySelector('.bae_round_badge');
-        if (!badge)
-            return;
-        const round = this.host.gamedatas.boardState.round ?? 1;
-        const final = (this.host.gamedatas.boardState.playersEndingGame?.length ?? 0) > 0;
-        const full = final
-            ? `${_('Round')} ${round} — ${_('Final round')}`
-            : `${_('Round')} ${round}`;
-        const short = `R${round}`;
-        let compact = this.roundBadgeForced;
-        if (compact == null) {
-            badge.textContent = full;
-            compact = this.roundBadgeOverlapsTop();
-        }
-        this.roundBadgeCompact = compact;
-        badge.textContent = compact ? short : full;
-        badge.setAttribute('aria-label', full);
-        badge.title = full;
-    }
-    roundBadgeOverlapsTop() {
-        const badge = this.host.root.querySelector('.bae_round_badge');
-        const row = this.host.root.querySelector('.bae_toprow');
-        if (!badge || !row)
-            return false;
-        const br = badge.getBoundingClientRect();
-        if (br.width < 1 || br.height < 1)
-            return false;
-        for (const group of row.querySelectorAll('.bae_top_group')) {
-            const gr = group.getBoundingClientRect();
-            if (gr.width < 1 || gr.height < 1)
-                continue;
-            const overlap = br.left < gr.right && br.right > gr.left && br.top < gr.bottom && br.bottom > gr.top;
-            if (overlap)
-                return true;
-        }
-        return false;
     }
     clearPreviews() {
         this.clearDiscardGhosts();
@@ -2309,9 +2249,9 @@ class OptionalUi {
             }
             if (ev.key !== 'Enter' && ev.key !== ' ')
                 return;
-            const interactive = target?.closest?.('.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button');
+            const interactive = target?.closest?.('.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bgabutton, .action-button');
             if (interactive) {
-                if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj'))
+                if (interactive.matches('button, a, .bgabutton, .action-button, .bae_handcard, .bae_pool_slot, .bae_obj'))
                     return;
                 ev.preventDefault();
                 interactive.click();
@@ -2342,7 +2282,7 @@ class OptionalUi {
             const handDraggable = this.canPointerDragHand();
             htmlEl.setAttribute('draggable', handDraggable ? 'true' : 'false');
             if (handDraggable)
-                htmlEl.style.touchAction = 'none';
+                htmlEl.style.touchAction = 'manipulation';
             const onDragStart = (ev) => {
                 if (!this.canPointerDragHand()) {
                     ev.preventDefault();
@@ -2474,7 +2414,7 @@ class OptionalUi {
             const htmlEl = el;
             htmlEl.setAttribute('draggable', 'true');
             if (this.canPointerDragPool())
-                htmlEl.style.touchAction = 'none';
+                htmlEl.style.touchAction = 'manipulation';
             const onDragStart = (ev) => {
                 if (this.host.isActionBusy() || !this.host.isReplenishLike()) {
                     ev.preventDefault();
@@ -3418,7 +3358,7 @@ class OptionalUi {
     isTapActionTarget(el) {
         if (!el || typeof el.closest !== 'function')
             return false;
-        if (el.closest('.bae_zoom_btn, .bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info'))
+        if (el.closest('.bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info'))
             return true;
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const active = this.host.bga.players.isCurrentPlayerActive() && !this.host.isActionBusy();
@@ -3701,7 +3641,7 @@ class OptionalUi {
     touchHitTarget(el) {
         if (!el || typeof el.closest !== 'function')
             return null;
-        if (el.closest('.bae_zoom_btn, .bae_round_badge, .bgabutton, .action-button'))
+        if (el.closest('.bgabutton, .action-button'))
             return null;
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const loc = el.closest('.bae_location_zone');
@@ -4364,7 +4304,14 @@ class Game {
         this.pageTitleMinHeightPx = 0;
         this.pageTitleResizeTimer = null;
         this.pageTitleStabilized = false;
-        this.zoomFactor = 1;
+        /** devicePixelRatio when the table loaded. Page zoom is the ratio to this. */
+        this.baseDevicePixelRatio = 0;
+        this.browserZoomMedia = null;
+        this.browserZoomWatchBound = false;
+        this.onDevicePixelRatioChange = () => {
+            this.bindDevicePixelRatioWatch();
+            this.updateBoardScale();
+        };
         this.isShowingLastTurnBanner = false;
         this.openingIntroPage = "objectives";
         this.openingIntroEl = null;
@@ -4384,11 +4331,11 @@ class Game {
         area.appendChild(this.root);
         // OPTIONAL: client-only UX helpers (previews, resolution motion, DnD, sound)
         this.optionalUi = new OptionalUi(this);
-        this.openingIntroPage = this.isReplayOrSpectator() ? null : "objectives";
-        // Keep --board-scale up to date when the window resizes
+        this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
+        // Fit the table to the 100% viewport. Later page zoom enlarges that layout.
         window.addEventListener('resize', () => this.updateBoardScale());
+        this.watchBrowserZoom();
         this.stabilizePageTitle();
-        this.zoomFactor = this.firstZoomOutFromFit();
         this.renderAll();
     }
     /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
@@ -4562,10 +4509,16 @@ class Game {
             this.boardScaleTimeoutId = null;
         }
         const scale = this.getScale();
-        this.root.style.setProperty('--bae-scale', String(scale));
-        this.updateSpriteSheetUrls(scale);
-        this.updateOpeningIntroOverlay();
+        const applied = Number.parseFloat(this.root.style.getPropertyValue('--bae-scale'));
+        const scaleChanged = !Number.isFinite(applied) || Math.abs(applied - scale) > 0.0001;
+        if (scaleChanged) {
+            this.root.style.setProperty('--bae-scale', String(scale));
+            this.updateOpeningIntroOverlay();
+        }
+        // Viewport changes can wrap the top row even when the fitted scale stays put.
         this.optionalUi?.onBoardScaleChanged();
+        // Sprite tier follows on-screen size so browser zoom stays sharp.
+        this.updateSpriteSheetUrls(scale * this.browserPageZoom() * this.pinchZoom());
         this.boardScaleTimeoutAccInterval = 10;
         this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
     }
@@ -4578,53 +4531,58 @@ class Game {
         this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
         this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
     }
-    getScaleForZoomFactor(zoomFactor) {
-        const area = this.bga.gameArea.getElement();
-        const areaRect = area.getBoundingClientRect();
-        const availableWidth = Math.max(1, areaRect.width);
-        const availableHeight = Math.max(1, window.innerHeight);
-        const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
-        const scaleByBoardHeight = availableHeight / Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
-        const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
-        // Default fit keeps the top row on one line. Max zoom is the board + hand width so
-        // small devices can enlarge the player area and let the top row wrap.
-        const fitScale = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight, scaleByTopRowWidth));
-        const maxScale = Math.max(0.01, scaleByBoardWidth);
-        const boundedZoom = Math.max(Game.ZOOM_MIN, zoomFactor);
-        return Math.min(Math.max(0.01, fitScale * boundedZoom), maxScale);
+    /**
+     * Page zoom (Ctrl+wheel / browser zoom menu) relative to when the table loaded.
+     * 1 means that zoom level. Pinch is tracked separately and does not change this.
+     */
+    browserPageZoom() {
+        const dpr = window.devicePixelRatio || 1;
+        if (this.baseDevicePixelRatio <= 0)
+            this.baseDevicePixelRatio = dpr;
+        const zoom = dpr / this.baseDevicePixelRatio;
+        return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
     }
+    /** Pinch / visual-viewport scale. 1 when the page is not pinch-zoomed. */
+    pinchZoom() {
+        const scale = window.visualViewport?.scale ?? 1;
+        return Number.isFinite(scale) && scale > 0 ? scale : 1;
+    }
+    watchBrowserZoom() {
+        if (this.browserZoomWatchBound)
+            return;
+        this.browserZoomWatchBound = true;
+        this.bindDevicePixelRatioWatch();
+    }
+    bindDevicePixelRatioWatch() {
+        this.browserZoomMedia?.removeEventListener('change', this.onDevicePixelRatioChange);
+        this.browserZoomMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+        this.browserZoomMedia.addEventListener('change', this.onDevicePixelRatioChange);
+    }
+    /**
+     * Scale that fits the whole table in the viewport at 100% page zoom.
+     * Measuring through devicePixelRatio keeps this stable while the browser zooms,
+     * so Ctrl+wheel and pinch enlarge the fitted layout instead of the table refitting.
+     */
     getScale() {
-        return this.getScaleForZoomFactor(this.zoomFactor);
-    }
-    firstZoomOutFromFit() {
-        const fit = this.getScaleForZoomFactor(1);
-        let nextZoom = 1;
-        while (nextZoom > Game.ZOOM_MIN + 0.0001) {
-            nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
-            if (fit - this.getScaleForZoomFactor(nextZoom) > 0.0001)
-                return nextZoom;
+        const pageZoom = this.browserPageZoom();
+        const area = this.bga.gameArea.getElement();
+        const pinch = this.pinchZoom();
+        let height = window.innerHeight;
+        const vv = window.visualViewport;
+        if (pinch > 1.001 && vv && vv.height > 0) {
+            height = Math.max(height, vv.height * pinch);
         }
-        return 1;
-    }
-    canZoomInAtCurrentViewport() {
-        const current = this.getScaleForZoomFactor(this.zoomFactor);
-        const nextZoom = this.zoomFactor + Game.ZOOM_STEP;
-        const next = this.getScaleForZoomFactor(nextZoom);
-        return next - current > 0.0001;
-    }
-    nextZoomFactorDownWithVisibleChange() {
-        const currentScale = this.getScaleForZoomFactor(this.zoomFactor);
-        let nextZoom = this.zoomFactor;
-        while (nextZoom > Game.ZOOM_MIN + 0.0001) {
-            nextZoom = Math.max(Game.ZOOM_MIN, Number((nextZoom - Game.ZOOM_STEP).toFixed(3)));
-            const nextScale = this.getScaleForZoomFactor(nextZoom);
-            if (currentScale - nextScale > 0.0001)
-                return nextZoom;
+        const isMobileVersion = document.body.classList.contains('mobile');
+        let referenceHeight = Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
+        if (isMobileVersion) {
+            referenceHeight += 104;
         }
-        return null;
-    }
-    canZoomOutAtCurrentViewport() {
-        return this.nextZoomFactorDownWithVisibleChange() != null;
+        const availableWidth = Math.max(320, area.clientWidth - 10) * pageZoom;
+        const availableHeight = Math.max(720, height) * pageZoom;
+        const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
+        const scaleByBoardHeight = availableHeight / referenceHeight;
+        // const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
+        return Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
     }
     verifyBoardScaleTimeout(expectedScale) {
         this.boardScaleTimeoutId = null;
@@ -4645,34 +4603,6 @@ class Game {
                 this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(expectedScale), this.boardScaleTimeoutAccInterval);
             }
         }
-    }
-    bindZoomHandlers() {
-        const outBtn = this.root.querySelector('[data-zoom="out"]');
-        const inBtn = this.root.querySelector('[data-zoom="in"]');
-        const resetBtn = this.root.querySelector('[data-zoom="reset"]');
-        outBtn?.addEventListener('click', (ev) => {
-            ev.preventDefault();
-            const nextZoom = this.nextZoomFactorDownWithVisibleChange();
-            if (nextZoom == null)
-                return;
-            this.zoomFactor = nextZoom;
-            this.renderAll();
-        });
-        inBtn?.addEventListener('click', (ev) => {
-            ev.preventDefault();
-            if (!this.canZoomInAtCurrentViewport())
-                return;
-            this.zoomFactor = Number((this.zoomFactor + Game.ZOOM_STEP).toFixed(3));
-            this.renderAll();
-        });
-        resetBtn?.addEventListener('click', (ev) => {
-            ev.preventDefault();
-            const resetZoom = this.firstZoomOutFromFit();
-            if (Math.abs(this.zoomFactor - resetZoom) <= 0.0001)
-                return;
-            this.zoomFactor = resetZoom;
-            this.renderAll();
-        });
     }
     ownHandCardActionText() {
         if (!this.bga.players.isCurrentPlayerActive()) {
@@ -4834,6 +4764,7 @@ class Game {
                 return;
             void this.sendAction("actClaimObjective", { objective_index: idx });
         }, {
+            color: 'primary',
             disabled: !can,
             tooltip: _("Claim this objective now and score 5 VP."),
         });
@@ -5002,6 +4933,7 @@ class Game {
         this.bga.statusBar.addActionButton(label, () => {
             void this.sendAction("actUndo", {});
         }, {
+            color: 'alert',
             disabled: !enabled,
             tooltip,
         });
@@ -5089,20 +5021,12 @@ class Game {
             names[Number(pid)] = p.name;
         }
         const track = d.track ?? { vpPerSpace: [], vehiclesPerLocation: [[], [], []] };
-        const canZoomOut = this.canZoomOutAtCurrentViewport();
-        const canZoomIn = this.canZoomInAtCurrentViewport();
-        const canResetZoom = Math.abs(this.zoomFactor - this.firstZoomOutFromFit()) > 0.0001;
         const canConfirmObserve = this.isGameplayLike() && this.isObserveSelectionLegal();
         const canConfirmTake = this.isReplenishLike() && this.selectedPoolSlot != null;
         const canConfirmAssign = this.isAssignCampLike() && this.selectedLocation != null;
         const promptedObjectiveIdx = this.getPromptedObjectiveIndex();
         const confirmObserveBlurb = _('Confirm?');
         this.handleLastTurnBanner(d.playersEndingGame);
-        html += `<div class="bae_zoom_controls" role="group" aria-label="${_('Zoom controls')}">`;
-        html += `<button type="button" class="bae_zoom_btn" data-zoom="out" ${canZoomOut ? '' : 'disabled'} aria-label="${_('Zoom out')}" title="${_('Zoom out')}">-</button>`;
-        html += `<button type="button" class="bae_zoom_btn" data-zoom="in" ${canZoomIn ? '' : 'disabled'} aria-label="${_('Zoom in')}" title="${_('Zoom in')}">+</button>`;
-        html += `<button type="button" class="bae_zoom_btn" data-zoom="reset" ${canResetZoom ? '' : 'disabled'} aria-label="${_('Reset zoom')}" title="${_('Reset zoom')}">⟳</button>`;
-        html += `</div>`;
         html += `<div class="bae_table">`;
         html += `<div class="bae_toprow">`;
         // Objectives group (left, always 2 columns with centered final row)
@@ -5263,7 +5187,6 @@ class Game {
         this.renderPlayerPanelInfo();
         this.renderHand(myId);
         this.registerHandTooltips(myId);
-        this.bindZoomHandlers();
         this.bindTableHandlers(myId);
         this.updateOpeningIntroOverlay();
         // OPTIONAL: previews, invalid-action hints, DnD
@@ -5310,7 +5233,7 @@ class Game {
         this.root?.querySelector('.bae_top_scoring')?.classList.remove('bae_opening_intro_highlight');
         this.openingIntroEl?.remove();
         this.openingIntroEl = null;
-        if (!this.root || this.isReplayOrSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
+        if (!Game.OPENING_INTRO_ENABLED || !this.root || this.isReplayOrSpectator() || !this.isOpeningMulliganLike() || this.openingIntroPage === null) {
             return;
         }
         const d = this.gamedatas.boardState;
@@ -6305,6 +6228,7 @@ class Game {
                     objective_index: target.index,
                 });
             }, {
+                color: 'primary',
                 disabled: false,
                 tooltip: _("Claim this objective now and score 5 VP."),
             });
@@ -6313,6 +6237,7 @@ class Game {
                     objective_index: target.index,
                 });
             }, {
+                color: 'alert',
                 disabled: false,
                 tooltip: _("Do not claim this objective. You will not be prompted to claim later and will not be able to claim if your turn has passed this round. This is added to mimic game rules where you can claim objectives at any time if you realized that you meet the objective requirements after it is claimed."),
             });
@@ -6333,6 +6258,7 @@ class Game {
                     card_ids_json: JSON.stringify(ids),
                 });
             }, {
+                color: 'primary',
                 disabled: false,
                 tooltip: _("Select any cards to replace, or keep your hand as is and confirm to begin the game."),
             });
@@ -6342,6 +6268,7 @@ class Game {
                 this.renderAll();
                 this.onUpdateActionButtons(this.currentStateName(), null);
             }, {
+                color: 'alert',
                 disabled: clearDisabled,
                 tooltip: clearDisabled ? _("No cards selected.") : _("Clear selected cards.")
             });
@@ -6356,12 +6283,14 @@ class Game {
                     const ids = Array.from(this.selectedRegroupIds);
                     void this.confirmRegroupDiscard(ids);
                 }, {
+                    color: 'primary',
                     disabled: false,
                     tooltip: _("Discard as many animal cards as you want from your hand (this can be 0 cards), draw that many cards from the deck. After confirming, you will take all your scientists from both camps and put them all in a single location of your choice. You are awarded as many VP as scientists moved from the camps."),
                 });
                 this.bga.statusBar.addActionButton(_('Clear Selection (Undo Regroup)'), () => {
                     this.clearSelection();
                 }, {
+                    color: 'alert',
                     disabled: false,
                     tooltip: _("Leave regroup mode and clear the discard selection."),
                 });
@@ -6380,6 +6309,7 @@ class Game {
                     location: this.selectedLocation,
                 });
             }, {
+                color: 'primary',
                 disabled: observeDisabled,
                 tooltip: observeMissingSelection
                     ? _("Select a card from your hand and a location to observe. ") + _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card.")
@@ -6390,6 +6320,7 @@ class Game {
             this.bga.statusBar.addActionButton(_('Start Regroup'), () => {
                 this.enterRegroupMode();
             }, {
+                color: 'primary',
                 disabled: false,
                 tooltip: _("Start choosing cards to discard and select a camp to regroup."),
             });
@@ -6397,6 +6328,7 @@ class Game {
             this.bga.statusBar.addActionButton(_('Clear selection'), () => {
                 this.clearSelection();
             }, {
+                color: 'alert',
                 disabled: clearDisabled,
                 tooltip: clearDisabled ? _("No selection to clear.") : _("Clear all selections.")
             });
@@ -6410,6 +6342,7 @@ class Game {
                     return;
                 void this.sendAction("actTakeAnimal", { pool_slot: this.selectedPoolSlot });
             }, {
+                color: 'primary',
                 disabled: !poolCardSelected,
                 tooltip: poolCardSelected
                     ? _("Take the selected card from the pool.")
@@ -6417,12 +6350,14 @@ class Game {
             });
             this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
                 void this.sendAction("actTakeAnimal", { pool_slot: -1 });
+            }, {
+                color: 'primary',
             });
             const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
-            //   console.log("Can mulligan?", can, args);
             this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
                 void this.sendAction("actMulliganPool", {});
             }, {
+                color: 'secondary',
                 disabled: !can,
                 tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
             });
@@ -6437,6 +6372,7 @@ class Game {
                     return;
                 void this.sendAction("actAssignScientists", { location: this.selectedLocation });
             }, {
+                color: 'primary',
                 disabled: !locationSelected,
                 tooltip: locationSelected
                     ? _("Assign all your scientists to the selected location.")
@@ -6662,8 +6598,8 @@ Game.OBJECTIVE_SPRITE_LAST_INDEX = 12;
 Game.SCORING_SPRITE_COLUMNS = 4;
 Game.SCORING_SPRITE_ROWS = 3;
 Game.SCORING_SPRITE_LAST_INDEX = 10;
-Game.ZOOM_STEP = 0.1;
-Game.ZOOM_MIN = 0.4;
+/** Opening objective/scoring slideshow. Off for the current revision; the implementation stays. */
+Game.OPENING_INTRO_ENABLED = false;
 Game.NOTIF_RELEASE_ACTIONS = {
     observeAnimal: ['actObserveAnimal'],
     takeAnimal: ['actTakeAnimal'],

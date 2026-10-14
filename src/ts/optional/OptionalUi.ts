@@ -132,8 +132,6 @@ export class OptionalUi {
   private previewLocked = false;
   private lastClaimFlightKey = '';
   private static readonly TOOLTIP_CLICK_MS = 500;
-  private roundBadgeForced: boolean | null = null;
-  private roundBadgeCompact = false;
   private touchHitEl: HTMLElement | null = null;
   private touchHitBox: HTMLElement | null = null;
   private layoutChromeRaf = 0;
@@ -158,7 +156,6 @@ export class OptionalUi {
     if (!this.host.root) return;
     this.bindTooltipGate();
     this.applyPreferenceCss();
-    this.renderRoundBadge();
     this.bindDragAndDrop();
     this.bindKeyboard();
     this.restoreHoldingFromState();
@@ -166,7 +163,6 @@ export class OptionalUi {
     this.host.refreshScientistTooltips();
     if (this.isTooltipBlocked()) this.cancelDojoTooltips();
     this.syncTopRowWrap();
-    this.syncRoundBadge();
     this.updateActionPreviews();
     this.bindPreferenceListener();
     this.scheduleLayoutChrome();
@@ -787,30 +783,11 @@ export class OptionalUi {
     };
   }
 
-  private renderRoundBadge(): void {
-    let badge = this.host.root.querySelector('.bae_round_badge') as HTMLButtonElement | null;
-    if (!badge) {
-      badge = document.createElement('button');
-      badge.type = 'button';
-      badge.className = 'bae_round_badge';
-      badge.setAttribute('aria-live', 'polite');
-      badge.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        this.roundBadgeForced = !this.roundBadgeCompact;
-        this.syncRoundBadge();
-      });
-      this.host.root.appendChild(badge);
-    }
-    this.syncRoundBadge();
-  }
-
   private scheduleLayoutChrome(): void {
     if (this.layoutChromeRaf) return;
     this.layoutChromeRaf = requestAnimationFrame(() => {
       this.layoutChromeRaf = 0;
       const wrapChanged = this.syncTopRowWrap();
-      this.syncRoundBadge();
       if (wrapChanged) this.updateActionPreviews();
       else retargetPreviewClones(this.host.root);
       if (this.tooltipPinnedId && !document.body.classList.contains('bae_tooltip_placing')) {
@@ -834,41 +811,6 @@ export class OptionalUi {
     if (row.classList.contains('bae_toprow_wrapped') === wrapped) return false;
     row.classList.toggle('bae_toprow_wrapped', wrapped);
     return true;
-  }
-
-  private syncRoundBadge(): void {
-    const badge = this.host.root.querySelector('.bae_round_badge') as HTMLElement | null;
-    if (!badge) return;
-    const round = this.host.gamedatas.boardState.round ?? 1;
-    const final = (this.host.gamedatas.boardState.playersEndingGame?.length ?? 0) > 0;
-    const full = final
-      ? `${_('Round')} ${round} — ${_('Final round')}`
-      : `${_('Round')} ${round}`;
-    const short = `R${round}`;
-    let compact = this.roundBadgeForced;
-    if (compact == null) {
-      badge.textContent = full;
-      compact = this.roundBadgeOverlapsTop();
-    }
-    this.roundBadgeCompact = compact;
-    badge.textContent = compact ? short : full;
-    badge.setAttribute('aria-label', full);
-    badge.title = full;
-  }
-
-  private roundBadgeOverlapsTop(): boolean {
-    const badge = this.host.root.querySelector('.bae_round_badge') as HTMLElement | null;
-    const row = this.host.root.querySelector('.bae_toprow');
-    if (!badge || !row) return false;
-    const br = badge.getBoundingClientRect();
-    if (br.width < 1 || br.height < 1) return false;
-    for (const group of row.querySelectorAll('.bae_top_group')) {
-      const gr = group.getBoundingClientRect();
-      if (gr.width < 1 || gr.height < 1) continue;
-      const overlap = br.left < gr.right && br.right > gr.left && br.top < gr.bottom && br.bottom > gr.top;
-      if (overlap) return true;
-    }
-    return false;
   }
 
   private clearPreviews(): void {
@@ -1355,10 +1297,10 @@ export class OptionalUi {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
 
       const interactive = target?.closest?.(
-        '.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button',
+        '.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bgabutton, .action-button',
       ) as HTMLElement | null;
       if (interactive) {
-        if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj')) return;
+        if (interactive.matches('button, a, .bgabutton, .action-button, .bae_handcard, .bae_pool_slot, .bae_obj')) return;
         ev.preventDefault();
         interactive.click();
         return;
@@ -1387,7 +1329,7 @@ export class OptionalUi {
       const htmlEl = el as HTMLElement;
       const handDraggable = this.canPointerDragHand();
       htmlEl.setAttribute('draggable', handDraggable ? 'true' : 'false');
-      if (handDraggable) htmlEl.style.touchAction = 'none';
+      if (handDraggable) htmlEl.style.touchAction = 'manipulation';
       const onDragStart = (ev: DragEvent) => {
         if (!this.canPointerDragHand()) {
           ev.preventDefault();
@@ -1510,7 +1452,7 @@ export class OptionalUi {
     this.host.root.querySelectorAll('[data-pool-slot]').forEach((el) => {
       const htmlEl = el as HTMLElement;
       htmlEl.setAttribute('draggable', 'true');
-      if (this.canPointerDragPool()) htmlEl.style.touchAction = 'none';
+      if (this.canPointerDragPool()) htmlEl.style.touchAction = 'manipulation';
       const onDragStart = (ev: DragEvent) => {
         if (this.host.isActionBusy() || !this.host.isReplenishLike()) {
           ev.preventDefault();
@@ -2464,7 +2406,7 @@ export class OptionalUi {
 
   private isTapActionTarget(el: Element | null): boolean {
     if (!el || typeof el.closest !== 'function') return false;
-    if (el.closest('.bae_zoom_btn, .bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info')) return true;
+    if (el.closest('.bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info')) return true;
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const active = this.host.bga.players.isCurrentPlayerActive() && !this.host.isActionBusy();
     if (!active) return false;
@@ -2734,7 +2676,7 @@ export class OptionalUi {
 
   private touchHitTarget(el: Element | null): HTMLElement | null {
     if (!el || typeof el.closest !== 'function') return null;
-    if (el.closest('.bae_zoom_btn, .bae_round_badge, .bgabutton, .action-button')) return null;
+    if (el.closest('.bgabutton, .action-button')) return null;
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const loc = el.closest('.bae_location_zone') as HTMLElement | null;
     const selectingLoc = !!loc

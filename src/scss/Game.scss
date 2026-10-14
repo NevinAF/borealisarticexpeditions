@@ -152,7 +152,9 @@ html[data-theme="dark"] {
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  gap: scaled($space_8);
+  column-gap: scaled(60);
+  row-gap: scaled($space_6);
+  margin-top: scaled($space_7);
   margin-bottom: scaled($space_7);
   margin-left: auto;
   margin-right: auto;
@@ -174,6 +176,10 @@ html[data-theme="dark"] {
 .bae_toprow_wrapped .bae_top_pool {
   order: 3;
 }
+
+.bae_toprow_wrapped .bae_top_group {
+  min-height: 0;
+}
 .bae {
   --bae-scale: 0.2;
   font-family: system-ui, sans-serif;
@@ -181,68 +187,12 @@ html[data-theme="dark"] {
   margin: 0;
   position: relative;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   /* OPTIONAL: subtle arctic atmosphere without hurting readability */
   background-image:
     radial-gradient(ellipse at 20% 0%, rgba(255, 255, 255, 0.55) 0%, transparent 55%),
     linear-gradient(180deg, rgba(232, 242, 250, 0.35) 0%, rgba(232, 242, 250, 0) 28%);
   background-repeat: no-repeat;
-}
-
-.bae_zoom_controls {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  display: inline-flex;
-  align-items: stretch;
-  gap: 0;
-  z-index: 30;
-  min-height: 20px;
-  padding: 0 1px;
-  border: 1px solid rgba(16, 36, 58, 0.42);
-  border-radius: 5px;
-  background: rgba(248, 252, 255, 0.86);
-  box-sizing: border-box;
-}
-
-#bae_playarea .bae_zoom_btn {
-  min-width: 22px;
-  min-height: 20px;
-  padding: 0 5px;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: #0e2944;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: none;
-}
-
-#bae_playarea .bae_zoom_btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-#bae_playarea button.bae_round_badge {
-  min-height: 20px;
-  padding: 0 8px;
-  border: 1px solid rgba(16, 36, 58, 0.42);
-  border-radius: 5px;
-  background: rgba(248, 252, 255, 0.86);
-  color: #0e2944;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  line-height: 1;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: inherit;
-  user-select: none;
-  appearance: none;
 }
 
 .bae_table {
@@ -270,24 +220,12 @@ html[data-theme="dark"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: scaled(1160);
   background: transparent;
   border-radius: 0;
-  padding: scaled($space_4);
   min-width: 0;
   flex: 0 1 auto;
   box-shadow: none;
 }
-
-.bae_top_objectives,
-.bae_top_scoring {
-  min-width: scaled(1500);
-}
-
-.bae_top_pool {
-  min-width: scaled(2920);
-}
-
 .bae_objectives,
 .bae_scoring {
   display: grid;
@@ -553,17 +491,6 @@ html[data-theme="dark"] .bae {
   background-image:
     radial-gradient(ellipse at 20% 0%, rgba(148, 197, 232, 0.12) 0%, transparent 55%),
     linear-gradient(180deg, rgba(11, 17, 32, 0.42) 0%, rgba(11, 17, 32, 0) 28%);
-}
-
-html[data-theme="dark"] .bae_zoom_controls,
-html[data-theme="dark"] #bae_playarea button.bae_round_badge {
-  border-color: rgba(186, 214, 236, 0.38);
-  background: rgba(15, 23, 42, 0.88);
-  color: #e6edf5;
-}
-
-html[data-theme="dark"] #bae_playarea .bae_zoom_btn {
-  color: #e6edf5;
 }
 
 html[data-theme="dark"] .bae_playerboard {
@@ -1607,14 +1534,7 @@ html[data-theme="dark"] .bae_opening_intro {
   object-fit: contain;
 }
 
-/* ========== OPTIONAL: round badge, subtle motion previews ========== */
-
-.bae_round_badge {
-  position: absolute;
-  top: 5px;
-  left: 5px;
-  z-index: 30;
-}
+/* ========== OPTIONAL: motion previews ========== */
 
 .bae_dragging {
   opacity: 0.55;
@@ -1704,11 +1624,6 @@ html[data-theme="dark"] .bae_opening_intro {
 
 #bae_playarea.bae_action_busy {
   pointer-events: none;
-}
-
-#bae_playarea.bae_action_busy .bae_zoom_controls,
-#bae_playarea.bae_action_busy .bae_zoom_controls * {
-  pointer-events: auto;
 }
 
 .bae_motion_clone {
