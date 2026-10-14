@@ -349,8 +349,10 @@ export class Game {
       referenceHeight += 104;
     }
 
-    const availableWidth = Math.max(320, area.clientWidth - 10) * pageZoom;
-    const availableHeight = Math.max(720, height) * pageZoom;
+    // Floors are in unzoomed pixels. Applying them before multiplying by page
+    // zoom inflates the fit once the zoomed viewport drops below 320×720.
+    const availableWidth = Math.max(320, (area.clientWidth - 10) * pageZoom);
+    const availableHeight = Math.max(720, height * pageZoom);
     const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
     const scaleByBoardHeight = availableHeight / referenceHeight;
     // const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
