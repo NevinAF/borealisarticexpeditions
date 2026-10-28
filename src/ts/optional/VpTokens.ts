@@ -22,7 +22,6 @@ interface VpTokensHost {
 export type VpValue = 1 | 3 | 5;
 
 const TOKEN_REF_W: Record<VpValue, number> = { 1: 233, 3: 257, 5: 292 };
-const ZONE_REF_W = 528;
 const EASE = 'cubic-bezier(0.22, 0.61, 0.36, 1)';
 
 export function playerVp(vps: BoardState['vps'] | undefined, pid: number): number {
@@ -364,9 +363,14 @@ export class VpTokens {
     return rect;
   }
 
-  private tokenPixelSize(pid: number, value: VpValue): { w: number; h: number } {
-    const box = this.shelf(pid)?.getBoundingClientRect();
-    const w = (box?.width || ZONE_REF_W) * (TOKEN_REF_W[value] / ZONE_REF_W);
+  /** Always the on-board token size, even when the token is scored from a larger card. */
+  private tokenPixelSize(_pid: number, value: VpValue): { w: number; h: number } {
+    const cs = getComputedStyle(this.host.root);
+    const zoom = Number.parseFloat(cs.getPropertyValue('--bae-scale'));
+    const board = Number.parseFloat(cs.getPropertyValue('--bae-scale-board'));
+    const scale = (Number.isFinite(zoom) && zoom > 0 ? zoom : 1)
+      * (Number.isFinite(board) && board > 0 ? board : 0.7);
+    const w = TOKEN_REF_W[value] * scale;
     return { w, h: w };
   }
 

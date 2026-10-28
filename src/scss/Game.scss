@@ -9,8 +9,18 @@
   @return math.div($value, 2600) * 100%;
 }
 
-@function scaled($value) {
-  @return calc(#{$value}px * var(--bae-scale));
+// Change these to resize a whole family of elements. Card scale covers the
+// hand, pool, deck, objectives, and scoring cards. Board scale covers the
+// player board and the pieces on it (scientists, flags, observed animals, VP).
+$scale_card: 1;
+$scale_board: 0.7;
+
+@function scaled_card($value) {
+  @return calc(#{$value}px * var(--bae-scale) * var(--bae-scale-card, #{$scale_card}));
+}
+
+@function scaled_board($value) {
+  @return calc(#{$value}px * var(--bae-scale) * var(--bae-scale-board, #{$scale_board}));
 }
 
 //
@@ -152,10 +162,10 @@ html[data-theme="dark"] {
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  column-gap: scaled(60);
-  row-gap: scaled($space_6);
-  margin-top: scaled($space_7);
-  margin-bottom: scaled($space_7);
+  column-gap: scaled_card(60);
+  row-gap: scaled_card($space_6);
+  margin-top: scaled_card($space_7);
+  margin-bottom: scaled_card($space_7);
   margin-left: auto;
   margin-right: auto;
   width: 100%;
@@ -177,11 +187,17 @@ html[data-theme="dark"] {
   order: 3;
 }
 
+.bae_toprow_wrapped .bae_top_aid {
+  order: 4;
+}
+
 .bae_toprow_wrapped .bae_top_group {
   min-height: 0;
 }
 .bae {
   --bae-scale: 0.2;
+  --bae-scale-card: #{$scale_card};
+  --bae-scale-board: #{$scale_board};
   font-family: system-ui, sans-serif;
   color: #1a1a1a;
   margin: 0;
@@ -199,7 +215,7 @@ html[data-theme="dark"] {
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
-  gap: scaled($space_6);
+  gap: scaled_card($space_6);
   align-items: center;
   width: 100%;
   max-width: 100%;
@@ -211,8 +227,8 @@ html[data-theme="dark"] {
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-end;
-  column-gap: scaled($space_6);
-  row-gap: scaled($space_6);
+  column-gap: scaled_card($space_6);
+  row-gap: scaled_card($space_6);
   width: 100%;
 }
 
@@ -230,7 +246,7 @@ html[data-theme="dark"] {
 .bae_scoring {
   display: grid;
   grid-template-columns: repeat(2, max-content);
-  gap: scaled($space_6);
+  gap: scaled_card($space_6);
   justify-content: center;
   align-content: center;
 }
@@ -434,7 +450,7 @@ html[data-theme="dark"] {
 .bae_pool {
   display: grid;
   grid-template-columns: repeat(5, max-content);
-  gap: scaled($space_6);
+  gap: scaled_card($space_6);
   justify-content: center;
   align-content: center;
   position: relative;
@@ -463,10 +479,10 @@ html[data-theme="dark"] {
 .bae_deck_overlay {
   position: absolute;
   left: 50%;
-  bottom: scaled($space_3);
+  bottom: scaled_card($space_3);
   transform: translateX(-50%);
-  padding: scaled($space_4) scaled($space_5);
-  font-size: scaled(60);
+  padding: scaled_card($space_4) scaled_card($space_5);
+  font-size: scaled_card(60);
   line-height: 1.15;
   text-align: center;
   pointer-events: none;
@@ -479,10 +495,10 @@ html[data-theme="dark"] {
   overflow: visible;
   background: rgba(244, 246, 248, 0.14);
   border-radius: 5px;
-  min-width: scaled($board_width);
+  min-width: scaled_board($board_width);
   flex: 0 0 auto;
   margin: 0;
-  padding: scaled($space_4);
+  padding: scaled_card($space_4);
   box-shadow: none;
 }
 
@@ -499,7 +515,7 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_playerboard_inner {
   display: flex;
-  gap: scaled($space_5);
+  gap: scaled_card($space_5);
   align-items: flex-end;
   justify-content: center;
   overflow: visible;
@@ -508,9 +524,9 @@ html[data-theme="dark"] .bae_playerboard {
 .bae_player_sidecol {
   display: flex;
   flex-direction: column;
-  gap: scaled($space_3);
+  gap: scaled_card($space_3);
   align-items: stretch;
-  width: scaled($card_width);
+  width: calc(#{scaled_card($card_width)} * 2 + #{scaled_card($space_3)});
   position: relative;
   flex: 0 0 auto;
   overflow: visible;
@@ -520,8 +536,8 @@ html[data-theme="dark"] .bae_playerboard {
   position: absolute;
   left: 0;
   width: 100%;
-  height: scaled($card_height);
-  bottom: calc(100% + #{scaled($space_3)});
+  height: scaled_card($card_height);
+  bottom: calc(100% + #{scaled_card($space_3)});
   border: none;
   border-radius: #{$radius_3}px;
   box-sizing: border-box;
@@ -546,15 +562,15 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_vp_token_1 {
-  width: math.div(233, $card_width) * 100%;
+  width: scaled_board(233);
 }
 
 .bae_vp_token_3 {
-  width: math.div(257, $card_width) * 100%;
+  width: scaled_board(257);
 }
 
 .bae_vp_token_5 {
-  width: math.div(292, $card_width) * 100%;
+  width: scaled_board(292);
 }
 
 .bae_motion_clone.bae_vp_token,
@@ -567,17 +583,22 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_player_handcol {
-  display: flex;
-  flex-direction: column;
-  gap: scaled($space_3);
-  align-items: center;
-  width: scaled($card_width);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: scaled_card($space_3);
+  align-items: start;
+  justify-items: stretch;
+  width: 100%;
   position: relative;
   overflow: visible;
 }
 
 .bae_player_handcol .bae_card {
-  width: scaled($card_width);
+  width: 100%;
+}
+
+.bae_player_handcol .bae_card_img {
+  width: 100%;
 }
 
 .bae_playerboard * {
@@ -587,12 +608,12 @@ html[data-theme="dark"] .bae_playerboard {
 .bae_board_canvas {
   position: relative;
   overflow: visible;
-  width: scaled($board_width);
+  width: scaled_board($board_width);
   aspect-ratio: math.div($board_width, $board_height);
   background-size: cover;
   background-position: center;
   border-radius: 0;
-  --bae_board_width: #{scaled($board_width)};
+  --bae_board_width: #{scaled_board($board_width)};
   --bae_board_h: calc(var(--bae_board_width) * #{math.div($board_height, $board_width)});
   --bae_board_top_margin: calc(var(--bae_board_h) * ((#{$card_height}px + #{$location_card_shift_y}px * (var(--animal-card-slots, 1) - 1)) / #{$board_height}px) + 4px);
   margin: var(--bae_board_top_margin) auto 0 auto;
@@ -617,8 +638,8 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_location_zone:focus-visible,
 .bae_camp_zone:focus-visible {
-  outline: scaled(8) solid #2a6fdb;
-  outline-offset: scaled(6);
+  outline: scaled_board(8) solid #2a6fdb;
+  outline-offset: scaled_board(6);
   z-index: 6;
 }
 
@@ -630,7 +651,7 @@ html[data-theme="dark"] .bae_playerboard {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: scaled($space_1);
+  padding: scaled_board($space_1);
   cursor: pointer;
 
   &::before {
@@ -742,7 +763,7 @@ html[data-theme="dark"] .bae_playerboard {
     top: calc(-1 * var(--bae_board_top_margin));
     bottom: 0;
     background: rgba(245, 250, 255, 0.2);
-    border-radius: scaled($radius_4);
+    border-radius: scaled_board($radius_4);
     border: #{$border}px dashed rgba(42, 111, 219, 0.28);
     box-sizing: border-box;
     cursor: pointer;
@@ -786,8 +807,8 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_heading {
-  margin: 0 0 scaled($space_2);
-  font-size: scaled(56);
+  margin: 0 0 scaled_card($space_2);
+  font-size: scaled_card(56);
 }
 
 .bae_player_name {
@@ -798,7 +819,7 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_label {
   font-weight: 600;
-  margin-right: scaled($space_2);
+  margin-right: scaled_card($space_2);
   display: inline;
   align-self: flex-start;
   margin-bottom: 0;
@@ -810,9 +831,9 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_meta {
-  font-size: scaled(48);
+  font-size: scaled_card(48);
   opacity: 0.85;
-  margin-bottom: scaled($space_2);
+  margin-bottom: scaled_card($space_2);
 }
 
 .bae_objectives,
@@ -821,7 +842,11 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 #bae_playarea button.bae_card {
-  width: scaled($card_width);
+  width: scaled_card($card_width);
+}
+
+#bae_playarea .bae_player_handcol button.bae_card {
+  width: 100%;
 }
 
 #bae_playarea button.bae_obj {
@@ -833,8 +858,8 @@ html[data-theme="dark"] .bae_playerboard {
   padding: 0;
   overflow: hidden;
   background: transparent;
-  width: scaled($card_height);
-  height: scaled($card_width);
+  width: scaled_card($card_height);
+  height: scaled_card($card_width);
   position: relative;
 }
 
@@ -851,11 +876,11 @@ html[data-theme="dark"] .bae_playerboard {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  border-radius: scaled(45);
+  border-radius: scaled_card(45);
   pointer-events: none;
   z-index: 2;
   border: #{$border}px solid #2a6fdb;
-  box-shadow: inset 0 0 scaled(12) rgba(42, 111, 219, 0.28);
+  box-shadow: inset 0 0 scaled_card(12) rgba(42, 111, 219, 0.28);
 }
 
 /* Claimed this round while the objective remains active. */
@@ -865,12 +890,12 @@ html[data-theme="dark"] .bae_playerboard {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  border-radius: scaled(45);
+  border-radius: scaled_card(45);
   pointer-events: none;
   z-index: 1;
   border: #{$border}px solid rgba(133, 201, 39);
   background: rgba(133, 201, 39, 0.7);
-  box-shadow: inset 0 0 scaled(10) rgba(133, 201, 39, 1);
+  box-shadow: inset 0 0 scaled_card(10) rgba(133, 201, 39, 1);
   animation: bae_obj_claimed_pulse 1.8s ease-in-out infinite;
 }
 
@@ -891,8 +916,8 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_columns {
   display: flex;
-  gap: scaled($space_2);
-  margin-top: scaled($space_1);
+  gap: scaled_card($space_2);
+  margin-top: scaled_card($space_1);
   align-items: stretch;
 }
 
@@ -900,7 +925,7 @@ html[data-theme="dark"] .bae_playerboard {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: scaled($space_1);
+  gap: scaled_card($space_1);
   min-width: 0;
 }
 
@@ -927,7 +952,7 @@ html[data-theme="dark"] .bae_playerboard {
   flex: 1;
   min-width: 0;
   border-radius: #{$radius_1}px;
-  padding: scaled($space_1);
+  padding: scaled_board($space_1);
   border: #{$border}px solid transparent;
   box-sizing: border-box;
   cursor: pointer;
@@ -979,7 +1004,7 @@ html[data-theme="dark"] .bae_playerboard {
   right: 0;
   top: calc(-1 * var(--bae_board_top_margin));
   bottom: 0;
-  border-radius: scaled($radius_4);
+  border-radius: scaled_board($radius_4);
 }
 
 .bae_camp_zone.bae_aura::after {
@@ -1002,12 +1027,12 @@ html[data-theme="dark"] .bae_playerboard {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: scaled($space_1);
-  margin-bottom: scaled($space_1);
+  gap: scaled_board($space_1);
+  margin-bottom: scaled_board($space_1);
 }
 
 .bae_loc_title {
-  font-size: scaled(42);
+  font-size: scaled_board(42);
   font-weight: 600;
 }
 
@@ -1105,17 +1130,17 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_camps {
-  margin-top: scaled($space_2);
-  padding: scaled($space_1);
+  margin-top: scaled_board($space_2);
+  padding: scaled_board($space_1);
   box-sizing: border-box;
   cursor: pointer;
-  font-size: scaled(48);
+  font-size: scaled_board(48);
 }
 
 .bae_hand {
   display: flex;
   flex-flow: row wrap;
-  gap: scaled($space_1);
+  gap: scaled_card($space_1);
   align-items: flex-start;
 }
 
@@ -1137,7 +1162,7 @@ html[data-theme="dark"] .bae_playerboard {
 .bae_card_invalid,
 .bae_handcard.bae_aura,
 .bae_pool_slot.bae_aura {
-  border-radius: scaled(45);
+  border-radius: scaled_card(45);
 }
 
 .bae_card_selected::after,
@@ -1149,7 +1174,7 @@ html[data-theme="dark"] .bae_playerboard {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  border-radius: scaled(45);
+  border-radius: scaled_card(45);
   pointer-events: none;
   z-index: 1;
 }
@@ -1260,7 +1285,7 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_card_placeholder {
   visibility: hidden;
-  width: scaled($card_width);
+  width: scaled_card($card_width);
   aspect-ratio: math.div($card_width, $card_height);
 }
 
@@ -1271,7 +1296,7 @@ html[data-theme="dark"] .bae_playerboard {
   transform: translate(-50%, -50%);
   z-index: 6;
   color: #eeeeee;
-  font-size: scaled(80);
+  font-size: scaled_card(80);
   line-height: 1;
   font-style: italic;
   white-space: nowrap;
@@ -1289,8 +1314,8 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_location_confirm {
   bottom: auto;
-  top: scaled(-20);
-  max-width: calc(100% - scaled(16));
+  top: scaled_card(-20);
+  max-width: calc(100% - scaled_card(16));
 }
 
 .notouch-device .bae_card:hover > .bae_confirm_blurb,
@@ -1344,7 +1369,7 @@ html[data-theme="dark"] .bae_playerboard {
   justify-content: center;
   text-align: center;
   line-height: 1.15;
-  font-size: scaled(44);
+  font-size: scaled_card(44);
   color: #111;
   font-family: "BaeCardSerif", serif;
 }
@@ -1379,14 +1404,14 @@ html[data-theme="dark"] .bae_playerboard {
 .bae_score_title_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 700;
-  font-size: scaled(56);
+  font-size: scaled_card(56);
 }
 
 .bae_obj_type_bounds .bae_fit_text_inner,
 .bae_score_type_bounds .bae_fit_text_inner {
   font-style: italic;
   font-weight: 500;
-  font-size: scaled(56);
+  font-size: scaled_card(56);
 }
 
 .bae_obj_type_bounds {
@@ -1468,7 +1493,7 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_card_img {
-  width: scaled($card_width);
+  width: scaled_card($card_width);
   aspect-ratio: math.div($card_width, $card_height);
 }
 
@@ -1479,8 +1504,100 @@ html[data-theme="dark"] .bae_playerboard {
 }
 
 .bae_score_img {
-  width: scaled($card_width);
+  width: scaled_card($card_width);
   aspect-ratio: math.div($card_width, $card_height);
+}
+
+/* Turn-summary player aid. Remove this block together with Game.SHOW_PLAYER_AID. */
+.bae_player_aid {
+  width: scaled_card($card_width);
+  aspect-ratio: math.div($card_width, $card_height);
+  position: relative;
+  flex: none;
+  border-radius: 7% / 5%;
+  overflow: hidden;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    0 0 0 1px rgba(90, 62, 32, 0.28);
+  background-color: #f4e7c8;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 4.55%,
+      rgba(122, 92, 48, 0.28) 4.55%,
+      rgba(122, 92, 48, 0.28) 4.7%
+    ),
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.45), transparent 42%),
+    linear-gradient(165deg, #f8efd4 0%, #ead7ae 58%, #ddc498 100%);
+  color: #3d2b22;
+  font-family: "BaeCardSerif", Palatino, "Palatino Linotype", Georgia, serif;
+}
+
+.bae_player_aid_face {
+  position: absolute;
+  inset: 0;
+}
+
+.bae_aid_title_bounds {
+  left: 8%;
+  top: 3.2%;
+  width: 84%;
+  height: 11%;
+  color: #2a2118;
+  font-size: scaled_card(48);
+}
+
+.bae_aid_title_bounds .bae_fit_text_inner {
+  font-family: "Segoe Script", "Brush Script MT", "Snell Roundhand", cursive;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+}
+
+.bae_aid_body_bounds {
+  left: 7%;
+  top: 15.5%;
+  width: 86%;
+  height: 80%;
+  color: #3f2e24;
+  font-size: scaled_card(26);
+}
+
+.bae_aid_body_bounds .bae_fit_text_inner {
+  text-align: left;
+  line-height: 1.2;
+  font-weight: 500;
+}
+
+.bae_aid_kicker {
+  margin: 0.35em 0 0.2em;
+  text-align: center;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #1e3f86;
+  font-style: normal;
+}
+
+.bae_aid_kicker_or {
+  font-weight: 600;
+  font-style: italic;
+  letter-spacing: 0;
+  color: #1e3f86;
+}
+
+.bae_aid_kicker_or strong {
+  font-style: normal;
+  letter-spacing: 0.06em;
+}
+
+.bae_aid_step {
+  margin: 0 0 0.15em;
+}
+
+.bae_player_aid .bae_vp_inline {
+  width: 0.95em;
+  height: 0.95em;
 }
 
 .bae_score_card {
@@ -1500,10 +1617,10 @@ html[data-theme="dark"] .bae_playerboard {
 
 .bae_top_group.bae_opening_intro_highlight {
   position: relative;
-  border-radius: scaled(16);
+  border-radius: scaled_card(16);
   box-shadow:
     0 0 0 #{$border}px #2a6fdb,
-    inset 0 0 scaled(24) rgba(42, 111, 219, 0.22);
+    inset 0 0 scaled_card(24) rgba(42, 111, 219, 0.22);
   background: rgba(42, 111, 219, 0.1);
   z-index: 41;
 }
@@ -1515,11 +1632,11 @@ html[data-theme="dark"] .bae_playerboard {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: scaled(1240) scaled($space_4) scaled($space_4);
+  padding: scaled_card(1240) scaled_card($space_4) scaled_card($space_4);
   background: linear-gradient(
     to bottom, 
-    rgba(223, 234, 245, 0.50) scaled(600), 
-    rgba(223, 234, 245, 0.94) scaled(1240)
+    rgba(223, 234, 245, 0.50) scaled_card(600), 
+    rgba(223, 234, 245, 0.94) scaled_card(1240)
   );
   pointer-events: auto;
 }
@@ -1527,8 +1644,8 @@ html[data-theme="dark"] .bae_playerboard {
 html[data-theme="dark"] .bae_opening_intro {
   background: linear-gradient(
     to bottom, 
-    rgba(26, 36, 49, 0.50) scaled(600), 
-    rgba(26, 36, 49, 0.94) scaled(1240)
+    rgba(26, 36, 49, 0.50) scaled_card(600), 
+    rgba(26, 36, 49, 0.94) scaled_card(1240)
   );
 }
 
@@ -1536,7 +1653,7 @@ html[data-theme="dark"] .bae_opening_intro {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: scaled($space_6);
+  gap: scaled_card($space_6);
   width: 100%;
   max-width: 100%;
 }
@@ -1554,15 +1671,15 @@ html[data-theme="dark"] .bae_opening_intro {
   padding: 0;
   overflow: hidden;
   background: transparent;
-  width: scaled($card_height);
-  height: scaled($card_width);
+  width: scaled_card($card_height);
+  height: scaled_card($card_width);
 }
 
 .bae_opening_intro_caption {
   margin: 0;
-  max-width: scaled(3000);
+  max-width: scaled_card(3000);
   text-align: center;
-  font-size: scaled(46);
+  font-size: scaled_card(46);
   line-height: 1.4;
   font-weight: 600;
 }
@@ -1577,13 +1694,13 @@ html[data-theme="dark"] .bae_opening_intro {
 }
 
 .bae_bonus {
-  font-size: scaled(42);
+  font-size: scaled_card(42);
   font-weight: 700;
   color: #0a6b2a;
 }
 
 .bae_hidden_count {
-  font-size: scaled(50);
+  font-size: scaled_card(50);
   opacity: 0.85;
 }
 
@@ -1669,13 +1786,13 @@ html[data-theme="dark"] .bae_opening_intro {
 .bae_player_handcol.bae_drop_hover::before {
   content: "";
   position: absolute;
-  inset: scaled(-12);
+  inset: scaled_card(-12);
   box-sizing: border-box;
   border: #{$border}px solid #2a6fdb;
   background: rgba(42, 111, 219, 0.25);
   pointer-events: none;
   z-index: 4;
-  border-radius: scaled(45);
+  border-radius: scaled_card(45);
 }
 
 .bae_player_handcol.bae_drop_hover > .bae_confirm_blurb {
@@ -1964,7 +2081,7 @@ body.bae_tooltip_placing .bga-tooltip {
 @keyframes bae_trail_stuck {
   0%, 100% { transform: translate3d(0, 0, 0); opacity: 0; }
   22% { opacity: 0.28; }
-  50% { transform: translate3d(0, #{scaled(-130)}, 0); opacity: 0.16; }
+  50% { transform: translate3d(0, #{scaled_card(-130)}, 0); opacity: 0.16; }
   78% { opacity: 0.06; }
 }
 
@@ -1976,12 +2093,12 @@ body.bae_tooltip_placing .bga-tooltip {
 @keyframes bae_discard_preview {
   0% { transform: translate3d(0, 0, 0); opacity: 0; }
   40% { opacity: 0.28; }
-  100% { transform: translate3d(#{scaled(-130)}, 0, 0); opacity: 0; }
+  100% { transform: translate3d(#{scaled_card(-130)}, 0, 0); opacity: 0; }
 }
 
 @keyframes bae_discard_resolve {
   0% { transform: translate3d(0, 0, 0); opacity: 1; }
-  100% { transform: translate3d(#{scaled(-260)}, 0, 0); opacity: 0; }
+  100% { transform: translate3d(#{scaled_card(-260)}, 0, 0); opacity: 0; }
 }
 
 .bae_anim_normal .bae_card,

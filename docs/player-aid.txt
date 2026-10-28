@@ -1,0 +1,14 @@
+Turn Summary:
+
+OBSERVE
+
+1. Play a card and move matching scientists
+2. If the vehicle matches, move the flag
+3a. (optional) Pay 1 <VP> to "refresh" the pool of available cards.
+3b. Take 1 of the available cards or the top card from the deck.
+
+or REGROUP
+
+1. Take 1 <VP> for each scientist in your camps.
+2. Discard 0-4 cards and draw that many cards from the deck.
+3. Move all your scientists from both camps to a single location.

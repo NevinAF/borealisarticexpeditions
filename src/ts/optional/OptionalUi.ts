@@ -356,6 +356,8 @@ export class OptionalUi {
           ? this.crossfadeToFace(clone, cardId, ms)
           : Promise.resolve();
         await Promise.all([
+          // Hand card is scaled_card; the pile slot is scaled_board. Matching
+          // size interpolates width and height across the same flight.
           flyCloneToLocal(clone, pileDest.local, ms, pileDest.pile, true),
           this.compactHandToSlots(remaining, slots, ms),
           reveal,
@@ -1974,7 +1976,7 @@ export class OptionalUi {
     return byId;
   }
 
-  /** Slide leftover cards into the top slots without shrinking the 4-slot column. */
+  /** Slide leftover cards into the first slots of the 2×2 hand. */
   private async compactHandToSlots(
     remaining: HTMLElement[],
     slots: DOMRect[],
@@ -2017,10 +2019,19 @@ export class OptionalUi {
     if (slots.length === 0 || slots.length >= count) return slots;
     const out = [...slots];
     const sample = slots[0];
-    const gap = slots.length >= 2 ? slots[1].top - slots[0].bottom : 8;
+    const colPitch = slots.length >= 2 ? slots[1].left - slots[0].left : sample.width;
+    const rowPitch = slots.length >= 3 ? slots[2].top - slots[0].top : sample.height + Math.max(4, colPitch - sample.width);
+    const origin = slots[0];
     while (out.length < count) {
-      const last = out[out.length - 1];
-      out.push(new DOMRect(last.left, last.bottom + gap, sample.width, sample.height));
+      const i = out.length;
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      out.push(new DOMRect(
+        origin.left + col * colPitch,
+        origin.top + row * rowPitch,
+        sample.width,
+        sample.height,
+      ));
     }
     return out;
   }

@@ -1,6 +1,6 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
-import { AnimalDefLite, canObserveAtLocation } from './optional/Legality';
+import { AnimalDefLite, canObserveAnywhere, canObserveAtLocation } from './optional/Legality';
 import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
 import { objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
 import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
@@ -11,8 +11,16 @@ export class Game {
   private static readonly CARD_REFERENCE_WIDTH_PX = 528;
   private static readonly CARD_REFERENCE_HEIGHT_PX = 745;
   private static readonly TOP_ROW_REFERENCE_WIDTH_PX = 6124;
-  private static readonly MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788 + 530 + 20;
-  private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 1200 + 750 + 120 * 8 + 400;
+  /** Board width in the fitted row. getScale multiplies this by $scale_board. */
+  private static readonly MIN_PLAYAREA_REFERENCE_WIDTH_PX = 3788;
+  /** 2×2 hand (528×2 + 14 gap) plus the gap beside the board. Multiplied by $scale_card. */
+  private static readonly MIN_PLAYAREA_HAND_REFERENCE_WIDTH_PX = 528 * 2 + 14 + 28;
+  /** Board height plus stacked-animal headroom. Multiplied by $scale_board. */
+  private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 750 + 120 * 8;
+  /** Top row and page chrome. Multiplied by $scale_card. */
+  private static readonly MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
+  /** Turn-summary card beside the scoring cards. Set to false to remove it. */
+  private static readonly SHOW_PLAYER_AID = true;
   private static readonly TOOLTIP_MAX_WIDTH_PX = 640;
   private static readonly ANIMAL_SPRITE_COLUMNS = 11;
   private static readonly ANIMAL_SPRITE_ROWS = 10;
@@ -280,6 +288,7 @@ export class Game {
     if (scaleChanged) {
       this.root.style.setProperty('--bae-scale', String(scale));
       this.updateOpeningIntroOverlay();
+      this.fitPlayerAid();
     }
     // Viewport changes can wrap the top row even when the fitted scale stays put.
     this.optionalUi?.onBoardScaleChanged();
@@ -344,7 +353,10 @@ export class Game {
     }
 
     const isMobileVersion = document.body.classList.contains('mobile');
-    let referenceHeight = Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX;
+    const card = this.layoutFactor('--bae-scale-card', 1);
+    const board = this.layoutFactor('--bae-scale-board', 0.7);
+    let referenceHeight = Game.MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX * card
+      + Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX * board;
     if (isMobileVersion) {
       referenceHeight += 104;
     }
@@ -353,10 +365,19 @@ export class Game {
     // zoom inflates the fit once the zoomed viewport drops below 320×720.
     const availableWidth = Math.max(320, (area.clientWidth - 10) * pageZoom);
     const availableHeight = Math.max(720, height * pageZoom);
-    const scaleByBoardWidth = availableWidth / Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX;
+    const referenceWidth = Game.MIN_PLAYAREA_REFERENCE_WIDTH_PX * board
+      + Game.MIN_PLAYAREA_HAND_REFERENCE_WIDTH_PX * card;
+    const scaleByBoardWidth = availableWidth / referenceWidth;
     const scaleByBoardHeight = availableHeight / referenceHeight;
     // const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
     return Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
+  }
+
+  /** $scale_card / $scale_board from Game.scss, so the fitted zoom follows those consts. */
+  private layoutFactor(name: string, fallback: number): number {
+    const raw = this.root ? getComputedStyle(this.root).getPropertyValue(name) : '';
+    const n = Number.parseFloat(raw);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
   }
 
   private verifyBoardScaleTimeout(expectedScale: number): void {
@@ -749,6 +770,14 @@ export class Game {
     }
   }
 
+  /** True when at least one card in hand can be observed at some location. */
+  private handCanObserve(playerId: number): boolean {
+    const hand = this.gamedatas.boardState.hands?.[playerId];
+    if (!Array.isArray(hand) || hand.length === 0) return false;
+    const scientists = this.gamedatas.boardState.scientists;
+    return hand.some((card) => canObserveAnywhere(this.animalDef(Number(card.id)), scientists, playerId));
+  }
+
   isObserveSelectionLegal(cardId: number | null = this.selectedCardId, location: number | null = this.selectedLocation): boolean {
     if (cardId == null || location == null || this.campSelected) return false;
     const myId = Number(this.bga.players.getCurrentPlayerId());
@@ -838,18 +867,20 @@ export class Game {
       const draggedId = this.optionalUi?.draggingHandCardId() ?? null;
       const focusCardId = draggedId ?? this.selectedCardId;
       const focusLoc = this.selectedLocation;
+      const noSelection = focusCardId == null && focusLoc == null && !this.campSelected;
+      const observeBlocked = noSelection && !this.handCanObserve(myId);
       root.querySelectorAll(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`).forEach((el) => {
         if (selected(el) || el.classList.contains('bae_dragging')) return;
         const id = Number((el as HTMLElement).dataset.handCard);
         if (focusCardId != null && id === focusCardId) return;
         const illegal = focusLoc != null && !this.isObserveSelectionLegal(id, focusLoc);
-        mark(el, illegal);
+        mark(el, illegal || observeBlocked);
       });
       root.querySelectorAll(`.bae_location_zone[data-player-id="${myId}"]`).forEach((el) => {
         if (selected(el)) return;
         const loc = Number((el as HTMLElement).dataset.loc);
         const illegal = focusCardId != null && !this.isObserveSelectionLegal(focusCardId, loc);
-        mark(el, illegal);
+        mark(el, illegal || observeBlocked);
       });
       root.querySelectorAll(`.bae_camp_zone[data-player-id="${myId}"]`).forEach((el) => {
         if (!selected(el)) mark(el);
@@ -954,6 +985,7 @@ export class Game {
     html += `<div class="bae_top_group bae_top_scoring"><div class="bae_scoring">${d.scoring_cards
       .map((id, idx) => `<span id="bae_score_${idx}" class="bae_score_card" data-score-idx="${idx}">${this.scoringFaceById(id)}</span>`)
       .join("")}</div></div>`;
+    if (Game.SHOW_PLAYER_AID) html += this.playerAidHtml();
     html += `</div>`;
 
     // Order: current player first, then others in turn order
@@ -1073,6 +1105,7 @@ export class Game {
     this.root.innerHTML = html;
     // Update runtime scale variable so CSS `var(--board-scale)` resolves correctly
     this.updateBoardScale();
+    this.fitPlayerAid();
     // Register BGA tooltips for all elements that previously used `title` attributes
     this.registerTooltips();
     this.renderPlayerPanelInfo();
@@ -1838,6 +1871,65 @@ export class Game {
     `;
   }
 
+  /** Plain player-aid copy. {VP} stays as the word VP in tooltips. */
+  private aidPlain(text: string): string {
+    return text.replace(/\{VP\}/g, 'VP');
+  }
+
+  private aidHtml(text: string): string {
+    return this.escapeHtml(text).replace(/\{VP\}/g, this.vpInlineIcon());
+  }
+
+  private observeAidSteps(): string[] {
+    return [
+      _('1. Play a card and move matching scientists'),
+      _('2. If the vehicle matches, move the flag'),
+      _('3a. (optional) Pay 1 {VP} to "refresh" the pool of available cards.'),
+      _('3b. Take 1 of the available cards or the top card from the deck.'),
+    ];
+  }
+
+  private regroupAidSteps(): string[] {
+    return [
+      _('1. Take 1 {VP} for each scientist in your camps.'),
+      _('2. Discard 0-4 cards and draw that many cards from the deck.'),
+      _('3. Move all your scientists from both camps to a single location.'),
+    ];
+  }
+
+  private observeAidPlain(): string {
+    return [_('OBSERVE'), ...this.observeAidSteps().map((step) => this.aidPlain(step))].join(' ');
+  }
+
+  private regroupAidPlain(): string {
+    return [_('REGROUP'), ...this.regroupAidSteps().map((step) => this.aidPlain(step))].join(' ');
+  }
+
+  private withPlayerAid(tooltip: string, aid: string): string {
+    const lead = tooltip.trim();
+    const extra = aid.trim();
+    if (!lead) return extra;
+    if (!extra) return lead;
+    return `${lead} ${extra}`;
+  }
+
+  /** Lined turn-summary card. Delete this and SHOW_PLAYER_AID to drop the aid. */
+  private playerAidHtml(): string {
+    const title = this.aidHtml(_('Turn Summary'));
+    const observe = this.aidHtml(_('OBSERVE'));
+    const regroup = this.aidHtml(_('REGROUP'));
+    const orLabel = this.aidHtml(_('or'));
+    const steps = (lines: string[]) => lines.map((line) => `<div class="bae_aid_step">${this.aidHtml(line)}</div>`).join('');
+    const label = this.escapeHtml(_('Turn Summary'));
+    return `<div class="bae_top_group bae_top_aid"><div id="bae_player_aid" class="bae_player_aid" role="note" aria-label="${label}"><div class="bae_player_aid_face"><div class="bae_card_text_layer" aria-hidden="true"><div class="bae_fit_text bae_aid_title_bounds" data-fit-max="48"><div class="bae_fit_text_inner">${title}</div></div><div class="bae_fit_text bae_aid_body_bounds" data-fit-max="26"><div class="bae_fit_text_inner"><div class="bae_aid_kicker">${observe}</div>${steps(this.observeAidSteps())}<div class="bae_aid_kicker bae_aid_kicker_or">${orLabel} <strong>${regroup}</strong></div>${steps(this.regroupAidSteps())}</div></div></div></div></div>`;
+  }
+
+  /** Shrink the player-aid text into the card. Inline sizes are reapplied when zoom changes. */
+  private fitPlayerAid(): void {
+    const aid = this.root?.querySelector('#bae_player_aid');
+    if (aid instanceof HTMLElement) this.fitCardOverlayText(aid);
+  }
+
   private fitCardOverlayText(container?: HTMLElement): void {
     const scope = container ?? this.root;
     if (!scope) return;
@@ -1856,11 +1948,14 @@ export class Game {
       }
 
       const maxAttr = Number.parseFloat(box.dataset.fitMax ?? '');
-      const scaledCap = Number.isFinite(maxAttr) ? maxAttr * boardScale : Number.POSITIVE_INFINITY;
+      const cardFactorRaw = Number.parseFloat(getComputedStyle(scope).getPropertyValue('--bae-scale-card'));
+      const cardFactor = Number.isFinite(cardFactorRaw) && cardFactorRaw > 0 ? cardFactorRaw : 1;
+      const scaledCap = Number.isFinite(maxAttr) ? maxAttr * boardScale * cardFactor : Number.POSITIVE_INFINITY;
       const maxSize = Math.max(8, Math.min(box.clientHeight, box.clientWidth, scaledCap));
       let low = 6;
       let high = maxSize;
       let best = low;
+      inner.style.maxHeight = 'none';
 
       for (let i = 0; i < 10; i++) {
         const mid = (low + high) / 2;
@@ -1874,6 +1969,7 @@ export class Game {
         }
       }
 
+      inner.style.maxHeight = '';
       inner.style.fontSize = `${best}px`;
     });
   }
@@ -2247,7 +2343,10 @@ export class Game {
         }, {
           color: 'primary',
           disabled: false,
-          tooltip: _("Discard as many animal cards as you want from your hand (this can be 0 cards), draw that many cards from the deck. After confirming, you will take all your scientists from both camps and put them all in a single location of your choice. You are awarded as many VP as scientists moved from the camps."),
+          tooltip: this.withPlayerAid(
+            _("Discard as many animal cards as you want from your hand (this can be 0 cards), then draw that many. After confirming, move every scientist from both camps onto one location."),
+            this.regroupAidPlain(),
+          ),
         });
 
         this.bga.statusBar.addActionButton(_('Clear Selection (Undo Regroup)'), () => {
@@ -2275,10 +2374,10 @@ export class Game {
         color: 'primary',
         disabled: observeDisabled,
         tooltip: observeMissingSelection
-          ? _("Select a card from your hand and a location to observe. ") + _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card.")
+          ? this.withPlayerAid(_("Select a card from your hand and a location to observe."), this.observeAidPlain())
           : (observeDisabled
-            ? _("This location does not have the scientists required.")
-            : _("Play an animal card from your hand, placing it in a location containing the scientists matching those printed on the card.")),
+            ? this.withPlayerAid(_("This location does not have the scientists required."), this.observeAidPlain())
+            : this.withPlayerAid(_("Play the selected card at this location."), this.observeAidPlain())),
       });
 
       this.bga.statusBar.addActionButton(_('Start Regroup'), () => {
@@ -2286,7 +2385,7 @@ export class Game {
       }, {
         color: 'primary',
         disabled: false,
-        tooltip: _("Start choosing cards to discard and select a camp to regroup."),
+        tooltip: this.withPlayerAid(_("Start choosing cards to discard and select a camp to regroup."), this.regroupAidPlain()),
       });
 
       const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0 && this.selectedObjectiveIdx == null;
@@ -2309,13 +2408,14 @@ export class Game {
         color: 'primary',
         disabled: !poolCardSelected,
         tooltip: poolCardSelected
-          ? _("Take the selected card from the pool.")
-          : _("Select a card from the pool to draw."),
+          ? this.withPlayerAid(_("Take the selected card from the pool."), this.aidPlain(this.observeAidSteps()[3]))
+          : this.withPlayerAid(_("Select a card from the pool to draw."), this.aidPlain(this.observeAidSteps()[3])),
       });
       this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
         void this.sendAction("actTakeAnimal", { pool_slot: -1 });
       }, {
         color: 'primary',
+        tooltip: this.withPlayerAid(_("Take the top card of the deck."), this.aidPlain(this.observeAidSteps()[3])),
       });
       const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
         this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
@@ -2323,7 +2423,9 @@ export class Game {
         }, {
             color: 'secondary',
             disabled: !can,
-            tooltip: can ? _("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card.") : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
+            tooltip: can
+              ? this.withPlayerAid(_("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card."), this.aidPlain(this.observeAidSteps()[2]))
+              : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
         });
       this.addUndoActionButton(
         replenishArgs?.canUndo ?? this.cachedUndoCanUndo,
@@ -2341,8 +2443,8 @@ export class Game {
         color: 'primary',
         disabled: !locationSelected,
         tooltip: locationSelected
-          ? _("Assign all your scientists to the selected location.")
-          : _("Select a location to assign your scientists."),
+          ? this.withPlayerAid(_("Assign all your scientists to the selected location."), this.aidPlain(this.regroupAidSteps()[2]))
+          : this.withPlayerAid(_("Select a location to assign your scientists."), this.aidPlain(this.regroupAidSteps()[2])),
       });
 
       this.addUndoActionButton(
