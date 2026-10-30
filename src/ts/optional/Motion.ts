@@ -291,6 +291,13 @@ export function placeScientistClone(
   clone.style.zIndex = '1';
   clone.style.left = `${loc.left}px`;
   clone.style.top = `${loc.top}px`;
+  clone.style.width = `${r.width}px`;
+  clone.style.height = `${r.height}px`;
+  clone.style.visibility = 'visible';
+  clone.style.opacity = '1';
+  clone.style.transform = 'none';
+  clone.style.maxWidth = 'none';
+  clone.style.maxHeight = 'none';
   layer.appendChild(clone);
   return clone;
 }

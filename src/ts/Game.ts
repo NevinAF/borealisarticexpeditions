@@ -19,8 +19,6 @@ export class Game {
   private static readonly MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 750 + 120 * 8;
   /** Top row and page chrome. Multiplied by $scale_card. */
   private static readonly MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
-  /** Turn-summary card beside the scoring cards. Set to false to remove it. */
-  private static readonly SHOW_PLAYER_AID = true;
   private static readonly TOOLTIP_MAX_WIDTH_PX = 640;
   private static readonly ANIMAL_SPRITE_COLUMNS = 11;
   private static readonly ANIMAL_SPRITE_ROWS = 10;
@@ -288,7 +286,6 @@ export class Game {
     if (scaleChanged) {
       this.root.style.setProperty('--bae-scale', String(scale));
       this.updateOpeningIntroOverlay();
-      this.fitPlayerAid();
     }
     // Viewport changes can wrap the top row even when the fitted scale stays put.
     this.optionalUi?.onBoardScaleChanged();
@@ -937,7 +934,7 @@ export class Game {
     this.handleLastTurnBanner(d.playersEndingGame);
 
     html += `<div class="bae_table">`;
-    html += `<div class="bae_toprow">`;
+    html += `<div class="bae_toprow"><div class="bae_top_main">`;
 
     // Objectives group (left, always 2 columns with centered final row)
     html += `<div class="bae_top_group bae_top_objectives"><div class="bae_objectives">`;
@@ -985,8 +982,7 @@ export class Game {
     html += `<div class="bae_top_group bae_top_scoring"><div class="bae_scoring">${d.scoring_cards
       .map((id, idx) => `<span id="bae_score_${idx}" class="bae_score_card" data-score-idx="${idx}">${this.scoringFaceById(id)}</span>`)
       .join("")}</div></div>`;
-    if (Game.SHOW_PLAYER_AID) html += this.playerAidHtml();
-    html += `</div>`;
+    html += `</div></div>`;
 
     // Order: current player first, then others in turn order
     const allPids = Object.keys(this.gamedatas.players).map(Number);
@@ -1105,7 +1101,6 @@ export class Game {
     this.root.innerHTML = html;
     // Update runtime scale variable so CSS `var(--board-scale)` resolves correctly
     this.updateBoardScale();
-    this.fitPlayerAid();
     // Register BGA tooltips for all elements that previously used `title` attributes
     this.registerTooltips();
     this.renderPlayerPanelInfo();
@@ -1876,10 +1871,6 @@ export class Game {
     return text.replace(/\{VP\}/g, 'VP');
   }
 
-  private aidHtml(text: string): string {
-    return this.escapeHtml(text).replace(/\{VP\}/g, this.vpInlineIcon());
-  }
-
   private observeAidSteps(): string[] {
     return [
       _('1. Play a card and move matching scientists'),
@@ -1897,81 +1888,18 @@ export class Game {
     ];
   }
 
-  private observeAidPlain(): string {
-    return [_('OBSERVE'), ...this.observeAidSteps().map((step) => this.aidPlain(step))].join(' ');
-  }
-
-  private regroupAidPlain(): string {
-    return [_('REGROUP'), ...this.regroupAidSteps().map((step) => this.aidPlain(step))].join(' ');
-  }
-
-  private withPlayerAid(tooltip: string, aid: string): string {
-    const lead = tooltip.trim();
-    const extra = aid.trim();
-    if (!lead) return extra;
-    if (!extra) return lead;
-    return `${lead} ${extra}`;
-  }
-
-  /** Lined turn-summary card. Delete this and SHOW_PLAYER_AID to drop the aid. */
-  private playerAidHtml(): string {
-    const title = this.aidHtml(_('Turn Summary'));
-    const observe = this.aidHtml(_('OBSERVE'));
-    const regroup = this.aidHtml(_('REGROUP'));
-    const orLabel = this.aidHtml(_('or'));
-    const steps = (lines: string[]) => lines.map((line) => `<div class="bae_aid_step">${this.aidHtml(line)}</div>`).join('');
-    const label = this.escapeHtml(_('Turn Summary'));
-    return `<div class="bae_top_group bae_top_aid"><div id="bae_player_aid" class="bae_player_aid" role="note" aria-label="${label}"><div class="bae_player_aid_face"><div class="bae_card_text_layer" aria-hidden="true"><div class="bae_fit_text bae_aid_title_bounds" data-fit-max="48"><div class="bae_fit_text_inner">${title}</div></div><div class="bae_fit_text bae_aid_body_bounds" data-fit-max="26"><div class="bae_fit_text_inner"><div class="bae_aid_kicker">${observe}</div>${steps(this.observeAidSteps())}<div class="bae_aid_kicker bae_aid_kicker_or">${orLabel} <strong>${regroup}</strong></div>${steps(this.regroupAidSteps())}</div></div></div></div></div>`;
-  }
-
-  /** Shrink the player-aid text into the card. Inline sizes are reapplied when zoom changes. */
-  private fitPlayerAid(): void {
-    const aid = this.root?.querySelector('#bae_player_aid');
-    if (aid instanceof HTMLElement) this.fitCardOverlayText(aid);
-  }
-
-  private fitCardOverlayText(container?: HTMLElement): void {
-    const scope = container ?? this.root;
-    if (!scope) return;
-
-    const scaleRaw = getComputedStyle(scope).getPropertyValue('--bae-scale');
-    const boardScale = Math.max(0.01, Number.parseFloat(scaleRaw) || 1);
-    const boxes = scope.querySelectorAll<HTMLElement>('.bae_fit_text');
-    boxes.forEach((box) => {
-      const inner = box.querySelector('.bae_fit_text_inner') as HTMLElement | null;
-      if (!inner) return;
-
-      const text = inner.textContent?.trim() ?? '';
-      if (text.length === 0) {
-        inner.style.fontSize = '';
-        return;
-      }
-
-      const maxAttr = Number.parseFloat(box.dataset.fitMax ?? '');
-      const cardFactorRaw = Number.parseFloat(getComputedStyle(scope).getPropertyValue('--bae-scale-card'));
-      const cardFactor = Number.isFinite(cardFactorRaw) && cardFactorRaw > 0 ? cardFactorRaw : 1;
-      const scaledCap = Number.isFinite(maxAttr) ? maxAttr * boardScale * cardFactor : Number.POSITIVE_INFINITY;
-      const maxSize = Math.max(8, Math.min(box.clientHeight, box.clientWidth, scaledCap));
-      let low = 6;
-      let high = maxSize;
-      let best = low;
-      inner.style.maxHeight = 'none';
-
-      for (let i = 0; i < 10; i++) {
-        const mid = (low + high) / 2;
-        inner.style.fontSize = `${mid}px`;
-        const fits = inner.scrollWidth <= box.clientWidth + 0.5 && inner.scrollHeight <= box.clientHeight + 0.5;
-        if (fits) {
-          best = mid;
-          low = mid;
-        } else {
-          high = mid;
-        }
-      }
-
-      inner.style.maxHeight = '';
-      inner.style.fontSize = `${best}px`;
+  /**
+   * Full Observe or Regroup list for an action button. The current step is bold,
+   * and each line is its own row in the tooltip.
+   */
+  private actionAidTooltip(kind: 'observe' | 'regroup', stepNumbers: number[], lead: string): string {
+    const heading = kind === 'observe' ? _('OBSERVE') : _('REGROUP');
+    const steps = (kind === 'observe' ? this.observeAidSteps() : this.regroupAidSteps()).map((step, i) => {
+      const line = this.escapeHtml(this.aidPlain(step));
+      return stepNumbers.includes(i) ? `<strong>${line}</strong>` : line;
     });
+    const lines = [this.escapeHtml(lead), this.escapeHtml(heading), ...steps];
+    return `<div class="bae_action_tip">${lines.join('<br>')}</div>`;
   }
 
   private playerBoardFaceById(boardId: number): string {
@@ -2259,6 +2187,23 @@ export class Game {
     }
   }
 
+  /** Status-bar button whose tooltip is HTML, so steps can be bold and on their own lines. */
+  private addActionButton(
+    label: string,
+    callback: () => void,
+    params: {
+      id: string;
+      color?: 'primary' | 'secondary' | 'alert';
+      disabled?: boolean;
+      tooltip?: string;
+    },
+  ): void {
+    const button = this.bga.statusBar.addActionButton(label, callback, params);
+    if (!params.tooltip) return;
+    button.removeAttribute('title');
+    this.bga.gameui.addTooltipHtml(params.id, params.tooltip);
+  }
+
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null) {
     this.cacheStateActionArgs(args);
     const effectiveArgs = args ?? this.cachedActionArgs;
@@ -2337,16 +2282,14 @@ export class Game {
       if (this.campSelected) {
         const regroupCount = this.selectedRegroupIds.size;
         const replaceLabel = _("Replace ${count} Card(s)").replace("${count}", String(regroupCount));
-        this.bga.statusBar.addActionButton(replaceLabel, () => {
+        this.addActionButton(replaceLabel, () => {
           const ids = Array.from(this.selectedRegroupIds);
           void this.confirmRegroupDiscard(ids);
         }, {
+          id: 'bae_act_replace',
           color: 'primary',
           disabled: false,
-          tooltip: this.withPlayerAid(
-            _("Discard as many animal cards as you want from your hand (this can be 0 cards), then draw that many. After confirming, move every scientist from both camps onto one location."),
-            this.regroupAidPlain(),
-          ),
+          tooltip: this.actionAidTooltip('regroup', [1], _("Discard as many animal cards as you want, then draw that many.")),
         });
 
         this.bga.statusBar.addActionButton(_('Clear Selection (Undo Regroup)'), () => {
@@ -2361,7 +2304,7 @@ export class Game {
 
       const observeDisabled = !this.isObserveSelectionLegal();
       const observeMissingSelection = this.selectedCardId == null || this.selectedLocation == null;
-      this.bga.statusBar.addActionButton(_("Observe"), () => {
+      this.addActionButton(_("Observe"), () => {
         if (observeDisabled) {
           if (!observeMissingSelection) this.optionalUi?.showInvalidObserveHint();
           return;
@@ -2371,21 +2314,27 @@ export class Game {
           location: this.selectedLocation,
         });
       }, {
+        id: 'bae_act_observe',
         color: 'primary',
         disabled: observeDisabled,
-        tooltip: observeMissingSelection
-          ? this.withPlayerAid(_("Select a card from your hand and a location to observe."), this.observeAidPlain())
-          : (observeDisabled
-            ? this.withPlayerAid(_("This location does not have the scientists required."), this.observeAidPlain())
-            : this.withPlayerAid(_("Play the selected card at this location."), this.observeAidPlain())),
+        tooltip: this.actionAidTooltip(
+          'observe',
+          [0, 1],
+          observeMissingSelection
+            ? _("Select a card from your hand and a location to observe.")
+            : (observeDisabled
+              ? _("This location does not have the scientists required.")
+              : _("Play the selected card at this location.")),
+        ),
       });
 
-      this.bga.statusBar.addActionButton(_('Start Regroup'), () => {
+      this.addActionButton(_('Start Regroup'), () => {
         this.enterRegroupMode();
       }, {
+        id: 'bae_act_regroup',
         color: 'primary',
         disabled: false,
-        tooltip: this.withPlayerAid(_("Start choosing cards to discard and select a camp to regroup."), this.regroupAidPlain()),
+        tooltip: this.actionAidTooltip('regroup', [0], _("Start choosing cards to discard and select a camp to regroup.")),
       });
 
       const clearDisabled = this.selectedCardId == null && this.selectedLocation == null && !this.campSelected && this.selectedRegroupIds.size === 0 && this.selectedObjectiveIdx == null;
@@ -2401,30 +2350,35 @@ export class Game {
       this.addClaimObjectiveButton();
       const replenishArgs = effectiveArgs as unknown as ReplenishArgs | null;
       const poolCardSelected = this.selectedPoolSlot != null && this.selectedPoolSlot >= 0;
-      this.bga.statusBar.addActionButton(_("Draw Card"), () => {
+      this.addActionButton(_("Draw Card"), () => {
         if (!poolCardSelected || this.selectedPoolSlot == null) return;
         void this.sendAction("actTakeAnimal", { pool_slot: this.selectedPoolSlot });
       }, {
+        id: 'bae_act_draw',
         color: 'primary',
         disabled: !poolCardSelected,
-        tooltip: poolCardSelected
-          ? this.withPlayerAid(_("Take the selected card from the pool."), this.aidPlain(this.observeAidSteps()[3]))
-          : this.withPlayerAid(_("Select a card from the pool to draw."), this.aidPlain(this.observeAidSteps()[3])),
+        tooltip: this.actionAidTooltip(
+          'observe',
+          [3],
+          poolCardSelected ? _("Take the selected card from the pool.") : _("Select a card from the pool to draw."),
+        ),
       });
-      this.bga.statusBar.addActionButton(_("Draw from deck"), () => {
+      this.addActionButton(_("Draw from deck"), () => {
         void this.sendAction("actTakeAnimal", { pool_slot: -1 });
       }, {
+        id: 'bae_act_draw_deck',
         color: 'primary',
-        tooltip: this.withPlayerAid(_("Take the top card of the deck."), this.aidPlain(this.observeAidSteps()[3])),
+        tooltip: this.actionAidTooltip('observe', [3], _("Take the top card of the deck.")),
       });
       const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
-        this.bga.statusBar.addActionButton(_("Mulligan pool (-1 VP)"), () => {
+        this.addActionButton(_("Mulligan pool (-1 VP)"), () => {
           void this.sendAction("actMulliganPool", {});
         }, {
+            id: 'bae_act_mulligan',
             color: 'secondary',
             disabled: !can,
             tooltip: can
-              ? this.withPlayerAid(_("Pay 1 VP to discard all 4 available cards forming the pool and replace them with 4 new ones from the deck before choosing your card."), this.aidPlain(this.observeAidSteps()[2]))
+              ? this.actionAidTooltip('observe', [2], _("Pay 1 VP to refresh the pool before choosing your card."))
               : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
         });
       this.addUndoActionButton(
@@ -2436,15 +2390,20 @@ export class Game {
       this.addClaimObjectiveButton();
       const assignArgs = effectiveArgs as unknown as AssignCampArgs | null;
       const locationSelected = this.selectedLocation != null;
-      this.bga.statusBar.addActionButton(_("Assign Scientists"), () => {
+      this.addActionButton(_("Assign Scientists"), () => {
         if (!locationSelected || this.selectedLocation == null) return;
         void this.sendAction("actAssignScientists", { location: this.selectedLocation });
       }, {
+        id: 'bae_act_assign',
         color: 'primary',
         disabled: !locationSelected,
-        tooltip: locationSelected
-          ? this.withPlayerAid(_("Assign all your scientists to the selected location."), this.aidPlain(this.regroupAidSteps()[2]))
-          : this.withPlayerAid(_("Select a location to assign your scientists."), this.aidPlain(this.regroupAidSteps()[2])),
+        tooltip: this.actionAidTooltip(
+          'regroup',
+          [1, 2],
+          locationSelected
+            ? _("Assign all your scientists to the selected location.")
+            : _("Select a location to assign your scientists."),
+        ),
       });
 
       this.addUndoActionButton(

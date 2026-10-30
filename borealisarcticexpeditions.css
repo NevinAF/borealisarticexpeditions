@@ -39,12 +39,6 @@ html[data-theme=dark] {
 }
 
 .bae_toprow {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  column-gap: calc(60px * var(--bae-scale) * var(--bae-scale-card, 1));
-  row-gap: calc(30px * var(--bae-scale) * var(--bae-scale-card, 1));
   margin-top: calc(40px * var(--bae-scale) * var(--bae-scale-card, 1));
   margin-bottom: calc(40px * var(--bae-scale) * var(--bae-scale-card, 1));
   margin-left: auto;
@@ -54,6 +48,20 @@ html[data-theme=dark] {
   box-sizing: border-box;
   position: relative;
   z-index: 20;
+}
+
+/* Objectives, pool, and scoring. One row keeps DOM order. Wrapped rows
+   reorder objectives, scoring, then the pool. */
+.bae_top_main {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-start;
+  column-gap: calc(60px * var(--bae-scale) * var(--bae-scale-card, 1));
+  row-gap: calc(30px * var(--bae-scale) * var(--bae-scale-card, 1));
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
 }
 
 .bae_toprow_wrapped .bae_top_objectives {
@@ -66,10 +74,6 @@ html[data-theme=dark] {
 
 .bae_toprow_wrapped .bae_top_pool {
   order: 3;
-}
-
-.bae_toprow_wrapped .bae_top_aid {
-  order: 4;
 }
 
 .bae_toprow_wrapped .bae_top_group {
@@ -1371,85 +1375,14 @@ html[data-theme=dark] .bae_playerboard {
   aspect-ratio: 0.7087248322;
 }
 
-/* Turn-summary player aid. Remove this block together with Game.SHOW_PLAYER_AID. */
-.bae_player_aid {
-  width: calc(528px * var(--bae-scale) * var(--bae-scale-card, 1));
-  aspect-ratio: 0.7087248322;
-  position: relative;
-  flex: none;
-  border-radius: 7%/5%;
-  overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 0 0 1px rgba(90, 62, 32, 0.28);
-  background-color: #f4e7c8;
-  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 4.55%, rgba(122, 92, 48, 0.28) 4.55%, rgba(122, 92, 48, 0.28) 4.7%), radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.45), transparent 42%), linear-gradient(165deg, #f8efd4 0%, #ead7ae 58%, #ddc498 100%);
-  color: #3d2b22;
-  font-family: "BaeCardSerif", Palatino, "Palatino Linotype", Georgia, serif;
-}
-
-.bae_player_aid_face {
-  position: absolute;
-  inset: 0;
-}
-
-.bae_aid_title_bounds {
-  left: 8%;
-  top: 3.2%;
-  width: 84%;
-  height: 11%;
-  color: #2a2118;
-  font-size: calc(48px * var(--bae-scale) * var(--bae-scale-card, 1));
-}
-
-.bae_aid_title_bounds .bae_fit_text_inner {
-  font-family: "Segoe Script", "Brush Script MT", "Snell Roundhand", cursive;
-  font-weight: 700;
-  font-style: normal;
-  line-height: 1;
-}
-
-.bae_aid_body_bounds {
-  left: 7%;
-  top: 15.5%;
-  width: 86%;
-  height: 80%;
-  color: #3f2e24;
-  font-size: calc(26px * var(--bae-scale) * var(--bae-scale-card, 1));
-}
-
-.bae_aid_body_bounds .bae_fit_text_inner {
+.bae_action_tip {
   text-align: left;
-  line-height: 1.2;
-  font-weight: 500;
+  line-height: 1.4;
+  max-width: 28em;
 }
 
-.bae_aid_kicker {
-  margin: 0.35em 0 0.2em;
-  text-align: center;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: #1e3f86;
-  font-style: normal;
-}
-
-.bae_aid_kicker_or {
-  font-weight: 600;
-  font-style: italic;
-  letter-spacing: 0;
-  color: #1e3f86;
-}
-
-.bae_aid_kicker_or strong {
-  font-style: normal;
-  letter-spacing: 0.06em;
-}
-
-.bae_aid_step {
-  margin: 0 0 0.15em;
-}
-
-.bae_player_aid .bae_vp_inline {
-  width: 0.95em;
-  height: 0.95em;
+.bae_action_tip strong {
+  font-weight: 700;
 }
 
 .bae_score_card {
@@ -1687,11 +1620,13 @@ html[data-theme=dark] .bae_opening_intro {
   z-index: 1;
 }
 
+/* Above the board, pile cards, and touch hit boxes. Below flying hand cards
+   (motion layer) and scoring popups. */
 .bae_sci_motion_layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 7;
+  z-index: 72;
   overflow: visible;
 }
 

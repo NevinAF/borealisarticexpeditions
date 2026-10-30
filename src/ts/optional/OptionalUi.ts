@@ -350,6 +350,8 @@ export class OptionalUi {
       if (cardEl && pileDest) {
         const clone = placeClone(cardEl, 'bae_resolve_clone bae_resolve_card', root);
         clone.querySelector('.bae_card_img')?.classList.add('bae_pile_card_img');
+        // Stay in the pile's stacking context, under the scientist shelf.
+        clone.style.zIndex = '1';
         cardEl.style.visibility = 'hidden';
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const reveal = pid !== myId
@@ -802,19 +804,20 @@ export class OptionalUi {
 
   private syncTopRowWrap(): boolean {
     const row = this.host.root.querySelector('.bae_toprow') as HTMLElement | null;
-    if (!row) return false;
-    const kids = Array.from(row.children) as HTMLElement[];
+    const main = row?.querySelector('.bae_top_main') as HTMLElement | null;
+    if (!row || !main) return false;
+    const kids = Array.from(main.children) as HTMLElement[];
     if (kids.length < 2) {
-      const had = row.classList.contains('bae_toprow_wrapped');
+      const changed = row.classList.contains('bae_toprow_wrapped');
       row.classList.remove('bae_toprow_wrapped');
-      return had;
+      return changed;
     }
-    const gap = parseFloat(getComputedStyle(row).columnGap || getComputedStyle(row).gap) || 0;
+    const gap = parseFloat(getComputedStyle(main).columnGap || getComputedStyle(main).gap) || 0;
     const total = kids.reduce((sum, k) => sum + k.getBoundingClientRect().width, 0) + gap * (kids.length - 1);
-    const wrapped = total > row.clientWidth + 2;
-    if (row.classList.contains('bae_toprow_wrapped') === wrapped) return false;
+    const wrapped = total > main.clientWidth + 2;
+    const changed = row.classList.contains('bae_toprow_wrapped') !== wrapped;
     row.classList.toggle('bae_toprow_wrapped', wrapped);
-    return true;
+    return changed;
   }
 
   private clearPreviews(): void {
@@ -2946,19 +2949,22 @@ export class OptionalUi {
     const stackItems: Array<{ clone: HTMLElement; from: DOMRect; dest: DOMRect }> = [];
     const seen = new Set<HTMLElement>();
     const consider = (el: HTMLElement) => {
-      if (seen.has(el)) return;
+      if (seen.has(el) || !movers.has(el)) return;
       seen.add(el);
       const from = visualRect(el);
       const dest = destOf.get(el) ?? from;
+      if (from.width < 1 || from.height < 1 || dest.width < 1 || dest.height < 1) return;
       const clone = placeScientistClone(el, 'bae_resolve_clone', root);
+      const parked = clone.getBoundingClientRect();
+      if (parked.width < 1 || parked.height < 1) {
+        clone.remove();
+        return;
+      }
       el.style.visibility = 'hidden';
       stackItems.push({ clone, from, dest });
-      if (movers.has(el)) flights.push(flyClone(clone, dest, ms, root, true));
+      flights.push(flyClone(clone, dest, ms, root, true));
     };
     for (const { el } of assigned) consider(el);
-    for (let loc = 0; loc <= 4; loc++) {
-      for (const el of currentAt(loc)) consider(el);
-    }
 
     stackByScreenPosition(stackItems.map((it) => ({
       el: it.clone,
