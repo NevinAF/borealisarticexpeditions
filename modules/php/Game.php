@@ -95,6 +95,10 @@ class Game extends \Bga\GameFramework\Table
         $result['boardState'] = $this->getBoardState($currentPlayerId);
         // 0 is the table default. null covers tables created before this option existed.
         $result['showClaimableObjectives'] = (int) ($this->bga->tableOptions->get(107) ?? 0) === 1;
+        $stateId = $this->gamestate->getCurrentMainStateId();
+        if ($stateId !== null && $stateId >= 98) {
+            $result['endScores'] = $this->buildEndScoreSheet();
+        }
         
         // Material definitions passed once at game start for client use
         $result['materials'] = [
@@ -1529,6 +1533,71 @@ class Game extends \Bga\GameFramework\Table
 
         $this->recomputeTieBreakScores($preEndTokenPoints);
         $this->applyEndGameStatistics($preEndTokenPoints);
+    }
+
+    /**
+     * Scoring-pad rows. Token points are the score before the end-game
+     * categories, so each column adds up to the player's total.
+     *
+     * @return array{scoring_cards: list<int>, players: list<array{player_id: int, species: int, track: int, animals: int, scoring: list<int>, tokens: int, total: int}>}
+     */
+    public function buildEndScoreSheet(): array
+    {
+        $boards = $this->getPublicBoards();
+        $flags = $this->getFlags();
+        $sci = $this->getScientists();
+        $scoringIds = array_map('intval', array_values($this->getScoringCardIds()));
+        while (count($scoringIds) < 2) {
+            $scoringIds[] = -1;
+        }
+
+        $order = $this->getPlayerOrderFromNextTable();
+        if ($order === []) {
+            $order = $this->seatedPlayerIds();
+        }
+
+        $players = [];
+        foreach ($order as $pid) {
+            $pid = (int) $pid;
+            if ($pid <= 0) {
+                continue;
+            }
+            $setVp = 0;
+            $bonusVp = 0;
+            foreach ([0, 1, 2] as $loc) {
+                $pile = $boards[$pid][$loc] ?? [];
+                $setVp += $this->scoreSpeciesSets($pile);
+                foreach ($pile as $c) {
+                    $def = self::animalDefById((int) ($c['id'] ?? 0));
+                    $bonusVp += (int) ($def['bonus_vp'] ?? 0);
+                }
+            }
+            $trackVp = 0;
+            $pflags = $flags[$pid] ?? [0, 0, 0];
+            foreach ([0, 1, 2] as $loc) {
+                $space = (int) ($pflags[$loc] ?? 0);
+                $trackVp += (int) ((Material::TRACK_SPACE_VP[$loc] ?? [])[$space] ?? 0);
+            }
+            $cardVp = [];
+            foreach ($scoringIds as $sid) {
+                $cardVp[] = $sid < 0 ? 0 : $this->scoreEndCard($sid, $pid, $boards, $flags, $sci);
+            }
+            $total = (int) $this->bga->playerScore->get($pid);
+            $players[] = [
+                'player_id' => $pid,
+                'species' => $setVp,
+                'track' => $trackVp,
+                'animals' => $bonusVp,
+                'scoring' => $cardVp,
+                'tokens' => $total - $setVp - $trackVp - $bonusVp - array_sum($cardVp),
+                'total' => $total,
+            ];
+        }
+
+        return [
+            'scoring_cards' => $scoringIds,
+            'players' => $players,
+        ];
     }
 
     private function getFurthestExplorationFlagForTieBreak(int $playerId): int

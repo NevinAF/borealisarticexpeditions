@@ -29,6 +29,7 @@ class EndScore extends GameState
         $this->game->notifyAllWithBoardState(
             'finalScoring',
             clienttranslate('Final scoring applied'),
+            ['endScores' => $this->game->buildEndScoreSheet()],
         );
 
         return ST_END_GAME;

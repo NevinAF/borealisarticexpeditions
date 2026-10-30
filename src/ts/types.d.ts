@@ -63,12 +63,29 @@ interface BoardState {
   last_returned_counts?: Record<number, number>;
 }
 
+interface EndScorePlayer {
+  player_id: number;
+  species: number;
+  track: number;
+  animals: number;
+  scoring: number[];
+  tokens: number;
+  total: number;
+}
+
+interface EndScoreSheet {
+  scoring_cards: number[];
+  players: EndScorePlayer[];
+}
+
 interface BorealisArcticExpeditionsGamedatas extends Gamedatas<BorealisArcticExpeditionsPlayer> {
     boardState: BoardState;
     materials: MaterialsClient;
   playerOrder?: number[];
   /** Table option 107. Absent on older payloads, which means disabled. */
   showClaimableObjectives?: boolean;
+  /** Present once final scoring has been applied. */
+  endScores?: EndScoreSheet | null;
 }
 
 interface GameplayArgs {

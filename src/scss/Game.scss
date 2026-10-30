@@ -2104,3 +2104,180 @@ body.bae_tooltip_placing .bga-tooltip {
 .bae_anim_fast .bae_card {
   transition: transform 160ms ease, opacity 160ms ease;
 }
+
+#bae_scorepad_host {
+  position: absolute;
+  inset: 0;
+  z-index: 210;
+  pointer-events: none;
+}
+
+.bae_scorepad_slot {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 94%);
+  pointer-events: auto;
+}
+
+.bae_scorepad_hidden {
+  display: none !important;
+}
+
+.bae_scorepad {
+  max-height: min(820px, 78vh);
+  overflow: auto;
+  background: #f4efe6;
+  color: #4a2c16;
+  border: 10px solid #f4efe6;
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 3px #6b3e22,
+    0 0 0 8px #f7f3ec,
+    0 0 0 11px #6b3e22,
+    0 12px 28px rgba(40, 18, 8, 0.28);
+}
+
+.bae_scorepad_table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: Palatino, "Palatino Linotype", Georgia, serif;
+}
+
+.bae_scorepad_table th,
+.bae_scorepad_table td {
+  border: 1.5px dashed #7a4a2c;
+  height: 52px;
+  text-align: center;
+  vertical-align: middle;
+  background: #fffdf9;
+  color: #4a2c16;
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  padding: 2px;
+}
+
+.bae_scorepad_table thead th,
+.bae_scorepad_table th[scope="row"],
+.bae_scorepad_table tr.bae_scorepad_total th,
+.bae_scorepad_table tr.bae_scorepad_total td {
+  background: #eadccb;
+}
+
+.bae_scorepad_table thead th:first-child,
+.bae_scorepad_table th[scope="row"] {
+  width: 72px;
+}
+
+.bae_scorepad_name {
+  font-size: 13px;
+  line-height: 1.15;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.bae_scorepad_sigma {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.bae_scorepad_svg {
+  width: 34px;
+  height: 34px;
+  display: block;
+  margin: 0 auto;
+}
+
+.bae_scorepad_feather {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.bae_scorepad_roman {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.bae_scorepad_quill {
+  width: 22px;
+  height: 34px;
+  margin: 0;
+}
+
+.bae_scorepad_table td[data-step] {
+  color: transparent;
+}
+
+.bae_scorepad_table td.bae_scorepad_shown {
+  color: #3d2412;
+  animation: bae_scorepad_pop 0.28s ease;
+}
+
+.bae_scorepad_sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+#bae_playarea button.bae_scorepad_close {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #f4efe6;
+  background: #6b3e22;
+  color: #f4efe6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#bae_playarea button.bae_scorepad_reopen {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  pointer-events: auto;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 2px solid #c4a27a;
+  background: #6b3e22;
+  color: #f4efe6;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#bae_playarea button.bae_scorepad_close:focus-visible,
+#bae_playarea button.bae_scorepad_reopen:focus-visible {
+  outline: 2px solid #1a1a1a;
+  outline-offset: 2px;
+}
+
+html[data-theme="dark"] .bae_scorepad,
+html[data-theme="dark"] .bae_scorepad_table th,
+html[data-theme="dark"] .bae_scorepad_table td,
+html[data-theme="dark"] .bae_scorepad_table td.bae_scorepad_shown {
+  color: #4a2c16;
+}
+
+.bae_anim_off .bae_scorepad_table td.bae_scorepad_shown {
+  animation: none;
+}
+
+@keyframes bae_scorepad_pop {
+  0% { transform: scale(0.86); }
+  100% { transform: scale(1); }
+}

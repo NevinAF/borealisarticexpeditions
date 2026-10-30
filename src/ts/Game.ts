@@ -2,7 +2,8 @@ const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAnywhere, canObserveAtLocation } from './optional/Legality';
 import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
-import { objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
+import { endScoreSheetFromState, objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
+import { parseEndScoreSheet, ScorePad } from './optional/ScorePad';
 import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
 
 export class Game {
@@ -75,6 +76,7 @@ export class Game {
   };
   private static readonly RELEASE_ON_RESOLVE = new Set(['actSkipPromptObjective']);
   private optionalUi: OptionalUi | null = null;
+  private scorePad: ScorePad | null = null;
 
   constructor(bga: Bga<BorealisArcticExpeditionsPlayer, BorealisArcticExpeditionsGamedatas>) {
     this.bga = bga;
@@ -92,12 +94,25 @@ export class Game {
     area.appendChild(this.root);
     // OPTIONAL: client-only UX helpers (previews, resolution motion, DnD, sound)
     this.optionalUi = new OptionalUi(this);
+    this.scorePad = new ScorePad({
+      getRoot: () => this.root,
+      escapeHtml: (value) => this.escapeHtml(value),
+      playerName: (pid) => this.gamedatas.players[pid]?.name ?? `${_('Player')} ${pid}`,
+      playerColor: (pid) => this.playerColorCss(pid),
+      scoringTitle: (id) => this.gamedatas.materials.scoring_cards?.[id]?.title ?? '',
+      addTooltip: (id, text) => {
+        if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(id, text, '');
+      },
+    });
     this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
     // Fit the table to the 100% viewport. Later page zoom enlarges that layout.
     window.addEventListener('resize', () => this.updateBoardScale());
     this.watchBrowserZoom();
     this.stabilizePageTitle();
     this.renderAll();
+    if (this.gamedatas.endScores || this.isGameEnded()) {
+      void this.scorePad.show(this.resolveEndScoreSheet(this.gamedatas.endScores), false);
+    }
   }
 
   /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
@@ -1189,6 +1204,7 @@ export class Game {
     // OPTIONAL: previews, invalid-action hints, DnD
     this.optionalUi?.afterRender();
     this.syncSelectableAuras();
+    this.scorePad?.reattach();
   }
 
   private getTooltipScale(): number {
@@ -2645,7 +2661,30 @@ export class Game {
   async notif_finalScoring(_args: any) {
     const args = this.unwrapNotif(_args);
     if (args.boardState) this.gamedatas.boardState = args.boardState as BoardState;
+    if (args.endScores) this.gamedatas.endScores = args.endScores as EndScoreSheet;
     this.renderAll();
+    const sheet = this.resolveEndScoreSheet(args.endScores ?? this.gamedatas.endScores);
+    await this.scorePad?.show(sheet, this.scorePadAnimations());
+  }
+
+  private isGameEnded(): boolean {
+    const id = Number(this.gamedatas.gamestate?.id);
+    const name = String(this.gamedatas.gamestate?.name ?? '');
+    return id >= 98 || name === 'gameEnd' || name === 'endScore';
+  }
+
+  private scorePadAnimations(): boolean {
+    if (this.root?.classList.contains('bae_anim_off')) return false;
+    try {
+      return this.bga.gameui.bgaAnimationsActive();
+    } catch {
+      return true;
+    }
+  }
+
+  private resolveEndScoreSheet(raw: unknown): EndScoreSheet {
+    return parseEndScoreSheet(raw)
+      ?? endScoreSheetFromState(this.gamedatas.boardState, this.gamedatas.materials, this.seatedPlayerIds());
   }
   async notif_scoringStep(_args: any) {
     const args = this.unwrapNotif(_args);

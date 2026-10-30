@@ -282,4 +282,31 @@ export function animalBonusVp(playerId: number, state: BoardState, materials: Ma
   return vp;
 }
 
+function recordedScore(vps: BoardState['vps'] | undefined, playerId: number): number {
+  const raw = (vps as Record<string, { score?: number } | number> | undefined)?.[playerId]
+    ?? (vps as Record<string, { score?: number } | number> | undefined)?.[String(playerId)];
+  const n = Number((raw as { score?: number })?.score ?? raw ?? 0);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
+}
+
+/** Client fallback when the server sheet is absent. Tokens are the remainder so the column matches the recorded score. */
+export function endScoreSheetFromState(
+  state: BoardState,
+  materials: MaterialsClient,
+  playerIds: number[],
+): EndScoreSheet {
+  const cardIds = (state.scoring_cards ?? []).map(Number).filter((id) => id >= 0);
+  while (cardIds.length < 2) cardIds.push(-1);
+  const players = playerIds.map((pid) => {
+    const species = pilesFor(state.boards, pid).reduce((sum, pile) => sum + locationSetVp(pile, materials), 0);
+    const track = flagTrackVp(pid, state, materials);
+    const animals = animalBonusVp(pid, state, materials);
+    const scoring = cardIds.map((id) => (id < 0 ? 0 : scoreScoringCard(id, pid, state, materials)));
+    const total = recordedScore(state.vps, pid);
+    const tokens = total - species - track - animals - scoring.reduce((sum, vp) => sum + vp, 0);
+    return { player_id: pid, species, track, animals, scoring, tokens, total };
+  });
+  return { scoring_cards: cardIds, players };
+}
+
 export { campCount, sciCountAt, speciesCounts, vehicleCounts };
