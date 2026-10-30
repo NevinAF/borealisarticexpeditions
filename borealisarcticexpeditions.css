@@ -848,6 +848,11 @@ html[data-theme=dark] .bae_player_aid {
   cursor: pointer;
 }
 
+#bae_playarea button.bae_obj:not(.bae_can_act):focus,
+#bae_playarea button.bae_obj:not(.bae_can_act):focus-visible {
+  outline: none;
+}
+
 .bae_obj:disabled {
   opacity: 0.55;
   filter: grayscale(0.35);

@@ -2271,6 +2271,7 @@ export class OptionalUi {
     const onHover = (ev: Event) => {
       const target = ev.target as Element | null;
       this.lastHoverEl = target;
+      this.syncObjectiveHoverHit(ev);
       if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
         this.tooltipLeaveSelector = null;
       }
@@ -2303,6 +2304,10 @@ export class OptionalUi {
         return;
       }
       this.lastPointerWasTouch = pointer.pointerType === 'touch';
+      const idleObjective = (ev.target as Element | null)?.closest?.('button.bae_obj') as HTMLElement | null;
+      if (idleObjective && !idleObjective.classList.contains('bae_can_act') && !this.lastPointerWasTouch) {
+        ev.preventDefault();
+      }
       this.tooltipPointerHeld = true;
       this.touchStartX = pointer.clientX ?? 0;
       this.touchStartY = pointer.clientY ?? 0;
@@ -2322,6 +2327,7 @@ export class OptionalUi {
         this.armTooltipQuiet(ev);
         return;
       }
+      if (!this.lastPointerWasTouch) this.syncObjectiveHoverHit(ev);
       if (this.lastPointerWasTouch) {
         this.handleTouchTap(pointer);
         return;
@@ -2351,6 +2357,7 @@ export class OptionalUi {
       const mouse = ev as MouseEvent;
       const target = ev.target as Element | null;
       this.lastHoverEl = target;
+      this.syncObjectiveHoverHit(ev);
       const buttons = mouse.buttons ?? 0;
       if (buttons !== 0) {
         if (!this.tooltipPointerHeld) this.tooltipPointerHeld = true;
@@ -2412,6 +2419,18 @@ export class OptionalUi {
     const target = ev.target as Element | null;
     if (!target || typeof target.closest !== 'function') return null;
     return target.closest('.bae_player_aid') as HTMLElement | null;
+  }
+
+  /** Blue interaction box for an objective tooltip. It is a hover cue, not a claim control. */
+  private syncObjectiveHoverHit(ev: Event): void {
+    if (this.tooltipPointerHeld || this.pointerDrag || this.dragCardId != null) return;
+    const target = ev.target as Element | null;
+    const obj = target?.closest?.('.bae_obj') as HTMLElement | null;
+    if (obj) {
+      this.setTouchHit(obj);
+      return;
+    }
+    if (this.touchHitEl?.classList.contains('bae_obj')) this.clearTouchHit();
   }
 
   private armTooltipQuiet(ev: Event): void {

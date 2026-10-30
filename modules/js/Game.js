@@ -3254,6 +3254,7 @@ class OptionalUi {
         const onHover = (ev) => {
             const target = ev.target;
             this.lastHoverEl = target;
+            this.syncObjectiveHoverHit(ev);
             if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
                 this.tooltipLeaveSelector = null;
             }
@@ -3289,6 +3290,10 @@ class OptionalUi {
                 return;
             }
             this.lastPointerWasTouch = pointer.pointerType === 'touch';
+            const idleObjective = ev.target?.closest?.('button.bae_obj');
+            if (idleObjective && !idleObjective.classList.contains('bae_can_act') && !this.lastPointerWasTouch) {
+                ev.preventDefault();
+            }
             this.tooltipPointerHeld = true;
             this.touchStartX = pointer.clientX ?? 0;
             this.touchStartY = pointer.clientY ?? 0;
@@ -3308,6 +3313,8 @@ class OptionalUi {
                 this.armTooltipQuiet(ev);
                 return;
             }
+            if (!this.lastPointerWasTouch)
+                this.syncObjectiveHoverHit(ev);
             if (this.lastPointerWasTouch) {
                 this.handleTouchTap(pointer);
                 return;
@@ -3339,6 +3346,7 @@ class OptionalUi {
             const mouse = ev;
             const target = ev.target;
             this.lastHoverEl = target;
+            this.syncObjectiveHoverHit(ev);
             const buttons = mouse.buttons ?? 0;
             if (buttons !== 0) {
                 if (!this.tooltipPointerHeld)
@@ -3409,6 +3417,19 @@ class OptionalUi {
         if (!target || typeof target.closest !== 'function')
             return null;
         return target.closest('.bae_player_aid');
+    }
+    /** Blue interaction box for an objective tooltip. It is a hover cue, not a claim control. */
+    syncObjectiveHoverHit(ev) {
+        if (this.tooltipPointerHeld || this.pointerDrag || this.dragCardId != null)
+            return;
+        const target = ev.target;
+        const obj = target?.closest?.('.bae_obj');
+        if (obj) {
+            this.setTouchHit(obj);
+            return;
+        }
+        if (this.touchHitEl?.classList.contains('bae_obj'))
+            this.clearTouchHit();
     }
     armTooltipQuiet(ev) {
         this.tooltipPinnedId = null;
