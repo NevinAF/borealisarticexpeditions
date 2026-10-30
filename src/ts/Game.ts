@@ -1397,7 +1397,7 @@ export class Game {
         'objective',
         obj.id,
         objectiveMat?.title ?? `${_('Objective')} #${obj.id}`,
-        [this.objectiveActionText(obj)],
+        [_('Claiming an objective awards 5 VP.'), this.objectiveActionText(obj)],
         this.objectiveScoresHtml(obj, d),
       );
     });
@@ -1914,8 +1914,27 @@ export class Game {
           <div class="bae_fit_text bae_obj_title_bounds"><div class="bae_fit_text_inner">${title}</div></div>
           <div class="bae_fit_text bae_obj_desc_bounds"><div class="bae_fit_text_inner">${description}</div></div>
         </div>
+        ${this.objectiveVpTokensHtml(objectiveId)}
       </div>
     `;
+  }
+
+  /** One 5 VP chip per player who has not taken theirs. Absolutely placed, so the card size stays the same. */
+  private objectiveVpTokensHtml(objectiveId: number): string {
+    const obj = (this.gamedatas.boardState.objectives ?? []).find((entry) => entry.id === objectiveId);
+    if (!obj) return '';
+    const myId = Number(this.bga.players.getCurrentPlayerId());
+    const src = `${this.bga.images.getImgUrl()}Tokens/5VPToken.png`;
+    const alt = this.escapeHtml(_('5 VP'));
+    const tokens = this.seatedPlayerIds()
+      .filter((pid) => (obj.players?.[pid] ?? 'unmet') !== 'claimed')
+      .map((pid) => {
+        const mine = pid === myId ? ' bae_obj_vp_mine' : '';
+        return `<img class="bae_obj_vp${mine}" data-player-id="${pid}" src="${src}" alt="${alt}" draggable="false"/>`;
+      })
+      .join('');
+    if (!tokens) return '';
+    return `<div class="bae_obj_vp_row">${tokens}</div>`;
   }
 
   private scoringFaceById(scoringId: number): string {

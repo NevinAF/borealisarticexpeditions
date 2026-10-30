@@ -2,10 +2,11 @@
 
 import {
   coordsInParent,
+  flyClone,
   flyCloneFading,
   flyCloneFadingIn,
-  motionLayer,
   placeClone,
+  motionLayer,
   scoringLayer,
   startTrailToRect,
   bindPreviewFollow,
@@ -162,6 +163,41 @@ export class VpTokens {
 
   shelf(pid: number): HTMLElement | null {
     return this.host.root?.querySelector(`#bae_vp_tokens_${pid} .bae_vp_token_shelf`) as HTMLElement | null;
+  }
+
+  /** Fly a token that is already on the board, growing from its current size into the VP shelf. */
+  async addFromElement(pid: number, value: VpValue, source: HTMLElement, ms: number): Promise<void> {
+    const current = this.liveMix(pid);
+    const next = [...current, value];
+    const slots = vpTokenLayout(next.length, pid);
+    const slot = slots[current.length];
+    const to = slot ? this.slotRect(pid, slot, value) : null;
+    if (!slot || !to) {
+      await this.addIncoming(pid, [value], [visualRect(source)], ms, false);
+      return;
+    }
+    const oldEls = this.tokenEls(pid);
+    const clone = placeClone(source, 'bae_resolve_clone bae_vp_token', this.host.root);
+    clone.classList.remove('bae_obj_vp_mine');
+    clone.style.animation = 'none';
+    const layer = scoringLayer(this.host.root);
+    const parked = coordsInParent(layer, clone.getBoundingClientRect());
+    clone.style.left = `${parked.left}px`;
+    clone.style.top = `${parked.top}px`;
+    clone.style.width = `${parked.width}px`;
+    clone.style.height = `${parked.height}px`;
+    clone.style.transform = 'none';
+    clone.style.maxWidth = 'none';
+    clone.style.maxHeight = 'none';
+    layer.appendChild(clone);
+    source.style.visibility = 'hidden';
+    await Promise.all([
+      this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
+      flyClone(clone, to, ms, this.host.root, true),
+    ]);
+    clone.remove();
+    this.mountToken(pid, value, slot);
+    this.mix.set(pid, next);
   }
 
   async addIncoming(

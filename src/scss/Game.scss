@@ -879,6 +879,68 @@ html[data-theme="dark"] .bae_playerboard {
   filter: grayscale(0.35);
 }
 
+/* Chips sit in the right margin, past the title and description. */
+.bae_obj_vp_row {
+  position: absolute;
+  z-index: 4;
+  right: 1.6%;
+  top: 8%;
+  bottom: 8%;
+  width: 9.2%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4%;
+  pointer-events: none;
+}
+
+.bae_obj_vp {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+  transform-origin: center center;
+}
+
+.bae_obj.bae_aura .bae_obj_vp_mine {
+  animation: bae_obj_vp_breathe 1.6s ease-in-out infinite;
+}
+
+.bae_obj_claimed_round .bae_obj_vp {
+  animation: bae_obj_vp_fade 1.8s ease-in-out infinite;
+}
+
+.bae_obj.bae_aura.bae_obj_claimed_round .bae_obj_vp_mine {
+  animation: bae_obj_vp_breathe 1.6s ease-in-out infinite;
+}
+
+.bae_obj:disabled .bae_obj_vp {
+  opacity: 0.5;
+  animation: none;
+}
+
+.bae_anim_off .bae_obj_vp {
+  animation: none;
+}
+
+.bae_motion_clone.bae_obj_vp {
+  transform: none;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+}
+
+@keyframes bae_obj_vp_breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.86); }
+}
+
+@keyframes bae_obj_vp_fade {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Objective highlight states */
 .bae_obj_selected:not(:disabled)::before,
 .bae_obj_prompt_target:not(:disabled)::before,

@@ -567,9 +567,14 @@ export class OptionalUi {
       const obj = Number.isFinite(idx)
         ? this.host.root.querySelector(`#bae_obj_${idx}`) as HTMLElement | null
         : (this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target') as HTMLElement | null);
-      const from = rectOf(obj)
-        ?? rectOf(this.host.root.querySelector('.bae_top_objectives') as HTMLElement | null);
-      await this.vp.addIncoming(pid, [5], [from], ms, false);
+      const token = obj?.querySelector(`.bae_obj_vp[data-player-id="${pid}"]`) as HTMLElement | null;
+      if (token) {
+        await this.vp.addFromElement(pid, 5, token, ms);
+      } else {
+        const from = rectOf(obj)
+          ?? rectOf(this.host.root.querySelector('.bae_top_objectives') as HTMLElement | null);
+        await this.vp.addIncoming(pid, [5], [from], ms, false);
+      }
     } finally {
       this.endResolution();
     }

@@ -773,6 +773,40 @@ class VpTokens {
     shelf(pid) {
         return this.host.root?.querySelector(`#bae_vp_tokens_${pid} .bae_vp_token_shelf`);
     }
+    /** Fly a token that is already on the board, growing from its current size into the VP shelf. */
+    async addFromElement(pid, value, source, ms) {
+        const current = this.liveMix(pid);
+        const next = [...current, value];
+        const slots = vpTokenLayout(next.length, pid);
+        const slot = slots[current.length];
+        const to = slot ? this.slotRect(pid, slot, value) : null;
+        if (!slot || !to) {
+            await this.addIncoming(pid, [value], [visualRect(source)], ms, false);
+            return;
+        }
+        const oldEls = this.tokenEls(pid);
+        const clone = placeClone(source, 'bae_resolve_clone bae_vp_token', this.host.root);
+        clone.classList.remove('bae_obj_vp_mine');
+        clone.style.animation = 'none';
+        const layer = scoringLayer(this.host.root);
+        const parked = coordsInParent(layer, clone.getBoundingClientRect());
+        clone.style.left = `${parked.left}px`;
+        clone.style.top = `${parked.top}px`;
+        clone.style.width = `${parked.width}px`;
+        clone.style.height = `${parked.height}px`;
+        clone.style.transform = 'none';
+        clone.style.maxWidth = 'none';
+        clone.style.maxHeight = 'none';
+        layer.appendChild(clone);
+        source.style.visibility = 'hidden';
+        await Promise.all([
+            this.applyLayout(oldEls, slots.slice(0, oldEls.length), ms),
+            flyClone(clone, to, ms, this.host.root, true),
+        ]);
+        clone.remove();
+        this.mountToken(pid, value, slot);
+        this.mix.set(pid, next);
+    }
     async addIncoming(pid, incoming, sources, ms, convertAfter) {
         if (incoming.length === 0)
             return;
@@ -1564,9 +1598,15 @@ class OptionalUi {
             const obj = Number.isFinite(idx)
                 ? this.host.root.querySelector(`#bae_obj_${idx}`)
                 : this.host.root.querySelector('.bae_obj_selected, .bae_obj_prompt_target');
-            const from = rectOf(obj)
-                ?? rectOf(this.host.root.querySelector('.bae_top_objectives'));
-            await this.vp.addIncoming(pid, [5], [from], ms, false);
+            const token = obj?.querySelector(`.bae_obj_vp[data-player-id="${pid}"]`);
+            if (token) {
+                await this.vp.addFromElement(pid, 5, token, ms);
+            }
+            else {
+                const from = rectOf(obj)
+                    ?? rectOf(this.host.root.querySelector('.bae_top_objectives'));
+                await this.vp.addIncoming(pid, [5], [from], ms, false);
+            }
         }
         finally {
             this.endResolution();
@@ -5606,7 +5646,7 @@ class Game {
         // Objectives: hovering any one shows all of them in the top-row layout
         const objectiveCells = (d.objectives || []).map((obj) => {
             const objectiveMat = this.gamedatas.materials.objectives[obj.id];
-            return this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [this.objectiveActionText(obj)], this.objectiveScoresHtml(obj, d));
+            return this.buildCardTooltipSpriteHtml('objective', obj.id, objectiveMat?.title ?? `${_('Objective')} #${obj.id}`, [_('Claiming an objective awards 5 VP.'), this.objectiveActionText(obj)], this.objectiveScoresHtml(obj, d));
         });
         const objectiveGroupHtml = this.wrapTooltipGrid(objectiveCells);
         (d.objectives || []).forEach((_obj, idx) => {
@@ -6079,8 +6119,28 @@ class Game {
           <div class="bae_fit_text bae_obj_title_bounds"><div class="bae_fit_text_inner">${title}</div></div>
           <div class="bae_fit_text bae_obj_desc_bounds"><div class="bae_fit_text_inner">${description}</div></div>
         </div>
+        ${this.objectiveVpTokensHtml(objectiveId)}
       </div>
     `;
+    }
+    /** One 5 VP chip per player who has not taken theirs. Absolutely placed, so the card size stays the same. */
+    objectiveVpTokensHtml(objectiveId) {
+        const obj = (this.gamedatas.boardState.objectives ?? []).find((entry) => entry.id === objectiveId);
+        if (!obj)
+            return '';
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        const src = `${this.bga.images.getImgUrl()}Tokens/5VPToken.png`;
+        const alt = this.escapeHtml(_('5 VP'));
+        const tokens = this.seatedPlayerIds()
+            .filter((pid) => (obj.players?.[pid] ?? 'unmet') !== 'claimed')
+            .map((pid) => {
+            const mine = pid === myId ? ' bae_obj_vp_mine' : '';
+            return `<img class="bae_obj_vp${mine}" data-player-id="${pid}" src="${src}" alt="${alt}" draggable="false"/>`;
+        })
+            .join('');
+        if (!tokens)
+            return '';
+        return `<div class="bae_obj_vp_row">${tokens}</div>`;
     }
     scoringFaceById(scoringId) {
         const mat = this.gamedatas.materials.scoring_cards?.[scoringId];
