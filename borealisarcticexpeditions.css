@@ -808,7 +808,13 @@ html[data-theme=dark] .bae_playerboard {
     opacity: 0.5;
   }
 }
-/* Objective highlight states */
+/* Same blue wash as a selected or claimable animal card. The pulse fades this layer. */
+#bae_playarea button.bae_obj.bae_obj_selected,
+#bae_playarea button.bae_obj.bae_obj_prompt_target,
+#bae_playarea button.bae_obj.bae_aura {
+  border-radius: calc(45px * var(--bae-scale) * var(--bae-scale-card, 1));
+}
+
 .bae_obj_selected:not(:disabled)::before,
 .bae_obj_prompt_target:not(:disabled)::before,
 .bae_obj.bae_aura:not(.bae_aura_discard)::before {
@@ -820,7 +826,7 @@ html[data-theme=dark] .bae_playerboard {
   pointer-events: none;
   z-index: 2;
   border: 2px solid #2a6fdb;
-  box-shadow: inset 0 0 calc(12px * var(--bae-scale) * var(--bae-scale-card, 1)) rgba(42, 111, 219, 0.28);
+  background: rgba(42, 111, 219, 0.25);
 }
 
 /* Claimed this round while the objective remains active. */
@@ -1159,26 +1165,15 @@ html[data-theme=dark] .bae_playerboard {
     opacity: 0.4;
   }
 }
-@keyframes bae_aura_pulse {
-  0%, 100% {
-    opacity: 0.1;
-  }
-  50% {
-    opacity: 1;
-  }
-}
 .bae_handcard.bae_aura::after,
-.bae_pool_slot.bae_aura::after {
+.bae_pool_slot.bae_aura::after,
+.bae_obj.bae_aura::before {
   animation: bae_aura_pulse_card 1.6s ease-in-out infinite;
 }
 
 .bae_location_zone.bae_aura::after,
 .bae_camp_zone.bae_aura::after {
   animation: bae_aura_pulse_loc 1.6s ease-in-out infinite;
-}
-
-.bae_obj.bae_aura::before {
-  animation: bae_aura_pulse 1.6s ease-in-out infinite;
 }
 
 .bae_location_zone.bae_drop_hover::before,
@@ -1202,7 +1197,8 @@ html[data-theme=dark] .bae_playerboard {
 }
 
 .bae_anim_off .bae_handcard.bae_aura::after,
-.bae_anim_off .bae_pool_slot.bae_aura::after {
+.bae_anim_off .bae_pool_slot.bae_aura::after,
+.bae_anim_off .bae_obj.bae_aura::before {
   animation: none;
   opacity: 0.45;
 }
@@ -1213,14 +1209,10 @@ html[data-theme=dark] .bae_playerboard {
   opacity: 0.3;
 }
 
-.bae_anim_off .bae_obj.bae_aura::before {
-  animation: none;
-  opacity: 0.35;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .bae_handcard.bae_aura::after,
-  .bae_pool_slot.bae_aura::after {
+  .bae_pool_slot.bae_aura::after,
+  .bae_obj.bae_aura::before {
     animation: none;
     opacity: 0.45;
   }
@@ -1228,10 +1220,6 @@ html[data-theme=dark] .bae_playerboard {
   .bae_camp_zone.bae_aura::after {
     animation: none;
     opacity: 0.3;
-  }
-  .bae_obj.bae_aura::before {
-    animation: none;
-    opacity: 0.35;
   }
 }
 .bae_card_placeholder {
