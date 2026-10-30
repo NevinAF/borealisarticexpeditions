@@ -59,13 +59,27 @@ function vehicleCounts(piles: AnimalCardClient[][], materials: MaterialsClient):
   return counts;
 }
 
-/** { count, required } progress toward an objective. */
+export type ObjectiveUnit =
+  | 'max_of_a_color'
+  | 'max_scientists'
+  | 'scientists_in_camps'
+  | 'last_regroup'
+  | 'locations_met'
+  | 'max_animals'
+  | 'species'
+  | 'identical_species'
+  | 'identical_vehicles'
+  | 'flags_met'
+  | 'spaces_moved'
+  | 'spaces_ahead';
+
+/** Progress toward an objective, plus the unit shown beside the counter. */
 export function objectiveProgress(
   objectiveId: number,
   playerId: number,
   state: BoardState,
   materials: MaterialsClient,
-): { count: number; required: number } {
+): { count: number; required: number; unit: ObjectiveUnit | '' } {
   const piles = pilesFor(state.boards, playerId);
   const sci = state.scientists?.[playerId];
   const flags = state.flags?.[playerId] ?? [0, 0, 0];
@@ -77,47 +91,48 @@ export function objectiveProgress(
         const inCamp = poses.filter((p) => p === POS_CAMP_L || p === POS_CAMP_R).length;
         best = Math.max(best, inCamp);
       }
-      return { count: best, required: 3 };
+      return { count: best, required: 3, unit: 'max_of_a_color' };
     }
     case 1: { // Comparing Notes: 3 in a single camp
-      return { count: Math.max(sciCountAt(sci, POS_CAMP_L), sciCountAt(sci, POS_CAMP_R)), required: 3 };
+      return { count: Math.max(sciCountAt(sci, POS_CAMP_L), sciCountAt(sci, POS_CAMP_R)), required: 3, unit: 'max_scientists' };
     }
     case 2: { // Morning Shift: 5 returned last regroup, else current camp count
       const last = Number((state.last_returned_counts ?? {})[playerId] ?? 0);
       const current = campCount(sci);
-      return { count: last >= 5 ? last : current, required: 5 };
+      if (last >= 5) return { count: last, required: 5, unit: 'last_regroup' };
+      return { count: current, required: 5, unit: 'scientists_in_camps' };
     }
     case 3: { // Splitting Up: max 2 per location (3 locations ok)
       let ok = 0;
       for (let loc = 0; loc < 3; loc++) {
         if (sciCountAt(sci, loc) <= 2) ok++;
       }
-      return { count: ok, required: 3 };
+      return { count: ok, required: 3, unit: 'locations_met' };
     }
-    case 4: { // Balanced Ecosystem: 3 animals each location
-      const min = Math.min(...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
-      return { count: min, required: 3 };
+    case 4: { // Balanced Ecosystem: locations that already have 3 animals
+      const n = [0, 1, 2].filter((l) => (piles[l]?.length ?? 0) >= 3).length;
+      return { count: n, required: 3, unit: 'locations_met' };
     }
     case 5: { // Richness of Nature: 6 in one location
       const max = Math.max(0, ...[0, 1, 2].map((l) => piles[l]?.length ?? 0));
-      return { count: max, required: 6 };
+      return { count: max, required: 6, unit: 'max_animals' };
     }
     case 6: { // Spotting List: 5 species
       const n = speciesCounts(piles, materials).filter((n) => n > 0).length;
-      return { count: n, required: 5 };
+      return { count: n, required: 5, unit: 'species' };
     }
     case 7: { // Favorite Research: 6 of one species
-      return { count: Math.max(0, ...speciesCounts(piles, materials)), required: 6 };
+      return { count: Math.max(0, ...speciesCounts(piles, materials)), required: 6, unit: 'identical_species' };
     }
     case 8: { // Organized Expedition: 4 identical vehicles
-      return { count: Math.max(0, ...vehicleCounts(piles, materials)), required: 4 };
+      return { count: Math.max(0, ...vehicleCounts(piles, materials)), required: 4, unit: 'identical_vehicles' };
     }
     case 9: { // Climbing the Area: all flags >= 2
       const n = [0, 1, 2].filter((l) => Number(flags[l] ?? 0) >= 2).length;
-      return { count: n, required: 3 };
+      return { count: n, required: 3, unit: 'flags_met' };
     }
     case 10: { // Bold Explorers: a flag at 5
-      return { count: Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0)), required: 5 };
+      return { count: Math.max(0, Number(flags[0] ?? 0), Number(flags[1] ?? 0), Number(flags[2] ?? 0)), required: 5, unit: 'spaces_moved' };
     }
     case 11: { // Promising Direction: 4 ahead of another
       const vals = [0, 1, 2].map((l) => Number(flags[l] ?? 0));
@@ -127,10 +142,10 @@ export function objectiveProgress(
           if (i !== j) best = Math.max(best, vals[i] - vals[j]);
         }
       }
-      return { count: best, required: 4 };
+      return { count: best, required: 4, unit: 'spaces_ahead' };
     }
     default:
-      return { count: 0, required: 1 };
+      return { count: 0, required: 1, unit: '' };
   }
 }
 

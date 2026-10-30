@@ -1794,11 +1794,31 @@ export class Game {
       .join('');
   }
 
+  private objectiveUnitLabel(unit: string): string {
+    switch (unit) {
+      case 'spaces_ahead': return _('spaces ahead');
+      case 'spaces_moved': return _('spaces moved');
+      case 'flags_met': return _('flags met');
+      case 'identical_vehicles': return _('identical vehicles');
+      case 'identical_species': return _('identical species');
+      case 'species': return _('species');
+      case 'max_animals': return _('max animals');
+      case 'locations_met': return _('locations met');
+      case 'max_scientists': return _('max scientists');
+      case 'scientists_in_camps': return _('scientists in camps');
+      case 'last_regroup': return _('last regroup');
+      case 'max_of_a_color': return _('max of a color');
+      default: return '';
+    }
+  }
+
   private objectiveScoresHtml(obj: ObjectiveClient, state: BoardState): string {
     const materials = this.gamedatas.materials;
     const progress = this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
-      const { count, required } = objectiveProgress(obj.id, pid, state, materials);
-      return { pid, value: `${count}/${required}` };
+      const { count, required, unit } = objectiveProgress(obj.id, pid, state, materials);
+      const label = this.objectiveUnitLabel(unit);
+      const suffix = label ? ` (${label})` : '';
+      return { pid, value: `${count}/${required}${suffix}` };
     }));
     const claimed = this.seatedPlayerIds().filter((pid) => obj.players?.[pid] === 'claimed');
     if (claimed.length === 0) return progress;
@@ -1810,7 +1830,7 @@ export class Game {
     const materials = this.gamedatas.materials;
     return this.tooltipScoresHtml(this.seatedPlayerIds().map((pid) => {
       const vp = scoreScoringCard(scoringId, pid, state, materials);
-      return { pid, value: String(vp) };
+      return { pid, value: `${vp} {VP}` };
     }));
   }
 
