@@ -1,0 +1,181 @@
+= Gamehelpborealis =
+
+== Overview ==
+
+In '''Borealis: Arctic Expeditions''', you lead a team of scientists exploring the Arctic to observe and photograph its wildlife.
+
+Your goal is to build the most valuable collection of animal observations while managing your scientists, advancing along exploration tracks, and completing objectives. Plan carefully, as the scientists required to play each card will move to new locations or retreat to camps, affecting which cards you can play on future turns.
+
+The player with the most victory points (VP) at the end of the game wins.
+
+== Setup ==
+
+At the beginning of the game:
+
+• Each player receives a player board with 3 observation locations and 2 camps.
+
+• Each player starts with 9 scientists: 3 different colored scientists at each observation location.
+
+• Each player's 3 exploration flags are placed at the starting position of their respective exploration tracks.
+
+• Each player receives an initial hand of 4 animal cards and two 1-VP tokens.
+
+• Shuffle the animal deck and reveal 4 cards to form the available card market.
+
+• Draw 3 random objective cards, one from each objective category (animals, vehicles, and scientists).
+
+• Draw 2 random end-game scoring cards. These remain available for everyone to work towards throughout the game.
+
+The player with the snowflake token takes the first turn.
+
+== Gameplay ==
+
+Players take turns performing exactly 1 of the following actions:
+
+==== 1. Observe an Animal ====
+
+'''Play an animal card'''
+
+• Play a card from your hand to one of the 3 observation locations on your board.
+
+• You must have both colored scientists shown on the card in the location where you want to play it. If the card shows two scientists of the same color, you must have two scientists of that color there.
+
+• Place the card in the chosen location, stacking it so that the animal and other relevant information on previously played cards remain visible.
+
+'''Move your scientists'''
+
+• Move the two scientists shown on the card in the directions indicated by its arrows. One scientist moves to the left and the other moves to the right.
+
+• Scientists can move to another observation location or into one of the camps at the top left and top right of your board.
+
+• Scientists that enter a camp remain there until you perform the Regroup action. They cannot be moved out of a camp by playing another animal card.
+
+'''Advance your exploration flag'''
+
+• Each observation location has its own exploration track.
+
+• If the vehicle shown on the card matches either of the vehicle symbols on the next space below the flag on that location's track, move the flag down one space.
+
+• If neither vehicle matches, the flag stays where it is.
+
+'''Draw a new card'''
+
+• Finish your turn by drawing 1 card, either from the 4 face-up cards in the market or from the top of the face-down animal deck.
+
+• If you take a face-up card, the market is replenished from the deck.
+
+• You may alternatively spend 1 VP to discard and replace the entire face-up market before drawing. This option can only be used once per turn.
+
+==== 2. Regroup ====
+
+Use this action to recover scientists from your camps and reorganize your team.
+
+'''Replace cards in your hand'''
+
+• You may discard any number of cards from your hand and draw the same number of replacement cards from the face-down deck.
+
+'''Recover your scientists'''
+
+• Gain 1 VP for each scientist currently in either of your camps.
+
+• Take all scientists from both camps and move them back to a single observation location of your choice.
+
+• All recovered scientists must be placed in the same location. You cannot distribute them between multiple locations.
+
+• Scientists already in your observation locations remain where they are.
+
+'''End of the round'''
+
+Once every player has taken their turn, the round ends and a new round begins.
+
+The player with the snowflake token always takes the first turn of each round.
+
+== Objectives ==
+
+At the beginning of the game, 3 random objectives are selected, one from each objective category. These objectives remain available to all players.
+
+• Whenever you complete an objective, claim it and receive a 5-VP token.
+
+• Each player can score each objective only once.
+
+• Once an objective has been claimed by a player, it remains available for the rest of the current round. Other players can still complete and claim that same objective before the round ends.
+
+• At the end of the round, the objective is removed from play and cannot be claimed again.
+
+'''Important:''' Objectives are competitive. Players who have already taken their turn in a round may miss the opportunity to score an objective that is completed by another player later in that same round.
+
+'''BGA implementation:''' Board Game Arena will prompt you when you are eligible to claim an objective. This helps prevent you from missing points if you do not immediately realize that you have completed one. Follow the prompt while the objective is still available.
+
+== Game End & Scoring ==
+
+'''Game End'''
+
+When a player places their 7th animal card in a single observation location, the end of the game is triggered.
+
+Finish the current round so that every player has taken the same number of turns. The game then ends and final scoring begins.
+
+'''Final Scoring'''
+
+Players calculate their final scores using the following categories:
+
+'''1. Animal Groups'''
+
+• Score sets of animals of the same species within each of your 3 observation locations.
+
+• Each species in each location is scored independently using the scoring chart printed on your player board.
+
+• Animal cards do not have to be adjacent to one another to count towards the same animal group.
+
+• For example, 3 puffins and 2 polar bears in the same location are scored as two separate groups.
+
+'''2. Exploration Flags'''
+
+• Score the victory points indicated by the spaces occupied by your 3 exploration flags.
+
+'''3. Animal Card Bonuses'''
+
+• Animal cards that show two scientists of the same color are worth an additional 1 VP each at the end of the game.
+
+'''4. End-Game Scoring Cards'''
+
+• Score points for each of the 2 end-game scoring cards selected at the beginning of the game.
+
+• Each card has its own scoring conditions, which apply to your completed animal collection and/or player board.
+
+• These cards can significantly influence your strategy, so consider their requirements throughout the game.
+
+'''5. Point Tokens'''
+
+• Add the value of all point tokens you have collected throughout the game.
+
+• This includes points earned through Regrouping and completing objectives, as well as any starting tokens you still have.
+
+• Remember that tokens spent to refresh the card market are no longer available for final scoring.
+
+'''Winner & Tie-Breakers'''
+
+The player with the highest total score wins.
+
+In the event of a tie:
+
+1. The player with the exploration flag furthest down the track wins.
+
+2. If still tied, the player with the highest total value of point tokens wins.
+
+3. If still tied, the players share the victory.
+
+== Strategy Tips ==
+
+• '''Plan your scientist movements:''' Before playing a card, consider where both scientists will end up. Moving them into camps may restrict your available cards, but recovering multiple scientists together can give you more options on subsequent turns.
+
+• '''Pay attention to the scoring conditions:''' There are 2 end-game scoring cards and 3 objectives. Check all of them at the beginning of the game, as some scoring conditions can work well together while others may encourage very different animal collections.
+
+• '''Build animal groups:''' Collecting multiple animals of the same species in a single location can generate substantial points. Remember that each location is scored independently.
+
+• '''Watch your exploration tracks:''' Advancing your flags can generate significant end-game points. Consider whether a card's vehicle matches the next space on its corresponding track before deciding where to play it.
+
+• '''Time your Regroup actions:''' Regrouping is not just about recovering scientists. It also gives you VP and allows you to replace unwanted cards. Try to recover several scientists at once when possible.
+
+• '''Watch your opponents' objectives:''' Objectives are a race for 5 VP. Keep an eye on the other players' progress and avoid waiting too long when you have an opportunity to claim one.
+
+• '''Keep the end of the game in mind:''' Placing your 7th card in a location triggers the end of the game. Consider whether you are ready for final scoring or whether you need additional turns to complete your collections, advance your flags, or achieve objectives.
