@@ -535,7 +535,7 @@ html[data-theme=dark] .bae_playerboard {
   align-items: center;
   justify-content: center;
   padding: calc(6px * var(--bae-scale) * var(--bae-scale-board, 0.7));
-  cursor: pointer;
+  cursor: default;
 }
 .bae_camp_zone::before {
   content: "";
@@ -621,7 +621,7 @@ html[data-theme=dark] .bae_playerboard {
   width: 21.1193241816%;
   height: 95.9230769231%;
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
   overflow: visible;
   /* Visually extend the location's top area (background + border)
      upward by the board top margin without changing the element's size.
@@ -638,7 +638,7 @@ html[data-theme=dark] .bae_playerboard {
   border-radius: calc(18px * var(--bae-scale) * var(--bae-scale-board, 0.7));
   border: 2px dashed rgba(42, 111, 219, 0.28);
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: inherit;
   z-index: 0;
   transition: top var(--bae-outline-dur, 0s) cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -709,6 +709,7 @@ html[data-theme=dark] .bae_playerboard {
 
 #bae_playarea button.bae_card {
   width: calc(528px * var(--bae-scale) * var(--bae-scale-card, 1));
+  cursor: default;
 }
 
 #bae_playarea .bae_player_handcol button.bae_card {
@@ -718,7 +719,7 @@ html[data-theme=dark] .bae_playerboard {
 #bae_playarea button.bae_obj {
   display: inline-flex;
   flex: none;
-  cursor: pointer;
+  cursor: default;
   border: none;
   border-radius: 0;
   padding: 0;
@@ -727,6 +728,11 @@ html[data-theme=dark] .bae_playerboard {
   width: calc(745px * var(--bae-scale) * var(--bae-scale-card, 1));
   height: calc(528px * var(--bae-scale) * var(--bae-scale-card, 1));
   position: relative;
+}
+
+#bae_playarea button.bae_obj.bae_can_act,
+#bae_playarea button.bae_card.bae_can_act {
+  cursor: pointer;
 }
 
 .bae_obj:disabled {
@@ -824,7 +830,7 @@ html[data-theme=dark] .bae_playerboard {
   padding: calc(6px * var(--bae-scale) * var(--bae-scale-board, 0.7));
   border: 2px solid transparent;
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
 }
 
 .bae_location_zone .bae_loc_head {
@@ -999,7 +1005,7 @@ html[data-theme=dark] .bae_playerboard {
   margin-top: calc(10px * var(--bae-scale) * var(--bae-scale-board, 0.7));
   padding: calc(6px * var(--bae-scale) * var(--bae-scale-board, 0.7));
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
   font-size: calc(48px * var(--bae-scale) * var(--bae-scale-board, 0.7));
 }
 
@@ -1019,8 +1025,13 @@ html[data-theme=dark] .bae_playerboard {
   border: none;
   border-radius: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   overflow: hidden;
+}
+
+.bae_can_act,
+.bae_location_zone.bae_can_act::before {
+  cursor: pointer;
 }
 
 .bae_card_selected,

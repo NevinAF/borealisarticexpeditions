@@ -5061,11 +5061,75 @@ class Game {
         }
         return false;
     }
+    /**
+     * Pointer and keyboard focus only on pieces that can take an action right now.
+     * Hover tooltips stay available on everything else.
+     */
+    syncActionAffordances() {
+        const root = this.root;
+        if (!root)
+            return;
+        const targets = root.querySelectorAll('[data-loc], [data-camp-wrap], [data-hand-card], [data-pool-slot], [data-obj-idx]');
+        targets.forEach((el) => {
+            el.classList.remove('bae_can_act');
+            el.tabIndex = -1;
+            if (!(el instanceof HTMLButtonElement && el.disabled))
+                el.setAttribute('aria-disabled', 'true');
+        });
+        if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())
+            return;
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        const enable = (el) => {
+            if (!(el instanceof HTMLElement))
+                return;
+            if (el instanceof HTMLButtonElement && el.disabled)
+                return;
+            el.classList.add('bae_can_act');
+            el.tabIndex = 0;
+            el.setAttribute('aria-disabled', 'false');
+        };
+        const own = (selector) => {
+            root.querySelectorAll(selector).forEach(enable);
+        };
+        if (this.isPromptClaimObjectiveLike()) {
+            const idx = this.getPromptedObjectiveIndex();
+            if (idx != null)
+                enable(root.querySelector(`#bae_obj_${idx}`));
+            return;
+        }
+        if (this.isOpeningMulliganLike()) {
+            own(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`);
+            return;
+        }
+        if (this.isGameplayLike()) {
+            own(`.bae_player_handcol[data-player-id="${myId}"] [data-hand-card]`);
+            own(`.bae_location_zone[data-player-id="${myId}"]`);
+            if (!this.campSelected)
+                own(`.bae_camp_zone[data-player-id="${myId}"]`);
+        }
+        else if (this.isReplenishLike()) {
+            own('[data-pool-slot]');
+        }
+        else if (this.isAssignCampLike()) {
+            own(`.bae_location_zone[data-player-id="${myId}"]`);
+        }
+        else {
+            return;
+        }
+        if (!this.canSelectObjectiveToClaim())
+            return;
+        (this.gamedatas.boardState.objectives ?? []).forEach((obj, idx) => {
+            if ((obj.players?.[myId] ?? 'unmet') !== 'meets' || !obj.active)
+                return;
+            enable(root.querySelector(`#bae_obj_${idx}`));
+        });
+    }
     /** Pulsing aura on cards and locations the active player can still choose. */
     syncSelectableAuras() {
         const root = this.root;
         if (!root)
             return;
+        this.syncActionAffordances();
         root.querySelectorAll('.bae_aura').forEach((el) => {
             el.classList.remove('bae_aura', 'bae_aura_discard');
         });
@@ -5283,10 +5347,10 @@ class Game {
             const boardBg = this.imagePath("Playerboards", d.board_for_players[pid] ?? 0);
             // Expose number of animal-card slots to CSS so margin spacing scales correctly
             html += `<div class="bae_board_canvas" style="background-image:url('${boardBg}'); --animal-card-slots: ${outlineSlots}">`;
-            html += `<div id="bae_camp_${pid}_left" class="bae_camp_zone bae_camp_left${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
+            html += `<div id="bae_camp_${pid}_left" class="bae_camp_zone bae_camp_left${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="-1" aria-disabled="true">`;
             html += `<div id="bae_sci_shelf_camp_${pid}_left" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 3)}</div>`;
             html += `</div>`;
-            html += `<div id="bae_camp_${pid}_right" class="bae_camp_zone bae_camp_right${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="0">`;
+            html += `<div id="bae_camp_${pid}_right" class="bae_camp_zone bae_camp_right${campSel}" data-player-id="${pid}" data-camp-wrap="1" role="button" tabindex="-1" aria-disabled="true">`;
             html += `<div id="bae_sci_shelf_camp_${pid}_right" class="bae_sci_shelf${campDotsSel}">${this.renderScientistDots(pid, d.scientists[pid], 4)}</div>`;
             html += `</div>`;
             html += `<div id="bae_animal_loc_vp_${pid}" class="bae_animal_loc_vp_track" data-player-id="${pid}" aria-label="${this.escapeHtml(_('Animal location VP'))}"></div>`;
@@ -5295,7 +5359,7 @@ class Game {
                 const locInvalid = locSelected && this.isGameplayLike() && this.selectedCardId != null && !canConfirmObserve;
                 const sel = locSelected ? (locInvalid ? " bae_loc_invalid" : " bae_loc_selected") : "";
                 const posClass = loc === 0 ? " bae_slot_left" : loc === 1 ? " bae_slot_mid" : " bae_slot_right";
-                html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}" role="button" tabindex="${isSelf ? 0 : -1}">`;
+                html += `<div class="bae_location_zone${posClass}${sel}" data-player-id="${pid}" data-loc="${loc}" role="button" tabindex="-1" aria-disabled="true">`;
                 html += `<div class="bae_anim_pile">`;
                 const pile = d.boards[pid]?.[loc] ?? [];
                 for (let si = 0; si < animal_card_slots; si++) {
@@ -6355,6 +6419,7 @@ class Game {
     }
     onUpdateActionButtons(stateName, args) {
         this.cacheStateActionArgs(args);
+        this.syncSelectableAuras();
         const effectiveArgs = args ?? this.cachedActionArgs;
         this.bga.statusBar.removeActionButtons();
         if (this.isActionBusy() || !this.bga.players.isCurrentPlayerActive())

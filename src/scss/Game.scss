@@ -657,7 +657,7 @@ html[data-theme="dark"] .bae_playerboard {
   align-items: center;
   justify-content: center;
   padding: scaled_board($space_1);
-  cursor: pointer;
+  cursor: default;
 
   &::before {
     content: "";
@@ -754,7 +754,7 @@ html[data-theme="dark"] .bae_playerboard {
   width: px-to-percent-in-width($location_width);
   height: px-to-percent-in-height($location_height);
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
   overflow: visible;
 
   /* Visually extend the location's top area (background + border)
@@ -771,7 +771,7 @@ html[data-theme="dark"] .bae_playerboard {
     border-radius: scaled_board($radius_4);
     border: #{$border}px dashed rgba(42, 111, 219, 0.28);
     box-sizing: border-box;
-    cursor: pointer;
+    cursor: inherit;
     z-index: 0;
     transition: top var(--bae-outline-dur, 0s) cubic-bezier(0.22, 0.61, 0.36, 1);
   }
@@ -848,6 +848,7 @@ html[data-theme="dark"] .bae_playerboard {
 
 #bae_playarea button.bae_card {
   width: scaled_card($card_width);
+  cursor: default;
 }
 
 #bae_playarea .bae_player_handcol button.bae_card {
@@ -857,7 +858,7 @@ html[data-theme="dark"] .bae_playerboard {
 #bae_playarea button.bae_obj {
   display: inline-flex;
   flex: none;
-  cursor: pointer;
+  cursor: default;
   border: none;
   border-radius: 0;
   padding: 0;
@@ -866,6 +867,11 @@ html[data-theme="dark"] .bae_playerboard {
   width: scaled_card($card_height);
   height: scaled_card($card_width);
   position: relative;
+}
+
+#bae_playarea button.bae_obj.bae_can_act,
+#bae_playarea button.bae_card.bae_can_act {
+  cursor: pointer;
 }
 
 .bae_obj:disabled {
@@ -960,7 +966,7 @@ html[data-theme="dark"] .bae_playerboard {
   padding: scaled_board($space_1);
   border: #{$border}px solid transparent;
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
 }
 
 .bae_location_zone .bae_loc_head {
@@ -1138,7 +1144,7 @@ html[data-theme="dark"] .bae_playerboard {
   margin-top: scaled_board($space_2);
   padding: scaled_board($space_1);
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
   font-size: scaled_board(48);
 }
 
@@ -1158,8 +1164,13 @@ html[data-theme="dark"] .bae_playerboard {
   border: none;
   border-radius: 0;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
   overflow: hidden;
+}
+
+.bae_can_act,
+.bae_location_zone.bae_can_act::before {
+  cursor: pointer;
 }
 
 .bae_card_selected,
