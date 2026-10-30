@@ -4794,11 +4794,32 @@ class Game {
             && !this.isOpeningMulliganLike()
             && (this.isGameplayLike() || this.isReplenishLike() || this.isAssignCampLike());
     }
+    /** Table option 107. Disabled unless the table creator turned it on. */
+    showClaimableObjectives() {
+        return this.gamedatas.showClaimableObjectives === true;
+    }
     addClaimObjectiveButton() {
-        if (!this.canSelectObjectiveToClaim() || this.selectedObjectiveIdx == null)
+        if (!this.canSelectObjectiveToClaim())
+            return;
+        const myId = Number(this.bga.players.getCurrentPlayerId());
+        if (this.showClaimableObjectives()) {
+            (this.gamedatas.boardState.objectives ?? []).forEach((obj, idx) => {
+                if (!obj.active || (obj.players?.[myId] ?? 'unmet') !== 'meets')
+                    return;
+                const title = this.gamedatas.materials.objectives?.[obj.id]?.title ?? _('Objective');
+                this.bga.statusBar.addActionButton(`${_('Claim objective')}: ${title}`, () => {
+                    void this.sendAction('actClaimObjective', { objective_index: idx });
+                }, {
+                    id: `bae_act_claim_${idx}`,
+                    color: 'primary',
+                    tooltip: _('Claim this objective now and score 5 VP.'),
+                });
+            });
+            return;
+        }
+        if (this.selectedObjectiveIdx == null)
             return;
         const idx = this.selectedObjectiveIdx;
-        const myId = Number(this.bga.players.getCurrentPlayerId());
         const obj = this.gamedatas.boardState.objectives?.[idx];
         const can = (obj?.players?.[myId] ?? 'unmet') === 'meets';
         this.bga.statusBar.addActionButton(_("Claim Objective"), () => {
@@ -5206,7 +5227,7 @@ class Game {
                 mark(obj);
             return;
         }
-        if (this.canSelectObjectiveToClaim()) {
+        if (this.canSelectObjectiveToClaim() && this.showClaimableObjectives()) {
             (this.gamedatas.boardState.objectives ?? []).forEach((obj, idx) => {
                 if ((obj.players?.[myId] ?? 'unmet') !== 'meets' || !obj.active)
                     return;

@@ -67,6 +67,8 @@ interface BorealisArcticExpeditionsGamedatas extends Gamedatas<BorealisArcticExp
     boardState: BoardState;
     materials: MaterialsClient;
   playerOrder?: number[];
+  /** Table option 107. Absent on older payloads, which means disabled. */
+  showClaimableObjectives?: boolean;
 }
 
 interface GameplayArgs {

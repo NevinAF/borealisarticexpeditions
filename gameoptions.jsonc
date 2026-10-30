@@ -83,5 +83,22 @@
       "2": { "name": "Random A+B sides", "tmdisplay": "Boards: Random A+B" }
     },
     "default": 2
+  },
+  "107": {
+    "name": "Show claimable objectives",
+    "values": {
+      "0": {
+        "name": "Disabled",
+        "tmdisplay": "",
+        "description": "Objectives you can claim are not highlighted. Select the card to claim it.",
+        "nobeginner": true
+      },
+      "1": {
+        "name": "Enabled",
+        "tmdisplay": "Claimable objectives shown",
+        "description": "Highlights each objective you can claim and adds an action button for it. Recommended for beginners."
+      }
+    },
+    "default": 0
   }
 }

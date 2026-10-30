@@ -93,6 +93,8 @@ class Game extends \Bga\GameFramework\Table
         $result['playerOrder'] = $this->getPlayerOrderFromNextTable();
         
         $result['boardState'] = $this->getBoardState($currentPlayerId);
+        // 0 is the table default. null covers tables created before this option existed.
+        $result['showClaimableObjectives'] = (int) ($this->bga->tableOptions->get(107) ?? 0) === 1;
         
         // Material definitions passed once at game start for client use
         $result['materials'] = [
