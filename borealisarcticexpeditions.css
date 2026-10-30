@@ -415,18 +415,131 @@ html[data-theme=dark] .bae_playerboard {
   overflow: visible;
 }
 
-.bae_vp_tokens_zone {
+.bae_sidecol_top {
   position: absolute;
   left: 0;
   width: 100%;
   height: calc(745px * var(--bae-scale) * var(--bae-scale-card, 1));
   bottom: calc(100% + calc(14px * var(--bae-scale) * var(--bae-scale-card, 1)));
+  display: flex;
+  align-items: flex-end;
+  justify-content: stretch;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+.bae_player_aid_slot {
+  flex: 1 1 50%;
+  width: 50%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.bae_vp_tokens_zone {
+  position: relative;
+  flex: 1 1 50%;
+  width: 50%;
+  height: 100%;
   border: none;
   border-radius: 10px;
   box-sizing: border-box;
   overflow: hidden;
   cursor: help;
-  z-index: 2;
+  pointer-events: auto;
+}
+
+.bae_player_aid {
+  width: calc(528px * var(--bae-scale) * var(--bae-scale-board, 0.7));
+  height: calc(745px * var(--bae-scale) * var(--bae-scale-board, 0.7));
+  flex: none;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 0.7em 0.65em 0.45em;
+  border-radius: 7%/5%;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: help;
+  color: #5c3a22;
+  font-size: calc(calc(745px * var(--bae-scale) * var(--bae-scale-board, 0.7)) / 24);
+  font-family: "Palatino Linotype", Palatino, Georgia, serif;
+  line-height: 1.18;
+  background-color: #f4e7cb;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.35em - 1px), rgba(120, 86, 48, 0.22) calc(1.35em - 1px), rgba(120, 86, 48, 0.22) 1.35em);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 0 0 1px rgba(90, 62, 32, 0.35);
+}
+
+.bae_aid_title {
+  margin: 0 0 0.35em;
+  color: #243e86;
+  font-style: italic;
+  font-weight: 700;
+  text-align: center;
+  font-size: 1.05em;
+  line-height: 1.15;
+}
+
+.bae_aid_kicker {
+  margin: 0.2em 0 0.05em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-size: 0.92em;
+}
+
+.bae_aid_step {
+  margin: 0;
+}
+
+.bae_aid_score .bae_scorepad_svg {
+  height: 1.35em;
+  width: auto;
+  max-width: 2.15em;
+  margin: 0;
+}
+
+.bae_aid_row {
+  display: grid;
+  grid-template-columns: 2.2em 1fr;
+  column-gap: 0.28em;
+  align-items: start;
+  margin-top: 0.18em;
+}
+
+.bae_aid_ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.45em;
+}
+
+.bae_aid_copy {
+  min-width: 0;
+}
+
+.bae_aid_tooltip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.bae_player_aid_tip {
+  flex: none;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent calc(1.35em - 1px), rgba(120, 86, 48, 0.04) calc(1.35em - 1px), rgba(120, 86, 48, 0.04) 1.35em);
+}
+
+.dijitTooltipContainer:has(.bae_aid_tooltip),
+.bga-tooltip:has(.bae_aid_tooltip) {
+  max-width: min(92vw, 640px);
+  width: max-content;
+}
+
+html[data-theme=dark] .bae_player_aid {
+  color: #5c3a22;
 }
 
 .bae_vp_token_shelf {
@@ -2035,7 +2148,7 @@ body.bae_tooltip_placing .bga-tooltip {
   background: #f4efe6;
   color: #4a2c16;
   border: 10px solid #f4efe6;
-  border-radius: 12px;
+  border-radius: 0;
   box-shadow: 0 0 0 3px #6b3e22, 0 0 0 8px #f7f3ec, 0 0 0 11px #6b3e22, 0 12px 28px rgba(40, 18, 8, 0.28);
 }
 
@@ -2048,7 +2161,7 @@ body.bae_tooltip_placing .bga-tooltip {
 
 .bae_scorepad_table th,
 .bae_scorepad_table td {
-  border: 1.5px dashed #7a4a2c;
+  border: 1.5px solid #7a4a2c;
   height: 52px;
   text-align: center;
   vertical-align: middle;
@@ -2085,29 +2198,11 @@ body.bae_tooltip_placing .bga-tooltip {
 }
 
 .bae_scorepad_svg {
-  width: 34px;
-  height: 34px;
   display: block;
-  margin: 0 auto;
-}
-
-.bae_scorepad_feather {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-
-.bae_scorepad_roman {
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.bae_scorepad_quill {
-  width: 22px;
   height: 34px;
-  margin: 0;
+  width: auto;
+  max-width: 64px;
+  margin: 0 auto;
 }
 
 .bae_scorepad_table td[data-step] {
@@ -2150,14 +2245,24 @@ body.bae_tooltip_placing .bga-tooltip {
   right: 8px;
   z-index: 2;
   pointer-events: auto;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 2px solid #c4a27a;
-  background: #6b3e22;
-  color: #f4efe6;
+  padding: 6px 12px;
+  border-radius: 0;
+  border: 2px solid #1e3a5f;
+  background: #dfeaf5;
+  color: #1e3a5f;
+  font-family: system-ui, sans-serif;
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+html[data-theme=dark] #bae_playarea button.bae_scorepad_reopen {
+  background: #0b1120;
+  color: #e6edf5;
+  border-color: #7aa2c4;
+  box-shadow: none;
 }
 
 #bae_playarea button.bae_scorepad_close:focus-visible,

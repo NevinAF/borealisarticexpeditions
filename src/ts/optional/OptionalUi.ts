@@ -2718,6 +2718,7 @@ export class OptionalUi {
       '.bae_track',
       '.bae_sci_shelf',
       '.bae_vp_tokens_zone',
+      '.bae_player_aid',
       '.bae_animal_loc_vp_track',
       '.bae_camp_zone',
       '.bae_card',
@@ -2736,6 +2737,7 @@ export class OptionalUi {
       '.bae_camp_zone',
       '.bae_animal_loc_vp_track',
       '.bae_vp_tokens_zone',
+      '.bae_player_aid',
       '.bae_regroup_hold',
       '.bae_location_zone',
     ].join(','));

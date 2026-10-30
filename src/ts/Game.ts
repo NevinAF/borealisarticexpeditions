@@ -3,7 +3,7 @@ const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 import { AnimalDefLite, canObserveAnywhere, canObserveAtLocation } from './optional/Legality';
 import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
 import { endScoreSheetFromState, objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
-import { parseEndScoreSheet, ScorePad } from './optional/ScorePad';
+import { parseEndScoreSheet, ScorePad, scorePadIcon } from './optional/ScorePad';
 import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
 
 export class Game {
@@ -1105,9 +1105,12 @@ export class Game {
       const vpTokens = this.optionalUi?.vpTokensFor(pid) ?? optimalTokens(playerVp(d.vps, pid));
       const tokenBase = this.bga.images.getImgUrl();
       html += `<div class="bae_player_sidecol">`;
+      html += `<div class="bae_sidecol_top">`;
+      const aidCard = pid === myId ? this.playerAidCardHtml(pid) : '';
+      html += `<div class="bae_player_aid_slot">${aidCard}</div>`;
       html += `<div id="bae_vp_tokens_${pid}" class="bae_vp_tokens_zone" data-player-id="${pid}" aria-label="${this.escapeHtml(_('VP Tokens'))}">`;
       html += `<div class="bae_vp_token_shelf">${vpTokensInnerHtml(pid, vpTokens, tokenBase)}</div>`;
-      html += `</div>`;
+      html += `</div></div>`;
       html += `<div class="bae_player_handcol" data-player-id="${pid}">`;
       if (typeof handInfo === 'number') {
         const cnt = Number(handInfo);
@@ -1509,6 +1512,11 @@ export class Game {
       const id = `bae_vp_tokens_${pid}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
       this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid));
+      if (pid === Number(this.bga.players.getCurrentPlayerId())) {
+        const aidId = `bae_player_aid_${pid}`;
+        try { this.bga.gameui.removeTooltip(aidId); } catch (_) {}
+        this.bga.gameui.addTooltipHtml(aidId, this.playerAidTooltipHtml());
+      }
     }
   }
 
@@ -2002,6 +2010,50 @@ export class Game {
   /** Plain player-aid copy. {VP} stays as the word VP in tooltips. */
   private aidPlain(text: string): string {
     return text.replace(/\{VP\}/g, 'VP');
+  }
+
+  private aidRich(text: string): string {
+    return this.escapeHtml(text).replace(/\{VP\}/g, this.vpInlineIcon());
+  }
+
+  /** Turn-summary face. Shown on the board and again, larger, in the hover. */
+  private turnSummaryAidInner(): string {
+    const steps = (lines: string[]) => lines.map((line) => `<div class="bae_aid_step">${this.aidRich(line)}</div>`).join('');
+    return `<div class="bae_aid_title">${this.escapeHtml(_('Turn Summary'))}</div>
+      <div class="bae_aid_kicker">${this.escapeHtml(_('OBSERVE'))}</div>
+      ${steps(this.observeAidSteps())}
+      <div class="bae_aid_kicker">${this.escapeHtml(_('or'))} ${this.escapeHtml(_('REGROUP'))}</div>
+      ${steps(this.regroupAidSteps())}`;
+  }
+
+  /** Scoring-pad legend without the player-name and total rows. */
+  private scoringLegendAidInner(): string {
+    const rows: Array<[string, string]> = [
+      [scorePadIcon('paw'), _('- {VP} from animal sets on cards (see the scoring table on the player board)')],
+      [scorePadIcon('flag'), _('- {VP} from the exploration tracks')],
+      [scorePadIcon('card'), _('- 1 {VP} for each card with the {VP} icon in play')],
+      [scorePadIcon('score1'), _('- {VP} from the 1st Scoring card')],
+      [scorePadIcon('score2'), _('- {VP} from the 2nd Scoring card')],
+      [scorePadIcon('tokens'), _('- {VP} from all collected tokens')],
+    ];
+    const body = rows.map(([icon, text]) => (
+      `<div class="bae_aid_row"><span class="bae_aid_ico">${icon}</span><span class="bae_aid_copy">${this.aidRich(text)}</span></div>`
+    )).join('');
+    return `<div class="bae_aid_title">${this.escapeHtml(_('Endgame scoring'))}</div>${body}`;
+  }
+
+  private playerAidCardHtml(pid: number): string {
+    return `<div id="bae_player_aid_${pid}" class="bae_player_aid">${this.turnSummaryAidInner()}</div>`;
+  }
+
+  private playerAidTooltipHtml(): string {
+    const tooltipScale = this.getTooltipScale();
+    const cardW = Math.round((Game.CARD_REFERENCE_WIDTH_PX * 1.1)* tooltipScale);
+    const cardH = Math.round((Game.CARD_REFERENCE_HEIGHT_PX * 1.1) * tooltipScale);
+    const style = `width:${cardW}px;height:${cardH}px;font-size:${Math.max(11, Math.round(cardH / 23))}px`;
+    const turn = `<div class="bae_player_aid bae_player_aid_tip" style="${style}">${this.turnSummaryAidInner()}</div>`;
+    const score = `<div class="bae_player_aid bae_player_aid_tip bae_aid_score" style="${style}">${this.scoringLegendAidInner()}</div>`;
+    return `<div class="bae_aid_tooltip">${turn}${score}</div>`;
   }
 
   private observeAidSteps(): string[] {
