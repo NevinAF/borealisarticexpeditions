@@ -2293,6 +2293,7 @@ export class OptionalUi {
         return;
       }
       if (this.lastPointerWasTouch && this.tooltipPinnedId) return;
+      if (this.togglePlayerAidTooltip(ev)) return;
       this.armTooltipQuiet(ev);
     };
     const onPointerDown = (ev: Event) => {
@@ -2306,7 +2307,7 @@ export class OptionalUi {
       this.touchStartX = pointer.clientX ?? 0;
       this.touchStartY = pointer.clientY ?? 0;
       this.setTouchHit(ev.target as Element | null);
-      if (this.lastPointerWasTouch) {
+      if (this.lastPointerWasTouch || this.playerAidEl(ev)) {
         return;
       }
       this.closePinnedTooltip();
@@ -2325,6 +2326,7 @@ export class OptionalUi {
         this.handleTouchTap(pointer);
         return;
       }
+      if (this.playerAidEl(ev)) return;
       this.armTooltipQuiet(ev);
     };
     const onPointerCancel = (ev: Event) => {
@@ -2354,7 +2356,7 @@ export class OptionalUi {
         if (!this.tooltipPointerHeld) this.tooltipPointerHeld = true;
       } else if (this.tooltipPointerHeld && !this.tooltipDragging && this.dragCardId == null && !this.pointerDrag) {
         this.tooltipPointerHeld = false;
-        if (!this.lastPointerWasTouch) this.armTooltipQuiet(ev);
+        if (!this.lastPointerWasTouch && !this.playerAidEl(ev)) this.armTooltipQuiet(ev);
       }
       if (this.tooltipNeedMove && !this.tooltipPointerHeld && !this.tooltipDragging) {
         const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
@@ -2386,6 +2388,30 @@ export class OptionalUi {
     document.addEventListener('drag', onMove, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('mousemove', onMove, true);
+  }
+
+  /** Click keeps the player-aid tooltip open. A second click on it closes the pin. */
+  private togglePlayerAidTooltip(ev: Event): boolean {
+    if (this.lastPointerWasTouch) return false;
+    const aid = this.playerAidEl(ev);
+    if (!aid) return false;
+    const id = this.tooltipHostId(aid);
+    if (!id) return false;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (this.tooltipPinnedId === id) {
+      this.closePinnedTooltip();
+      this.armTooltipQuiet(ev);
+      return true;
+    }
+    this.openPinnedTooltip(id);
+    return true;
+  }
+
+  private playerAidEl(ev: Event): HTMLElement | null {
+    const target = ev.target as Element | null;
+    if (!target || typeof target.closest !== 'function') return null;
+    return target.closest('.bae_player_aid') as HTMLElement | null;
   }
 
   private armTooltipQuiet(ev: Event): void {
