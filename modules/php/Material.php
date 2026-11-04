@@ -725,8 +725,8 @@ final class Material
             "species" => self::SPECIES_PUFFIN,
             "vehicle" => self::VEHICLE_ZEPPELIN,
             "bonus_vp" => 0,
-            "left_move" => self::COLOR_PINK,
-            "right_move" => self::COLOR_BLUE,
+            "left_move" => self::COLOR_BLUE,
+            "right_move" => self::COLOR_PINK,
         ],
         41 => [
             "species" => self::SPECIES_PUFFIN,
