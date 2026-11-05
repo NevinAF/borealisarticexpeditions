@@ -191,17 +191,6 @@ export class Game {
     const trackIcon = `${baseUrl}Tokens/track_obj.webp`;
     const firstPlayerToken = `${baseUrl}Tokens/FirstPlayerToken.webp`;
 
-    const scientistCountAt = (pid: number, location: number): number => {
-      const sci = d.scientists?.[pid];
-      if (!sci) return 0;
-      let count = 0;
-      for (let col = 0; col < 3; col++) {
-        const poses = sci[col] ?? [];
-        count += poses.filter((p) => p === location).length;
-      }
-      return count;
-    };
-
     const locationPanelHtml = (animals: number, scientists: number, flagDepth: number): string => {
       return [
         `<span class="bae_panel_item"><img class="bae_panel_icon" src="${animalIcon}" alt="" draggable="false"/><span class="bae_panel_value">${animals}</span></span>`,
@@ -229,39 +218,107 @@ export class Game {
         host.appendChild(infoEl);
       }
 
-      const loc0Animals = d.boards[pid]?.[0]?.length ?? 0;
-      const loc1Animals = d.boards[pid]?.[1]?.length ?? 0;
-      const loc2Animals = d.boards[pid]?.[2]?.length ?? 0;
-      const loc0Scientists = scientistCountAt(pid, 0);
-      const loc1Scientists = scientistCountAt(pid, 1);
-      const loc2Scientists = scientistCountAt(pid, 2);
-      const campLeftScientists = scientistCountAt(pid, 3);
-      const campRightScientists = scientistCountAt(pid, 4);
-      const loc0Flag = d.flags?.[pid]?.[0] ?? 0;
-      const loc1Flag = d.flags?.[pid]?.[1] ?? 0;
-      const loc2Flag = d.flags?.[pid]?.[2] ?? 0;
+      const locAnimals = [0, 1, 2].map((loc) => d.boards[pid]?.[loc]?.length ?? 0);
+      const locScientists = [0, 1, 2].map((loc) => this.panelScientistCount(pid, loc));
+      const campScientists = [this.panelScientistCount(pid, 3), this.panelScientistCount(pid, 4)];
+      const flags = [0, 1, 2].map((loc) => d.flags?.[pid]?.[loc] ?? 0);
 
-      const sections = [
-        campPanelHtml(campLeftScientists),
-        locationPanelHtml(loc0Animals, loc0Scientists, loc0Flag),
-        locationPanelHtml(loc1Animals, loc1Scientists, loc1Flag),
-        locationPanelHtml(loc2Animals, loc2Scientists, loc2Flag),
-        campPanelHtml(campRightScientists),
+      const sections: Array<{ id: string; html: string; tip: string }> = [
+        {
+          id: `bae_panel_${pid}_camp_left`,
+          html: campPanelHtml(campScientists[0]),
+          tip: this.panelCampTip(_('Left camp'), scientistIcon, campScientists[0]),
+        },
+        {
+          id: `bae_panel_${pid}_loc_0`,
+          html: locationPanelHtml(locAnimals[0], locScientists[0], flags[0]),
+          tip: this.panelLocationTip(_('Left location'), animalIcon, scientistIcon, trackIcon, locAnimals[0], locScientists[0], flags[0]),
+        },
+        {
+          id: `bae_panel_${pid}_loc_1`,
+          html: locationPanelHtml(locAnimals[1], locScientists[1], flags[1]),
+          tip: this.panelLocationTip(_('Middle location'), animalIcon, scientistIcon, trackIcon, locAnimals[1], locScientists[1], flags[1]),
+        },
+        {
+          id: `bae_panel_${pid}_loc_2`,
+          html: locationPanelHtml(locAnimals[2], locScientists[2], flags[2]),
+          tip: this.panelLocationTip(_('Right location'), animalIcon, scientistIcon, trackIcon, locAnimals[2], locScientists[2], flags[2]),
+        },
+        {
+          id: `bae_panel_${pid}_camp_right`,
+          html: campPanelHtml(campScientists[1]),
+          tip: this.panelCampTip(_('Right camp'), scientistIcon, campScientists[1]),
+        },
       ];
 
       const body = sections
         .map((section, idx) => {
           const sep = idx < sections.length - 1 ? `<span class="bae_panel_sep">&middot;</span>` : '';
-          return `<span class="bae_panel_section">${section}</span>${sep}`;
+          return `<span id="${section.id}" class="bae_panel_section">${section.html}</span>${sep}`;
         })
         .join('');
 
+      const firstId = `bae_panel_${pid}_first`;
       const firstPlayerHtml = pid === firstPlayerId
-        ? `<img class="bae_panel_first_player" src="${firstPlayerToken}" alt="${this.escapeHtml(_('First player'))}" draggable="false" title="${this.escapeHtml(_('First player'))}"/>`
+        ? `<img id="${firstId}" class="bae_panel_first_player" src="${firstPlayerToken}" alt="${this.escapeHtml(_('First player'))}" draggable="false"/>`
         : '';
 
       infoEl.innerHTML = `<span class="bae_panel_grid">${body}</span>${firstPlayerHtml}`;
+      for (const section of sections) this.bindPanelTooltip(section.id, section.tip);
+      if (pid === firstPlayerId) {
+        this.bindPanelTooltip(firstId, `${_('First player')}<br>${_('This player takes the first turn.')}`);
+      } else {
+        try { this.bga.gameui.removeTooltip(firstId); } catch { /* none */ }
+      }
     }
+  }
+
+  private bindPanelTooltip(id: string, help: string): void {
+    if (typeof this.bga.gameui.addTooltip !== 'function') return;
+    try { this.bga.gameui.removeTooltip(id); } catch { /* none yet */ }
+    this.bga.gameui.addTooltip(id, help, '', Game.TOOLTIP_DELAY_MS);
+  }
+
+  private panelScientistCount(pid: number, location: number): number {
+    const sci = this.gamedatas.boardState.scientists?.[pid];
+    if (!sci) return 0;
+    let count = 0;
+    for (let col = 0; col < 3; col++) {
+      count += (sci[col] ?? []).filter((p) => p === location).length;
+    }
+    return count;
+  }
+
+  private panelCountLine(count: number, one: string, many: string): string {
+    return count === 1 ? one : `${count} ${many}`;
+  }
+
+  private panelTipLine(icon: string, text: string): string {
+    return `<span class="bae_panel_tip_line"><img class="bae_panel_tip_icon" src="${icon}" alt="" draggable="false"/>${text}</span>`;
+  }
+
+  private panelLocationTip(
+    place: string,
+    animalIcon: string,
+    scientistIcon: string,
+    trackIcon: string,
+    animals: number,
+    scientists: number,
+    flagDepth: number,
+  ): string {
+    return [
+      place,
+      this.panelTipLine(animalIcon, this.panelCountLine(animals, _('1 animal observed'), _('animals observed'))),
+      this.panelTipLine(scientistIcon, this.panelCountLine(scientists, _('1 scientist'), _('scientists'))),
+      this.panelTipLine(trackIcon, this.panelCountLine(flagDepth, _('1 flag space moved'), _('flag spaces moved'))),
+    ].join('<br>');
+  }
+
+  private panelCampTip(place: string, scientistIcon: string, scientists: number): string {
+    return [
+      place,
+      this.panelTipLine(scientistIcon, this.panelCountLine(scientists, _('1 scientist'), _('scientists'))),
+    ].join('<br>');
   }
 
   setupNotifications() {

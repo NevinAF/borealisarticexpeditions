@@ -1732,6 +1732,7 @@ html[data-theme=dark] .bae_opening_intro {
   display: grid;
   grid-template-rows: repeat(3, minmax(0, auto));
   row-gap: 2px;
+  cursor: help;
 }
 
 .bae_panel_item {
@@ -1771,6 +1772,21 @@ html[data-theme=dark] .bae_opening_intro {
   width: 20px;
   height: 20px;
   object-fit: contain;
+  cursor: help;
+}
+
+.bae_panel_tip_line {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.35em;
+  gap: 0.35em;
+}
+
+.bae_panel_tip_icon {
+  width: 1.15em;
+  height: 1.15em;
+  object-fit: contain;
+  flex: none;
 }
 
 /* ========== OPTIONAL: motion previews ========== */
