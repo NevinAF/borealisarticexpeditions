@@ -292,18 +292,22 @@ html[data-theme="dark"] {
 
 .bae_tooltip_card_face {
   display: block;
+  flex: none;
   border-radius: 6px;
   overflow: hidden;
-  width: 100%;
-  max-width: 100%;
+  max-width: none;
   box-sizing: border-box;
 }
 
 .bae_tooltip_card_face .bae_card_img,
 .bae_tooltip_card_face .bae_obj_img,
-.bae_tooltip_card_face .bae_score_img {
+.bae_tooltip_card_face .bae_score_img,
+.bae_tooltip_card_face .bae_overlay_sprite {
   width: 100%;
   height: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 0;
 }
 
 .bae_tooltip_scores,

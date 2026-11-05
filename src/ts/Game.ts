@@ -1,7 +1,9 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAnywhere, canObserveAtLocation } from './optional/Legality';
-import { OptionalUi, MAX_LOCATION_CARDS, PREF_ZOOM } from './optional/OptionalUi';
+import { OptionalUi, MAX_LOCATION_CARDS, PREF_IMAGE_RESOLUTION, PREF_ZOOM } from './optional/OptionalUi';
+
+type ImageTier = 'full' | 'half' | 'quarter';
 import { endScoreSheetFromState, objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
 import { parseEndScoreSheet, ScorePad, scorePadIcon } from './optional/ScorePad';
 import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
@@ -125,23 +127,24 @@ export class Game {
     }
   }
 
-  /** Warm sprite sheets, boards, and tokens so zoom/tooltips/new cards do not hitch on first use. */
+  /** Warm the sprite sheets and boards this preference allows, plus tokens. */
   private preloadGameImages(): void {
-    const files = [
-      'Sprites/AnimalCards_sheet_full.webp',
-      'Sprites/AnimalCards_sheet_half.webp',
-      'Sprites/AnimalCards_sheet_quarter.webp',
-      'Sprites/ObjectiveCards_sheet_full.webp',
-      'Sprites/ObjectiveCards_sheet_half.webp',
-      'Sprites/ObjectiveCards_sheet_quarter.webp',
-      'Sprites/ScoringCards_sheet_full.webp',
-      'Sprites/ScoringCards_sheet_half.webp',
-      'Sprites/ScoringCards_sheet_quarter.webp',
-      'Playerboards/0000.webp',
-      'Playerboards/0001.webp',
-      'Playerboards/0002.webp',
-      'Playerboards/0003.webp',
-      'Playerboards/0004.webp',
+    const tiers = this.imageTiersAtOrBelowCap();
+    const capTier = this.imageResolutionCap();
+    const files: string[] = [];
+    for (const kind of ['AnimalCards', 'ObjectiveCards', 'ScoringCards']) {
+      for (const tier of tiers) files.push(`Sprites/${kind}_sheet_${tier}.webp`);
+    }
+
+    const boards = this.gamedatas?.boardState?.board_for_players;
+    if (boards)
+    {
+        for (const id in boards) {
+          const board = boards[id];
+          files.push(this.boardImageFile(board, capTier));
+        }
+    }
+    files.push(
       'Tokens/YellowMeeple.webp',
       'Tokens/PinkMeeple.webp',
       'Tokens/TealMeeple.webp',
@@ -154,7 +157,7 @@ export class Game {
       'Tokens/1VPToken.png',
       'Tokens/3VPToken.png',
       'Tokens/5VPToken.png',
-    ];
+    );
     this.bga.images.preloadImages(files);
     for (const file of ['Tokens/1VPToken.png', 'Tokens/3VPToken.png', 'Tokens/5VPToken.png']) {
       this.bga.images.preloadImage(file);
@@ -314,20 +317,92 @@ export class Game {
     }
     // Viewport changes can wrap the top row even when the fitted scale stays put.
     this.optionalUi?.onBoardScaleChanged();
-    // Sprite tier follows on-screen size so browser zoom stays sharp.
+    // Sprite tier follows on-screen size. The preference only lowers the ceiling.
     this.updateSpriteSheetUrls(scale * this.browserPageZoom() * this.pinchZoom());
+    this.updateTooltipSpriteVars();
     this.boardScaleTimeoutAccInterval = 10;
     this.boardScaleTimeoutId = window.setTimeout(() => this.verifyBoardScaleTimeout(scale), 10);
   }
 
+  /** Highest sheet the preference allows. Full is the default and matches the previous behavior. */
+  private imageResolutionCap(): ImageTier {
+    const value = Number(this.bga.userPreferences?.get(PREF_IMAGE_RESOLUTION) ?? 0);
+    if (value === 2) return 'quarter';
+    if (value === 1) return 'half';
+    return 'full';
+  }
+
+  private imageTiersAtOrBelowCap(): ImageTier[] {
+    const order: ImageTier[] = ['quarter', 'half', 'full'];
+    const capRank = order.indexOf(this.imageResolutionCap());
+    return order.filter((_, index) => index <= capRank);
+  }
+
+  /**
+   * Sheet for the current on-screen size, then lowered to the preference cap.
+   * A card already small enough for quarter stays on quarter when the cap is half.
+   */
+  private imageTierForScale(scale: number): ImageTier {
+    const fitted: ImageTier = scale >= 0.55 ? 'full' : scale >= 0.25 ? 'half' : 'quarter';
+    const order: ImageTier[] = ['quarter', 'half', 'full'];
+    return order.indexOf(fitted) <= order.indexOf(this.imageResolutionCap()) ? fitted : this.imageResolutionCap();
+  }
+
+  private displayImageTier(): ImageTier {
+    return this.imageTierForScale(this.getScale() * this.browserPageZoom() * this.pinchZoom());
+  }
+
+  private boardImageFile(boardId: number, tier: ImageTier): string {
+    const value = Number(boardId);
+    const safeId = Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+    const suffix = tier === 'full' ? '' : `_${tier}`;
+    return `Playerboards/${String(safeId).padStart(4, '0')}${suffix}.webp`;
+  }
+
+  private boardImagePath(boardId: number, tier: ImageTier): string {
+    return `${this.bga.images.getImgUrl()}${this.boardImageFile(boardId, tier)}`;
+  }
+
+  private spriteTierUrls(tier: ImageTier): { animal: string; objective: string; scoring: string } {
+    const base = this.bga.images.getImgUrl();
+    return {
+      animal: `${base}Sprites/AnimalCards_sheet_${tier}.webp`,
+      objective: `${base}Sprites/ObjectiveCards_sheet_${tier}.webp`,
+      scoring: `${base}Sprites/ScoringCards_sheet_${tier}.webp`,
+    };
+  }
+
+  private applySpriteSheetUrls(el: HTMLElement, tier: ImageTier): void {
+    const urls = this.spriteTierUrls(tier);
+    el.style.setProperty('--animal-sprite-url', `url("${urls.animal}")`);
+    el.style.setProperty('--objective-sprite-url', `url("${urls.objective}")`);
+    el.style.setProperty('--scoring-sprite-url', `url("${urls.scoring}")`);
+  }
+
   private updateSpriteSheetUrls(scale: number): void {
     if (!this.root) return;
+    const tier = this.imageTierForScale(scale);
+    this.applySpriteSheetUrls(this.root, tier);
+    this.updatePlayerBoardImages(tier);
+  }
 
-    const tier = scale >= 0.55 ? 'full' : scale >= 0.25 ? 'half' : 'quarter';
-    const base = this.bga.images.getImgUrl();
-    this.root.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
-    this.root.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
-    this.root.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
+  private updatePlayerBoardImages(tier: ImageTier): void {
+    const boards = this.gamedatas?.boardState?.board_for_players;
+    if (!this.root || !boards) return;
+    this.root.querySelectorAll<HTMLElement>('.bae_playerboard').forEach((section) => {
+      const canvas = section.querySelector<HTMLElement>('.bae_board_canvas');
+      if (!canvas) return;
+      const pid = Number(section.dataset.playerId);
+      const url = this.boardImagePath(boards[pid] ?? 0, tier);
+      if (canvas.dataset.boardImage === url) return;
+      canvas.dataset.boardImage = url;
+      canvas.style.backgroundImage = `url("${url}")`;
+    });
+  }
+
+  syncImageResolution(): void {
+    this.preloadGameImages();
+    this.updateBoardScale();
   }
 
   /**
@@ -1151,7 +1226,7 @@ export class Game {
 
       const campSel = isSelf && this.campSelected ? " bae_camp_selected" : "";
       const campDotsSel = isSelf && this.campSelected ? " bae_sci_shelf_camp_selected" : "";
-      const boardBg = this.imagePath("Playerboards", d.board_for_players[pid] ?? 0);
+      const boardBg = this.boardImagePath(d.board_for_players[pid] ?? 0, this.displayImageTier());
       // Expose number of animal-card slots to CSS so margin spacing scales correctly
       html += `<div class="bae_board_canvas" style="background-image:url('${boardBg}'); --animal-card-slots: ${outlineSlots}">`;
 
@@ -1349,39 +1424,21 @@ export class Game {
 
   private applySlideshowScaleStyles(el: HTMLElement): void {
     const slideshowScale = this.getTooltipScale();
-    const tier = slideshowScale >= 0.55 ? 'full' : slideshowScale >= 0.25 ? 'half' : 'quarter';
-    const base = this.bga.images.getImgUrl();
     el.style.setProperty('--bae-scale', String(slideshowScale));
-    el.style.setProperty('--animal-sprite-url', `url("${base}Sprites/AnimalCards_sheet_${tier}.webp")`);
-    el.style.setProperty('--objective-sprite-url', `url("${base}Sprites/ObjectiveCards_sheet_${tier}.webp")`);
-    el.style.setProperty('--scoring-sprite-url', `url("${base}Sprites/ScoringCards_sheet_${tier}.webp")`);
+    this.applySpriteSheetUrls(el, this.imageTierForScale(slideshowScale));
   }
 
-  private applyTooltipScaleToCardFace(
-    type: 'objective' | 'scoring',
-    id: number,
-    tooltipScale: number,
-  ): string {
-    const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
-    const baseUrl = this.bga.images.getImgUrl();
-    const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
-    const objectiveSpriteUrl = `${baseUrl}Sprites/ObjectiveCards_sheet_${tier}.webp`;
-    const scoringSpriteUrl = `${baseUrl}Sprites/ScoringCards_sheet_${tier}.webp`;
-    const spriteStyle = `width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');`;
+  /** Sheet for the tooltip's on-screen size, shared so an open tooltip can swap images without resizing. */
+  private updateTooltipSpriteVars(): void {
+    const urls = this.spriteTierUrls(this.imageTierForScale(this.getTooltipScale()));
+    const target = document.documentElement;
+    target.style.setProperty('--bae-tip-animal-sprite', `url("${urls.animal}")`);
+    target.style.setProperty('--bae-tip-objective-sprite', `url("${urls.objective}")`);
+    target.style.setProperty('--bae-tip-scoring-sprite', `url("${urls.scoring}")`);
+  }
 
-    if (type === 'objective') {
-      return this.objectiveFaceById(id)
-        .replace(
-          '<div class="bae_obj_img bae_overlay_card"',
-          `<div class="bae_obj_img bae_overlay_card" style="${spriteStyle}"`,
-        );
-    }
-
-    return this.scoringFaceById(id)
-      .replace(
-        '<div class="bae_score_img bae_overlay_card"',
-        `<div class="bae_score_img bae_overlay_card" style="${spriteStyle}"`,
-      );
+  private tooltipSpriteVarStyle(): string {
+    return '--animal-sprite-url:var(--bae-tip-animal-sprite);--objective-sprite-url:var(--bae-tip-objective-sprite);--scoring-sprite-url:var(--bae-tip-scoring-sprite);';
   }
 
   private updateOpeningIntroOverlay(): void {
@@ -2017,11 +2074,6 @@ export class Game {
     scoresHtml = '',
   ): string {
     const tooltipScale = this.getTooltipScale();
-    const tier = tooltipScale >= 0.55 ? 'full' : tooltipScale >= 0.25 ? 'half' : 'quarter';
-    const baseUrl = this.bga.images.getImgUrl();
-    const animalSpriteUrl = `${baseUrl}Sprites/AnimalCards_sheet_${tier}.webp`;
-    const objectiveSpriteUrl = `${baseUrl}Sprites/ObjectiveCards_sheet_${tier}.webp`;
-    const scoringSpriteUrl = `${baseUrl}Sprites/ScoringCards_sheet_${tier}.webp`;
     const vpInline = this.vpInlineIcon();
 
     const extraHtml = details
@@ -2029,22 +2081,15 @@ export class Game {
       .map((line) => `<div>${this.escapeHtml(line).replace(/\{VP\}/g, vpInline)}</div>`)
       .join('');
 
-    const width = (type === 'objective' ? 745 : 528) * tooltipScale;
-    const aspectRatio = type === 'objective' ? '745 / 528' : '528 / 745';
-
-    let cardHtml;
-    if (type === 'objective') {
-      cardHtml = this.applyTooltipScaleToCardFace('objective', id, tooltipScale);
-    } else if (type === 'scoring') {
-      cardHtml = this.applyTooltipScaleToCardFace('scoring', id, tooltipScale);
-    }
-    else if (type === 'animal') {
-      cardHtml = this.cardFaceById(id)
-        .replace(
-          '<div class="bae_card_img bae_overlay_card"',
-          `<div class="bae_card_img bae_overlay_card" style="width:100%;height:100%;--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');"`,
-        );
-    }
+    const cardW = type === 'objective' ? 745 : 528;
+    const cardH = type === 'objective' ? 528 : 745;
+    const width = cardW * tooltipScale;
+    const height = cardH * tooltipScale;
+    const cardHtml = type === 'objective'
+      ? this.objectiveFaceById(id)
+      : type === 'scoring'
+        ? this.scoringFaceById(id)
+        : this.cardFaceById(id);
 
     const scoresBlock = scoresHtml
       ? `<div class="bae_tooltip_scores">${scoresHtml}</div>`
@@ -2054,8 +2099,8 @@ export class Game {
       : '';
 
     return `
-      <div class="bae_tooltip_card" style="width:${width}px;max-width:100%;--bae-scale:${tooltipScale};--animal-sprite-url:url('${animalSpriteUrl}');--objective-sprite-url:url('${objectiveSpriteUrl}');--scoring-sprite-url:url('${scoringSpriteUrl}');">
-        <div class="bae_tooltip_card_face" style="width:100%;aspect-ratio:${aspectRatio};">${cardHtml}</div>
+      <div class="bae_tooltip_card" style="width:${width}px;max-width:none;--bae-scale:${tooltipScale};${this.tooltipSpriteVarStyle()}">
+        <div class="bae_tooltip_card_face" style="width:${width}px;height:${height}px;">${cardHtml}</div>
         ${scoresBlock}
         ${extraBlock}
       </div>

@@ -41,6 +41,7 @@ export const PREF_PREVIEWS = 101;
 export const PREF_CONFIRM = 102;
 export const PREF_SOUND = 103;
 export const PREF_ZOOM = 104;
+export const PREF_IMAGE_RESOLUTION = 105;
 export const MAX_LOCATION_CARDS = 7;
 
 export interface OptionalUiHost {
@@ -74,6 +75,7 @@ export interface OptionalUiHost {
   isActionBusy(): boolean;
   syncSelectableAuras(): void;
   syncZoomPreference(enabled?: boolean): void;
+  syncImageResolution(): void;
   refreshZoomClearance(): void;
 }
 
@@ -795,6 +797,7 @@ export class OptionalUi {
       this.applyPreferenceCss();
       this.updateActionPreviews();
       if (prefId === PREF_ZOOM) this.host.syncZoomPreference(Number(value) === 1);
+      if (prefId === PREF_IMAGE_RESOLUTION) this.host.syncImageResolution();
     };
   }
 

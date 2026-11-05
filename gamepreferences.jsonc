@@ -54,5 +54,24 @@
       }
     },
     "default": 0
+  },
+  "105": {
+    "name": "Image resolution",
+    "needReload": false,
+    "values": {
+      "0": {
+        "name": "Full",
+        "description": "Cards and player boards use the sharpest image that fits their size on screen."
+      },
+      "1": {
+        "name": "Half",
+        "description": "Caps cards and player boards at half resolution. A smaller on-screen size still uses a lower image. This can improve performance on low-end devices."
+      },
+      "2": {
+        "name": "Quarter",
+        "description": "Caps cards and player boards at quarter resolution. This can improve performance on low-end devices."
+      }
+    },
+    "default": 0
   }
 }
