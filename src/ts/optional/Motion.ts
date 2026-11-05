@@ -2,8 +2,8 @@
 
 export function animMs(speed: number): number {
   if (speed === 0) return 0;
-  if (speed === 1) return 720;
-  if (speed === 3) return 360;
+  if (speed === 1) return 840;
+  if (speed === 3) return 280;
   return 560;
 }
 

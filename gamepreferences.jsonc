@@ -20,15 +20,6 @@
     },
     "default": 1
   },
-  "102": {
-    "name": "Confirmation dialogs",
-    "needReload": false,
-    "values": {
-      "0": { "name": "Skip when safe", "cssPref": "bae_confirm_skip" },
-      "1": { "name": "Always ask", "cssPref": "bae_confirm_always" }
-    },
-    "default": 1
-  },
   "103": {
     "name": "Sound effects",
     "needReload": false,

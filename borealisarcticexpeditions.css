@@ -156,6 +156,18 @@ html[data-theme=dark] {
 
 .bae_tooltip_grid > * {
   min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* The centered last card spans the row, but it stays the same width as one column. */
+.bae_tooltip_grid > :last-child:nth-child(odd) {
+  justify-self: stretch;
+}
+
+.bae_tooltip_grid > :last-child:nth-child(odd) .bae_tooltip_card {
+  width: min((100% - 8px) / 2, var(--bae-tip-card, 100%));
+  max-width: min((100% - 8px) / 2, var(--bae-tip-card, 100%));
 }
 
 .bae_tooltip_card {
@@ -164,29 +176,53 @@ html[data-theme=dark] {
   align-items: stretch;
   gap: 3px;
   font-family: "BaeCardSerif", serif;
-  width: 100%;
+  width: var(--bae-tip-card, 100%);
   max-width: 100%;
   box-sizing: border-box;
+  container-type: inline-size;
+}
+
+/* Type tracks the card's real width, including when a wide objective is narrowed to the column. */
+.bae_tooltip_card .bae_fit_text {
+  font-size: calc(44 / var(--bae-tip-ref, 528) * 100cqw);
+}
+
+.bae_tooltip_card .bae_obj_title_bounds .bae_fit_text_inner,
+.bae_tooltip_card .bae_score_title_bounds .bae_fit_text_inner,
+.bae_tooltip_card .bae_obj_type_bounds .bae_fit_text_inner,
+.bae_tooltip_card .bae_score_type_bounds .bae_fit_text_inner {
+  font-size: calc(56 / var(--bae-tip-ref, 528) * 100cqw);
 }
 
 .bae_tooltip_card_face {
   display: block;
+  position: relative;
   flex: none;
   border-radius: 6px;
   overflow: hidden;
-  max-width: none;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 528/745;
   box-sizing: border-box;
+}
+
+.bae_tooltip_card_face.bae_tooltip_face_wide {
+  aspect-ratio: 745/528;
 }
 
 .bae_tooltip_card_face .bae_card_img,
 .bae_tooltip_card_face .bae_obj_img,
 .bae_tooltip_card_face .bae_score_img,
 .bae_tooltip_card_face .bae_overlay_sprite {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   max-width: none;
   min-width: 0;
   min-height: 0;
+  aspect-ratio: auto;
 }
 
 .bae_tooltip_scores,
@@ -1994,10 +2030,7 @@ body.bae_tooltip_placing .bga-tooltip {
 
 .bae_previews_off .bae_trail_ghost,
 .bae_previews_off .bae_discard_ghost,
-.bae_previews_off .bae_card_place_preview,
-.bae_anim_off .bae_trail_ghost,
-.bae_anim_off .bae_discard_ghost,
-.bae_anim_off .bae_card_place_preview {
+.bae_previews_off .bae_card_place_preview {
   animation: none !important;
 }
 
@@ -2005,27 +2038,13 @@ body.bae_tooltip_placing .bga-tooltip {
 .bae_previews_off .bae_discard_ghost,
 .bae_previews_off .bae_card_place_preview,
 .bae_previews_off .bae_deny_pulse,
-.bae_previews_off .bae_missing_sci,
-.bae_anim_off .bae_trail_ghost,
-.bae_anim_off .bae_discard_ghost,
-.bae_anim_off .bae_card_place_preview,
-.bae_anim_off .bae_deny_pulse,
-.bae_anim_off .bae_missing_sci {
+.bae_previews_off .bae_missing_sci {
   display: none !important;
 }
 
-.bae_previews_off .bae_preview_fade_left,
-.bae_anim_off .bae_preview_fade_left {
+.bae_previews_off .bae_preview_fade_left {
   opacity: 1;
   animation: none !important;
-}
-
-.bae_anim_slow .bae_trail_ghost {
-  --dur: 1400ms;
-}
-
-.bae_anim_fast .bae_trail_ghost {
-  --dur: 650ms;
 }
 
 @keyframes bae_trail_flow {

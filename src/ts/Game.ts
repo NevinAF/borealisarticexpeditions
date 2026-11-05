@@ -700,13 +700,10 @@ export class Game {
   private async confirmRegroupDiscard(cardIds: number[]): Promise<void> {
     const myId = Number(this.bga.players.getCurrentPlayerId());
     if (this.countScientistsInCamps(myId) === 0) {
-      // OPTIONAL: preference can skip this confirm when player opts out
-      if (!this.optionalUi?.shouldSkipSafeConfirm()) {
-        const confirmed = await this.bga.dialogs.confirmation(
-          _("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"),
-        );
-        if (!confirmed) return;
-      }
+      const confirmed = await this.bga.dialogs.confirmation(
+        _("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"),
+      );
+      if (!confirmed) return;
     }
     await this.sendAction("actRegroup", {
       card_ids_json: JSON.stringify(cardIds),
@@ -2084,7 +2081,7 @@ export class Game {
     const cardW = type === 'objective' ? 745 : 528;
     const cardH = type === 'objective' ? 528 : 745;
     const width = cardW * tooltipScale;
-    const height = cardH * tooltipScale;
+    const faceClass = type === 'objective' ? ' bae_tooltip_face_wide' : '';
     const cardHtml = type === 'objective'
       ? this.objectiveFaceById(id)
       : type === 'scoring'
@@ -2099,8 +2096,8 @@ export class Game {
       : '';
 
     return `
-      <div class="bae_tooltip_card" style="width:${width}px;max-width:none;--bae-scale:${tooltipScale};${this.tooltipSpriteVarStyle()}">
-        <div class="bae_tooltip_card_face" style="width:${width}px;height:${height}px;">${cardHtml}</div>
+      <div class="bae_tooltip_card" style="--bae-tip-card:${width}px;--bae-tip-ref:${cardW};--bae-scale:${tooltipScale};${this.tooltipSpriteVarStyle()}">
+        <div class="bae_tooltip_card_face${faceClass}" style="aspect-ratio:${cardW} / ${cardH};">${cardHtml}</div>
         ${scoresBlock}
         ${extraBlock}
       </div>

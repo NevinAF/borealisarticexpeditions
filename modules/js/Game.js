@@ -114,9 +114,9 @@ function animMs(speed) {
     if (speed === 0)
         return 0;
     if (speed === 1)
-        return 720;
+        return 840;
     if (speed === 3)
-        return 360;
+        return 280;
     return 560;
 }
 /**
@@ -1119,7 +1119,6 @@ function scoringStepKind(args) {
 /** OPTIONAL preference ids (gamepreferences.jsonc). */
 const PREF_ANIM_SPEED = 100;
 const PREF_PREVIEWS = 101;
-const PREF_CONFIRM = 102;
 const PREF_SOUND = 103;
 const PREF_ZOOM = 104;
 const PREF_IMAGE_RESOLUTION = 105;
@@ -1308,11 +1307,7 @@ class OptionalUi {
         return ['bae_anim_off', 'bae_anim_slow', 'bae_anim_normal', 'bae_anim_fast'][v] ?? 'bae_anim_normal';
     }
     previewsEnabled() {
-        return (this.host.bga.userPreferences?.get(PREF_PREVIEWS) ?? 1) === 1
-            && (this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2) !== 0;
-    }
-    shouldSkipSafeConfirm() {
-        return (this.host.bga.userPreferences?.get(PREF_CONFIRM) ?? 1) === 0;
+        return (this.host.bga.userPreferences?.get(PREF_PREVIEWS) ?? 1) === 1;
     }
     clearHolding() {
         this.holdingPid = null;
@@ -1321,8 +1316,9 @@ class OptionalUi {
     duration() {
         return animMs(this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2);
     }
+    /** Preview loops stay at the normal pace. Animation speed only shortens notifications. */
     previewLoopMs() {
-        return Math.max(1000, Math.round(this.duration() * 4));
+        return Math.max(1000, Math.round(animMs(2) * 4));
     }
     prepareResolution(zones = ['all'], keepRegroupSelection = false) {
         this.beginTooltipGuard(zones);
@@ -5226,12 +5222,9 @@ class Game {
     async confirmRegroupDiscard(cardIds) {
         const myId = Number(this.bga.players.getCurrentPlayerId());
         if (this.countScientistsInCamps(myId) === 0) {
-            // OPTIONAL: preference can skip this confirm when player opts out
-            if (!this.optionalUi?.shouldSkipSafeConfirm()) {
-                const confirmed = await this.bga.dialogs.confirmation(_("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"));
-                if (!confirmed)
-                    return;
-            }
+            const confirmed = await this.bga.dialogs.confirmation(_("You have no scientists in your camps. Regrouping will end your turn without assigning scientists or gaining VP from camps. Continue?"));
+            if (!confirmed)
+                return;
         }
         await this.sendAction("actRegroup", {
             card_ids_json: JSON.stringify(cardIds),
@@ -6569,7 +6562,7 @@ class Game {
         const cardW = type === 'objective' ? 745 : 528;
         const cardH = type === 'objective' ? 528 : 745;
         const width = cardW * tooltipScale;
-        const height = cardH * tooltipScale;
+        const faceClass = type === 'objective' ? ' bae_tooltip_face_wide' : '';
         const cardHtml = type === 'objective'
             ? this.objectiveFaceById(id)
             : type === 'scoring'
@@ -6582,8 +6575,8 @@ class Game {
             ? `<div class="bae_tooltip_extra">${extraHtml}</div>`
             : '';
         return `
-      <div class="bae_tooltip_card" style="width:${width}px;max-width:none;--bae-scale:${tooltipScale};${this.tooltipSpriteVarStyle()}">
-        <div class="bae_tooltip_card_face" style="width:${width}px;height:${height}px;">${cardHtml}</div>
+      <div class="bae_tooltip_card" style="--bae-tip-card:${width}px;--bae-tip-ref:${cardW};--bae-scale:${tooltipScale};${this.tooltipSpriteVarStyle()}">
+        <div class="bae_tooltip_card_face${faceClass}" style="aspect-ratio:${cardW} / ${cardH};">${cardHtml}</div>
         ${scoresBlock}
         ${extraBlock}
       </div>

@@ -38,7 +38,6 @@ import {
 /** OPTIONAL preference ids (gamepreferences.jsonc). */
 export const PREF_ANIM_SPEED = 100;
 export const PREF_PREVIEWS = 101;
-export const PREF_CONFIRM = 102;
 export const PREF_SOUND = 103;
 export const PREF_ZOOM = 104;
 export const PREF_IMAGE_RESOLUTION = 105;
@@ -286,12 +285,7 @@ export class OptionalUi {
   }
 
   previewsEnabled(): boolean {
-    return (this.host.bga.userPreferences?.get(PREF_PREVIEWS) ?? 1) === 1
-      && (this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2) !== 0;
-  }
-
-  shouldSkipSafeConfirm(): boolean {
-    return (this.host.bga.userPreferences?.get(PREF_CONFIRM) ?? 1) === 0;
+    return (this.host.bga.userPreferences?.get(PREF_PREVIEWS) ?? 1) === 1;
   }
 
   clearHolding(): void {
@@ -303,8 +297,9 @@ export class OptionalUi {
     return animMs(this.host.bga.userPreferences?.get(PREF_ANIM_SPEED) ?? 2);
   }
 
+  /** Preview loops stay at the normal pace. Animation speed only shortens notifications. */
   private previewLoopMs(): number {
-    return Math.max(1000, Math.round(this.duration() * 4));
+    return Math.max(1000, Math.round(animMs(2) * 4));
   }
 
   private prepareResolution(zones: string[] = ['all'], keepRegroupSelection = false): void {
