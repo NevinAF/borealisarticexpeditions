@@ -97,16 +97,9 @@ export class OptionalUi {
   private discardLoopEpoch = 0;
   private static readonly DISCARD_LOOP_MS = 1850;
   private tooltipBound = false;
-  private tooltipLeaveSelector: string | null = null;
-  private tooltipQuietUntil = 0;
-  private tooltipNeedMove = false;
-  private tooltipClickX = 0;
-  private tooltipClickY = 0;
-  private tooltipWasBlocked = false;
-  private tooltipRetrigger = false;
-  private tooltipPointerHeld = false;
-  private tooltipDragging = false;
   private tooltipPinnedId: string | null = null;
+  /** After an action click, keep that piece's tooltip closed until the pointer leaves it. */
+  private actionTooltipQuietKey: string | null = null;
   private lastPointerWasTouch = false;
   private touchStartX = 0;
   private touchStartY = 0;
@@ -136,7 +129,6 @@ export class OptionalUi {
   private static readonly TOUCH_TAP_PX = 24;
   private previewLocked = false;
   private lastClaimFlightKey = '';
-  private static readonly TOOLTIP_CLICK_MS = 500;
   private touchHitEl: HTMLElement | null = null;
   private touchHitBox: HTMLElement | null = null;
   private layoutChromeRaf = 0;
@@ -166,7 +158,6 @@ export class OptionalUi {
     this.restoreHoldingFromState();
     this.renderRegroupHold();
     this.host.refreshScientistTooltips();
-    if (this.isTooltipBlocked()) this.cancelDojoTooltips();
     this.syncTopRowWrap();
     this.updateActionPreviews();
     this.bindPreferenceListener();
@@ -302,8 +293,7 @@ export class OptionalUi {
     return Math.max(1000, Math.round(animMs(2) * 4));
   }
 
-  private prepareResolution(zones: string[] = ['all'], keepRegroupSelection = false): void {
-    this.beginTooltipGuard(zones);
+  private prepareResolution(keepRegroupSelection = false): void {
     this.clearPreviews();
     this.host.selectedCardId = null;
     this.host.selectedLocation = null;
@@ -328,7 +318,6 @@ export class OptionalUi {
 
   private endResolution(): void {
     this.resolving = false;
-    this.endTooltipGuard();
   }
 
   async playObserveResolution(prev: BoardState, args: Record<string, unknown>): Promise<void> {
@@ -336,7 +325,7 @@ export class OptionalUi {
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    this.prepareResolution([`player:${pid}`]);
+    this.prepareResolution();
     try {
       const cardId = Number(args.card_id ?? NaN);
       const loc = Number(args.location ?? NaN);
@@ -405,7 +394,7 @@ export class OptionalUi {
     if (campMeeples.length > 0) this.holdingPid = pid;
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
-    this.prepareResolution([`player:${pid}`]);
+    this.prepareResolution();
     try {
       const discarded = this.discardedIdsFromNotif(args);
       const leftHold = this.ensureRegroupHold(pid, 'left');
@@ -446,7 +435,7 @@ export class OptionalUi {
       return;
     }
     this.resolving = true;
-    this.prepareResolution([`player:${pid}`]);
+    this.prepareResolution();
     try {
       if (loc < 0 || loc > 2) return;
       if (!this.shelfEl(pid, loc)) return;
@@ -463,7 +452,7 @@ export class OptionalUi {
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    this.prepareResolution(['pool', `player:${pid}`]);
+    this.prepareResolution();
     try {
       const fromDeck = Boolean(args.from_deck);
       const slot = Number(args.pool_slot ?? args.slot ?? NaN);
@@ -505,7 +494,7 @@ export class OptionalUi {
     if (ms === 0 || this.resolving) return;
     this.resolving = true;
     const pid = Number(args.player_id ?? args.playerId ?? 0);
-    this.prepareResolution(['pool', `player:${pid}`]);
+    this.prepareResolution();
     try {
       const root = this.host.root;
       const pool = root.querySelector('.bae_pool') as HTMLElement | null;
@@ -544,7 +533,7 @@ export class OptionalUi {
     const pid = Number(args.player_id ?? args.playerId ?? 0);
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const keepRegroupSelection = this.host.isOpeningMulliganLike() && pid !== myId;
-    this.prepareResolution([`player:${pid}`], keepRegroupSelection);
+    this.prepareResolution(keepRegroupSelection);
     try {
       const discarded = this.discardedIdsFromNotif(args);
       await this.animateHandReplace(pid, discarded, prev, args.boardState as BoardState | undefined, ms);
@@ -562,7 +551,7 @@ export class OptionalUi {
     if (ms === 0 || this.resolving || !pid) return;
     this.lastClaimFlightKey = key;
     this.resolving = true;
-    this.prepareResolution([`player:${pid}`]);
+    this.prepareResolution();
     try {
       const obj = Number.isFinite(idx)
         ? this.host.root.querySelector(`#bae_obj_${idx}`) as HTMLElement | null
@@ -592,7 +581,7 @@ export class OptionalUi {
     const flights = this.scoringTokenFlights(pid, args);
     if (flights.length === 0) return false;
     this.resolving = true;
-    this.prepareResolution([`player:${pid}`]);
+    this.prepareResolution();
     try {
       onStart?.();
       await this.vp.addIncoming(
@@ -1621,8 +1610,7 @@ export class OptionalUi {
 
   private activatePointerDrag(ev: PointerEvent, drag: NonNullable<OptionalUi['pointerDrag']>): void {
     drag.active = true;
-    this.tooltipDragging = true;
-    this.tooltipPointerHeld = true;
+    this.cancelDojoTooltips();
     if (drag.kind === 'hand' && drag.cardId != null) {
       this.beginHandDragChrome(drag.cardId);
     } else {
@@ -1714,7 +1702,6 @@ export class OptionalUi {
   private cancelPointerDrag(restoreSelection = true): void {
     const drag = this.pointerDrag;
     this.pointerDrag = null;
-    this.tooltipDragging = false;
     if (!drag) return;
     drag.ghost?.remove();
     drag.source.classList.remove('bae_dragging');
@@ -2274,20 +2261,20 @@ export class OptionalUi {
     const onHover = (ev: Event) => {
       const target = ev.target as Element | null;
       this.lastHoverEl = target;
-      this.syncObjectiveHoverHit(ev);
-      if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
-        this.tooltipLeaveSelector = null;
-      }
-      if (this.tooltipRetrigger) {
-        this.tooltipRetrigger = false;
-        return;
-      }
-      if (this.tooltipPinnedId) return;
-      if (this.isTooltipBlocked()) {
+      if (this.pointerDrag?.active || this.shouldQuietActionTooltip(target)) {
         ev.stopPropagation();
         ev.stopImmediatePropagation();
         this.cancelDojoTooltips();
+        return;
       }
+      this.releaseActionTooltipQuiet(target);
+    };
+    const onFocusIn = (ev: Event) => {
+      const target = ev.target as Element | null;
+      if (!this.shouldQuietActionTooltip(target)) return;
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      this.cancelDojoTooltips();
     };
     const onClick = (ev: Event) => {
       if (Date.now() < this.suppressClickUntil) {
@@ -2296,9 +2283,14 @@ export class OptionalUi {
         ev.stopImmediatePropagation();
         return;
       }
-      if (this.lastPointerWasTouch && this.tooltipPinnedId) return;
-      if (this.togglePlayerAidTooltip(ev)) return;
-      this.armTooltipQuiet(ev);
+      if (this.lastPointerWasTouch) return;
+      const target = ev.target as Element | null;
+      if (this.isActionClickTarget(target)) return;
+      const id = this.tooltipHostId(target);
+      if (!id) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.showTooltipNow(id);
     };
     const onPointerDown = (ev: Event) => {
       const pointer = ev as PointerEvent;
@@ -2307,79 +2299,52 @@ export class OptionalUi {
         return;
       }
       this.lastPointerWasTouch = pointer.pointerType === 'touch';
-      const idleObjective = (ev.target as Element | null)?.closest?.('button.bae_obj') as HTMLElement | null;
-      if (idleObjective && !idleObjective.classList.contains('bae_can_act') && !this.lastPointerWasTouch) {
-        ev.preventDefault();
-      }
-      this.tooltipPointerHeld = true;
+      const target = ev.target as Element | null;
       this.touchStartX = pointer.clientX ?? 0;
       this.touchStartY = pointer.clientY ?? 0;
-      this.setTouchHit(ev.target as Element | null);
-      if (this.lastPointerWasTouch || this.playerAidEl(ev)) {
+      this.setTouchHit(target);
+      if (this.lastPointerWasTouch) return;
+      if (this.isActionClickTarget(target)) {
+        this.quietActionTooltip(target);
         return;
       }
-      this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
+      const id = this.tooltipHostId(target);
+      if (!id) {
+        this.closePinnedTooltip();
+        return;
+      }
+      // Keep the pointer from focusing the piece. Focus would dismiss the tooltip,
+      // and the click that follows would dismiss it again.
+      ev.preventDefault();
+      this.showTooltipNow(id);
     };
     const onPointerUp = (ev: Event) => {
       const pointer = ev as PointerEvent;
       const dragged = this.finishPointerDrag(pointer);
-      this.tooltipPointerHeld = false;
       this.clearTouchHit();
-      if (dragged) {
-        this.armTooltipQuiet(ev);
-        return;
-      }
-      if (!this.lastPointerWasTouch) this.syncObjectiveHoverHit(ev);
+      if (dragged) return;
       if (this.lastPointerWasTouch) {
         this.handleTouchTap(pointer);
         return;
       }
-      if (this.playerAidEl(ev)) return;
-      this.armTooltipQuiet(ev);
+      const target = ev.target as Element | null;
+      if (this.isActionClickTarget(target)) return;
+      const id = this.tooltipHostId(target);
+      if (id) this.showTooltipNow(id);
     };
-    const onPointerCancel = (ev: Event) => {
+    const onPointerCancel = () => {
       this.cancelPointerDrag();
-      this.tooltipPointerHeld = false;
       this.clearTouchHit();
-      this.armTooltipQuiet(ev);
     };
-    const onDragStart = (ev: Event) => {
-      this.tooltipDragging = true;
-      this.tooltipPointerHeld = true;
+    const onDragStart = () => {
       this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
-    };
-    const onDragEnd = (ev: Event) => {
-      this.tooltipDragging = false;
-      this.tooltipPointerHeld = false;
-      this.armTooltipQuiet(ev);
+      this.cancelDojoTooltips();
     };
     const onMove = (ev: Event) => {
       if (ev instanceof PointerEvent) this.tickPointerDrag(ev);
-      const mouse = ev as MouseEvent;
       const target = ev.target as Element | null;
       this.lastHoverEl = target;
-      this.syncObjectiveHoverHit(ev);
-      const buttons = mouse.buttons ?? 0;
-      if (buttons !== 0) {
-        if (!this.tooltipPointerHeld) this.tooltipPointerHeld = true;
-      } else if (this.tooltipPointerHeld && !this.tooltipDragging && this.dragCardId == null && !this.pointerDrag) {
-        this.tooltipPointerHeld = false;
-        if (!this.lastPointerWasTouch && !this.playerAidEl(ev)) this.armTooltipQuiet(ev);
-      }
-      if (this.tooltipNeedMove && !this.tooltipPointerHeld && !this.tooltipDragging) {
-        const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
-        const dy = (mouse.clientY ?? 0) - this.tooltipClickY;
-        if (dx * dx + dy * dy >= 16) this.tooltipNeedMove = false;
-      }
-      if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
-        this.tooltipLeaveSelector = null;
-      }
-      const blocked = this.isTooltipBlocked();
-      if (blocked) this.cancelDojoTooltips();
-      if (this.tooltipWasBlocked && !blocked) this.retriggerTooltipHover();
-      this.tooltipWasBlocked = blocked;
+      this.releaseActionTooltipQuiet(target);
     };
     const onMouseOut = (ev: Event) => {
       if (!this.tooltipPinnedId) return;
@@ -2388,69 +2353,92 @@ export class OptionalUi {
     };
     document.addEventListener('mouseover', onHover, true);
     document.addEventListener('mouseenter', onHover, true);
+    document.addEventListener('focusin', onFocusIn, true);
     document.addEventListener('mouseout', onMouseOut, true);
     document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
     document.addEventListener('pointermove', onMove, { capture: true, passive: false });
     document.addEventListener('dragstart', onDragStart, true);
-    document.addEventListener('dragend', onDragEnd, true);
-    document.addEventListener('drag', onMove, true);
     document.addEventListener('click', onClick, true);
-    document.addEventListener('mousemove', onMove, true);
   }
 
-  /** Click keeps the player-aid tooltip open. A second click on it closes the pin. */
-  private togglePlayerAidTooltip(ev: Event): boolean {
-    if (this.lastPointerWasTouch) return false;
-    const aid = this.playerAidEl(ev);
-    if (!aid) return false;
-    const id = this.tooltipHostId(aid);
-    if (!id) return false;
-    ev.preventDefault();
-    ev.stopPropagation();
-    if (this.tooltipPinnedId === id) {
-      this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
-      return true;
+  /** Stable identity for the piece under the pointer, so a redraw does not clear the hold. */
+  private actionTooltipKey(el: Element | null): string | null {
+    if (!el || typeof el.closest !== 'function') return null;
+    const hand = el.closest('[data-hand-card]') as HTMLElement | null;
+    if (hand?.dataset.handCard) {
+      const col = hand.closest('[data-player-id]') as HTMLElement | null;
+      return `hand:${col?.dataset.playerId ?? ''}:${hand.dataset.handCard}`;
     }
-    this.openPinnedTooltip(id);
-    return true;
+    const pool = el.closest('[data-pool-slot]') as HTMLElement | null;
+    if (pool?.dataset.poolSlot != null) return `pool:${pool.dataset.poolSlot}`;
+    const obj = el.closest('[data-obj-idx]') as HTMLElement | null;
+    if (obj?.dataset.objIdx != null) return `obj:${obj.dataset.objIdx}`;
+    const loc = el.closest('[data-loc]') as HTMLElement | null;
+    if (loc?.dataset.loc != null) return `loc:${loc.dataset.playerId ?? ''}:${loc.dataset.loc}`;
+    const camp = el.closest('[data-camp-wrap]') as HTMLElement | null;
+    if (camp) return `camp:${camp.dataset.playerId ?? ''}:${camp.id}`;
+    const control = el.closest(
+      '.bae_zoom_btn, .bgabutton, .action-button, .bae_scorepad_close, .bae_scorepad_reopen',
+    ) as HTMLElement | null;
+    if (control) return `ctl:${control.id || control.className}`;
+    return null;
   }
 
-  private playerAidEl(ev: Event): HTMLElement | null {
-    const target = ev.target as Element | null;
-    if (!target || typeof target.closest !== 'function') return null;
-    return target.closest('.bae_player_aid') as HTMLElement | null;
-  }
-
-  /** Blue interaction box for an objective tooltip. It is a hover cue, not a claim control. */
-  private syncObjectiveHoverHit(ev: Event): void {
-    if (this.tooltipPointerHeld || this.pointerDrag || this.dragCardId != null) return;
-    const target = ev.target as Element | null;
-    const obj = target?.closest?.('.bae_obj') as HTMLElement | null;
-    if (obj) {
-      this.setTouchHit(obj);
-      return;
-    }
-    if (this.touchHitEl?.classList.contains('bae_obj')) this.clearTouchHit();
-  }
-
-  private armTooltipQuiet(ev: Event): void {
-    this.tooltipPinnedId = null;
-    const mouse = ev as MouseEvent;
-    this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-    this.tooltipNeedMove = true;
-    this.tooltipClickX = mouse.clientX ?? 0;
-    this.tooltipClickY = mouse.clientY ?? 0;
-    this.tooltipWasBlocked = true;
-    const target = (ev.target as Element | null) ?? this.lastHoverEl;
-    if (target && typeof target.closest === 'function') {
-      const interacted = this.interactiveTooltipTarget(target) ?? target;
-      this.tooltipLeaveSelector = this.selectorFor(interacted);
-    }
+  private quietActionTooltip(el: Element | null): void {
+    this.actionTooltipQuietKey = this.actionTooltipKey(el);
+    this.closePinnedTooltip();
     this.cancelDojoTooltips();
-    this.dismissTooltipFrom(this.lastHoverEl);
+  }
+
+  private shouldQuietActionTooltip(el: Element | null): boolean {
+    return this.actionTooltipQuietKey != null && this.actionTooltipKey(el) === this.actionTooltipQuietKey;
+  }
+
+  private releaseActionTooltipQuiet(el: Element | null): void {
+    if (!this.actionTooltipQuietKey) return;
+    if (this.actionTooltipKey(el) === this.actionTooltipQuietKey) return;
+    if (el && typeof el.closest === 'function' && el.closest('.dijitTooltip, .dijitTooltipPopup, .bga-tooltip')) return;
+    this.actionTooltipQuietKey = null;
+  }
+
+  /** A click that plays a piece or presses a control. Help-only clicks are not actions. */
+  private isActionClickTarget(el: Element | null): boolean {
+    if (!el || typeof el.closest !== 'function') return false;
+    const control = el.closest(
+      '.bae_zoom_btn, .bgabutton, .action-button, .bae_scorepad_close, .bae_scorepad_reopen',
+    ) as HTMLElement | null;
+    if (control && !control.hasAttribute('disabled') && control.getAttribute('aria-disabled') !== 'true') return true;
+    if (el.closest('#pagemaintitle_wrap, .pref_pop, .debug_info, .dijitDialog')) return true;
+    return !!el.closest('.bae_can_act');
+  }
+
+  /** Show a tooltip immediately. A second call while it is already open leaves it open. */
+  private showTooltipNow(id: string): void {
+    const node = document.getElementById(id);
+    const tip = this.tooltipRecord(id);
+    if (!node || !tip?.open) return;
+    const anchor = tip._connectNode;
+    const sameAnchor = anchor === node || anchor === id
+      || (anchor instanceof Element && (anchor === node || anchor.contains(node) || node.contains(anchor)));
+    if (tip.state === 'SHOWING' && sameAnchor) return;
+    try { tip.open(id); } catch { /* ignore */ }
+  }
+
+  private tooltipRecord(id: string): {
+    open?: (target: unknown) => void;
+    state?: string;
+    _connectNode?: Node | string | null;
+  } | undefined {
+    const tooltips = (this.host.bga.gameui as unknown as {
+      tooltips?: Record<string, {
+        open?: (target: unknown) => void;
+        state?: string;
+        _connectNode?: Node | string | null;
+      }>;
+    }).tooltips;
+    return tooltips?.[id];
   }
 
   private handleTouchTap(ev: PointerEvent): void {
@@ -2458,19 +2446,16 @@ export class OptionalUi {
     const dy = (ev.clientY ?? 0) - this.touchStartY;
     if (dx * dx + dy * dy >= OptionalUi.TOUCH_TAP_PX * OptionalUi.TOUCH_TAP_PX) {
       this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
       return;
     }
     const target = (ev.target as Element | null) ?? this.lastHoverEl;
     if (this.isTapActionTarget(target)) {
       this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
       return;
     }
     const id = this.tooltipHostId(target);
     if (!id) {
       this.closePinnedTooltip();
-      this.armTooltipQuiet(ev);
       return;
     }
     if (this.tooltipPinnedId === id) {
@@ -2526,9 +2511,6 @@ export class OptionalUi {
 
   private openPinnedTooltip(id: string): void {
     this.tooltipPinnedId = id;
-    this.tooltipQuietUntil = 0;
-    this.tooltipNeedMove = false;
-    this.tooltipWasBlocked = false;
     const gen = this.beginTooltipPlace();
     this.cancelDojoTooltips();
     const showAndFit = (): void => {
@@ -2623,61 +2605,6 @@ export class OptionalUi {
     this.clearTooltipFitTimers();
     document.body.classList.remove('bae_tooltip_placing');
     this.cancelDojoTooltips();
-  }
-
-  private beginTooltipGuard(zones: string[]): void {
-    const hoverZone = this.hoverTooltipZone();
-    const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
-    const hover = this.lastHoverEl;
-    this.tooltipPinnedId = null;
-    this.tooltipNeedMove = true;
-    this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-    this.tooltipWasBlocked = true;
-    if (hover && typeof hover.closest === 'function') {
-      this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
-    }
-    if (affected) this.dismissTooltipFrom(hover);
-    this.cancelDojoTooltips();
-  }
-
-  private endTooltipGuard(): void {
-    this.tooltipNeedMove = true;
-    this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-    this.tooltipWasBlocked = true;
-    const hover = this.lastHoverEl;
-    if (hover && typeof hover.closest === 'function') {
-      this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
-    }
-    this.cancelDojoTooltips();
-  }
-
-  private isTooltipBlocked(): boolean {
-    if (this.resolving) return true;
-    if (this.tooltipPinnedId) return false;
-    if (this.tooltipPointerHeld || this.tooltipDragging || this.dragCardId != null) return true;
-    if (Date.now() < this.tooltipQuietUntil) return true;
-    if (this.tooltipNeedMove) return true;
-    return this.isHoveringLeaveTarget(this.lastHoverEl);
-  }
-
-  private isHoveringLeaveTarget(hover: Element | null): boolean {
-    if (!hover || !this.tooltipLeaveSelector || typeof hover.closest !== 'function') return false;
-    try {
-      return !!hover.closest(this.tooltipLeaveSelector);
-    } catch {
-      return false;
-    }
-  }
-
-  private retriggerTooltipHover(): void {
-    const hover = this.lastHoverEl;
-    if (!hover || typeof hover.dispatchEvent !== 'function') return;
-    this.tooltipRetrigger = true;
-    hover.dispatchEvent(new MouseEvent('mouseover', {
-      bubbles: true,
-      cancelable: true,
-      view: window,
-    }));
   }
 
   private setTouchHit(el: Element | null): void {
@@ -2775,45 +2702,6 @@ export class OptionalUi {
     ].join(',')) as HTMLElement | null;
   }
 
-  private interactiveTooltipTarget(el: Element): Element | null {
-    return el.closest([
-      '.bae_card',
-      '.bae_pile_slot',
-      '.bae_pool_slot',
-      '.bae_obj',
-      '.bae_score_card',
-      '.bae_camp_zone',
-      '.bae_animal_loc_vp_track',
-      '.bae_vp_tokens_zone',
-      '.bae_player_aid',
-      '.bae_regroup_hold',
-      '.bae_location_zone',
-    ].join(','));
-  }
-
-  private selectorFor(el: Element): string | null {
-    const host = el as HTMLElement;
-    if (host.id) return `#${host.id}`;
-    const loc = host.closest?.('.bae_location_zone') as HTMLElement | null;
-    if (loc?.dataset.playerId != null && loc.dataset.loc != null) {
-      return `.bae_location_zone[data-player-id="${loc.dataset.playerId}"][data-loc="${loc.dataset.loc}"]`;
-    }
-    const camp = host.closest?.('.bae_camp_zone') as HTMLElement | null;
-    if (camp?.id) return `#${camp.id}`;
-    const card = host.closest?.('.bae_card') as HTMLElement | null;
-    if (card?.id) return `#${card.id}`;
-    return null;
-  }
-
-  private hoverTooltipZone(): string | null {
-    const el = this.lastHoverEl;
-    if (!el || typeof (el as Element).closest !== 'function') return null;
-    if ((el as Element).closest('.bae_pool, .bae_top_pool')) return 'pool';
-    const board = (el as Element).closest('.bae_playerboard') as HTMLElement | null;
-    if (board?.dataset.playerId) return `player:${board.dataset.playerId}`;
-    return null;
-  }
-
   private tooltipNodes(): HTMLElement[] {
     return Array.from(document.querySelectorAll(
       '.dijitTooltip, .dijitTooltipPopup, .bga-tooltip',
@@ -2830,23 +2718,6 @@ export class OptionalUi {
     });
     document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
     document.body.classList.remove('bae_block_tooltips');
-  }
-
-  private dismissTooltipFrom(from: Element | null): void {
-    this.repairTooltipNodes();
-    if (from && typeof from.dispatchEvent === 'function') {
-      const related = document.body;
-      const bubble = { bubbles: true, cancelable: true, view: window, relatedTarget: related } as MouseEventInit;
-      from.dispatchEvent(new MouseEvent('pointerout', bubble));
-      from.dispatchEvent(new MouseEvent('mouseout', bubble));
-      from.dispatchEvent(new MouseEvent('mouseleave', {
-        bubbles: false,
-        cancelable: true,
-        view: window,
-        relatedTarget: related,
-      }));
-    }
-    this.cancelDojoTooltips();
   }
 
   private cancelDojoTooltips(): void {

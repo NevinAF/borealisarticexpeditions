@@ -1143,16 +1143,9 @@ class OptionalUi {
         this.pendingDiscard = new Map();
         this.discardLoopEpoch = 0;
         this.tooltipBound = false;
-        this.tooltipLeaveSelector = null;
-        this.tooltipQuietUntil = 0;
-        this.tooltipNeedMove = false;
-        this.tooltipClickX = 0;
-        this.tooltipClickY = 0;
-        this.tooltipWasBlocked = false;
-        this.tooltipRetrigger = false;
-        this.tooltipPointerHeld = false;
-        this.tooltipDragging = false;
         this.tooltipPinnedId = null;
+        /** After an action click, keep that piece's tooltip closed until the pointer leaves it. */
+        this.actionTooltipQuietKey = null;
         this.lastPointerWasTouch = false;
         this.touchStartX = 0;
         this.touchStartY = 0;
@@ -1189,8 +1182,6 @@ class OptionalUi {
         this.restoreHoldingFromState();
         this.renderRegroupHold();
         this.host.refreshScientistTooltips();
-        if (this.isTooltipBlocked())
-            this.cancelDojoTooltips();
         this.syncTopRowWrap();
         this.updateActionPreviews();
         this.bindPreferenceListener();
@@ -1320,8 +1311,7 @@ class OptionalUi {
     previewLoopMs() {
         return Math.max(1000, Math.round(animMs(2) * 4));
     }
-    prepareResolution(zones = ['all'], keepRegroupSelection = false) {
-        this.beginTooltipGuard(zones);
+    prepareResolution(keepRegroupSelection = false) {
         this.clearPreviews();
         this.host.selectedCardId = null;
         this.host.selectedLocation = null;
@@ -1346,7 +1336,6 @@ class OptionalUi {
     }
     endResolution() {
         this.resolving = false;
-        this.endTooltipGuard();
     }
     async playObserveResolution(prev, args) {
         const ms = this.duration();
@@ -1354,7 +1343,7 @@ class OptionalUi {
             return;
         this.resolving = true;
         const pid = Number(args.player_id ?? args.playerId ?? 0);
-        this.prepareResolution([`player:${pid}`]);
+        this.prepareResolution();
         try {
             const cardId = Number(args.card_id ?? NaN);
             const loc = Number(args.location ?? NaN);
@@ -1422,7 +1411,7 @@ class OptionalUi {
         if (ms === 0 || this.resolving)
             return;
         this.resolving = true;
-        this.prepareResolution([`player:${pid}`]);
+        this.prepareResolution();
         try {
             const discarded = this.discardedIdsFromNotif(args);
             const leftHold = this.ensureRegroupHold(pid, 'left');
@@ -1463,7 +1452,7 @@ class OptionalUi {
             return;
         }
         this.resolving = true;
-        this.prepareResolution([`player:${pid}`]);
+        this.prepareResolution();
         try {
             if (loc < 0 || loc > 2)
                 return;
@@ -1483,7 +1472,7 @@ class OptionalUi {
             return;
         this.resolving = true;
         const pid = Number(args.player_id ?? args.playerId ?? 0);
-        this.prepareResolution(['pool', `player:${pid}`]);
+        this.prepareResolution();
         try {
             const fromDeck = Boolean(args.from_deck);
             const slot = Number(args.pool_slot ?? args.slot ?? NaN);
@@ -1529,7 +1518,7 @@ class OptionalUi {
             return;
         this.resolving = true;
         const pid = Number(args.player_id ?? args.playerId ?? 0);
-        this.prepareResolution(['pool', `player:${pid}`]);
+        this.prepareResolution();
         try {
             const root = this.host.root;
             const pool = root.querySelector('.bae_pool');
@@ -1571,7 +1560,7 @@ class OptionalUi {
         const pid = Number(args.player_id ?? args.playerId ?? 0);
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const keepRegroupSelection = this.host.isOpeningMulliganLike() && pid !== myId;
-        this.prepareResolution([`player:${pid}`], keepRegroupSelection);
+        this.prepareResolution(keepRegroupSelection);
         try {
             const discarded = this.discardedIdsFromNotif(args);
             await this.animateHandReplace(pid, discarded, prev, args.boardState, ms);
@@ -1591,7 +1580,7 @@ class OptionalUi {
             return;
         this.lastClaimFlightKey = key;
         this.resolving = true;
-        this.prepareResolution([`player:${pid}`]);
+        this.prepareResolution();
         try {
             const obj = Number.isFinite(idx)
                 ? this.host.root.querySelector(`#bae_obj_${idx}`)
@@ -1620,7 +1609,7 @@ class OptionalUi {
         if (flights.length === 0)
             return false;
         this.resolving = true;
-        this.prepareResolution([`player:${pid}`]);
+        this.prepareResolution();
         try {
             onStart?.();
             await this.vp.addIncoming(pid, flights.map((f) => f.value), flights.map((f) => f.from), ms, true);
@@ -2625,8 +2614,7 @@ class OptionalUi {
     }
     activatePointerDrag(ev, drag) {
         drag.active = true;
-        this.tooltipDragging = true;
-        this.tooltipPointerHeld = true;
+        this.cancelDojoTooltips();
         if (drag.kind === 'hand' && drag.cardId != null) {
             this.beginHandDragChrome(drag.cardId);
         }
@@ -2727,7 +2715,6 @@ class OptionalUi {
     cancelPointerDrag(restoreSelection = true) {
         const drag = this.pointerDrag;
         this.pointerDrag = null;
-        this.tooltipDragging = false;
         if (!drag)
             return;
         drag.ghost?.remove();
@@ -3257,21 +3244,21 @@ class OptionalUi {
         const onHover = (ev) => {
             const target = ev.target;
             this.lastHoverEl = target;
-            this.syncObjectiveHoverHit(ev);
-            if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
-                this.tooltipLeaveSelector = null;
-            }
-            if (this.tooltipRetrigger) {
-                this.tooltipRetrigger = false;
-                return;
-            }
-            if (this.tooltipPinnedId)
-                return;
-            if (this.isTooltipBlocked()) {
+            if (this.pointerDrag?.active || this.shouldQuietActionTooltip(target)) {
                 ev.stopPropagation();
                 ev.stopImmediatePropagation();
                 this.cancelDojoTooltips();
+                return;
             }
+            this.releaseActionTooltipQuiet(target);
+        };
+        const onFocusIn = (ev) => {
+            const target = ev.target;
+            if (!this.shouldQuietActionTooltip(target))
+                return;
+            ev.stopPropagation();
+            ev.stopImmediatePropagation();
+            this.cancelDojoTooltips();
         };
         const onClick = (ev) => {
             if (Date.now() < this.suppressClickUntil) {
@@ -3280,11 +3267,17 @@ class OptionalUi {
                 ev.stopImmediatePropagation();
                 return;
             }
-            if (this.lastPointerWasTouch && this.tooltipPinnedId)
+            if (this.lastPointerWasTouch)
                 return;
-            if (this.togglePlayerAidTooltip(ev))
+            const target = ev.target;
+            if (this.isActionClickTarget(target))
                 return;
-            this.armTooltipQuiet(ev);
+            const id = this.tooltipHostId(target);
+            if (!id)
+                return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.showTooltipNow(id);
         };
         const onPointerDown = (ev) => {
             const pointer = ev;
@@ -3293,88 +3286,57 @@ class OptionalUi {
                 return;
             }
             this.lastPointerWasTouch = pointer.pointerType === 'touch';
-            const idleObjective = ev.target?.closest?.('button.bae_obj');
-            if (idleObjective && !idleObjective.classList.contains('bae_can_act') && !this.lastPointerWasTouch) {
-                ev.preventDefault();
-            }
-            this.tooltipPointerHeld = true;
+            const target = ev.target;
             this.touchStartX = pointer.clientX ?? 0;
             this.touchStartY = pointer.clientY ?? 0;
-            this.setTouchHit(ev.target);
-            if (this.lastPointerWasTouch || this.playerAidEl(ev)) {
+            this.setTouchHit(target);
+            if (this.lastPointerWasTouch)
+                return;
+            if (this.isActionClickTarget(target)) {
+                this.quietActionTooltip(target);
                 return;
             }
-            this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
+            const id = this.tooltipHostId(target);
+            if (!id) {
+                this.closePinnedTooltip();
+                return;
+            }
+            // Keep the pointer from focusing the piece. Focus would dismiss the tooltip,
+            // and the click that follows would dismiss it again.
+            ev.preventDefault();
+            this.showTooltipNow(id);
         };
         const onPointerUp = (ev) => {
             const pointer = ev;
             const dragged = this.finishPointerDrag(pointer);
-            this.tooltipPointerHeld = false;
             this.clearTouchHit();
-            if (dragged) {
-                this.armTooltipQuiet(ev);
+            if (dragged)
                 return;
-            }
-            if (!this.lastPointerWasTouch)
-                this.syncObjectiveHoverHit(ev);
             if (this.lastPointerWasTouch) {
                 this.handleTouchTap(pointer);
                 return;
             }
-            if (this.playerAidEl(ev))
+            const target = ev.target;
+            if (this.isActionClickTarget(target))
                 return;
-            this.armTooltipQuiet(ev);
+            const id = this.tooltipHostId(target);
+            if (id)
+                this.showTooltipNow(id);
         };
-        const onPointerCancel = (ev) => {
+        const onPointerCancel = () => {
             this.cancelPointerDrag();
-            this.tooltipPointerHeld = false;
             this.clearTouchHit();
-            this.armTooltipQuiet(ev);
         };
-        const onDragStart = (ev) => {
-            this.tooltipDragging = true;
-            this.tooltipPointerHeld = true;
+        const onDragStart = () => {
             this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
-        };
-        const onDragEnd = (ev) => {
-            this.tooltipDragging = false;
-            this.tooltipPointerHeld = false;
-            this.armTooltipQuiet(ev);
+            this.cancelDojoTooltips();
         };
         const onMove = (ev) => {
             if (ev instanceof PointerEvent)
                 this.tickPointerDrag(ev);
-            const mouse = ev;
             const target = ev.target;
             this.lastHoverEl = target;
-            this.syncObjectiveHoverHit(ev);
-            const buttons = mouse.buttons ?? 0;
-            if (buttons !== 0) {
-                if (!this.tooltipPointerHeld)
-                    this.tooltipPointerHeld = true;
-            }
-            else if (this.tooltipPointerHeld && !this.tooltipDragging && this.dragCardId == null && !this.pointerDrag) {
-                this.tooltipPointerHeld = false;
-                if (!this.lastPointerWasTouch && !this.playerAidEl(ev))
-                    this.armTooltipQuiet(ev);
-            }
-            if (this.tooltipNeedMove && !this.tooltipPointerHeld && !this.tooltipDragging) {
-                const dx = (mouse.clientX ?? 0) - this.tooltipClickX;
-                const dy = (mouse.clientY ?? 0) - this.tooltipClickY;
-                if (dx * dx + dy * dy >= 16)
-                    this.tooltipNeedMove = false;
-            }
-            if (this.tooltipLeaveSelector && !this.isHoveringLeaveTarget(target)) {
-                this.tooltipLeaveSelector = null;
-            }
-            const blocked = this.isTooltipBlocked();
-            if (blocked)
-                this.cancelDojoTooltips();
-            if (this.tooltipWasBlocked && !blocked)
-                this.retriggerTooltipHover();
-            this.tooltipWasBlocked = blocked;
+            this.releaseActionTooltipQuiet(target);
         };
         const onMouseOut = (ev) => {
             if (!this.tooltipPinnedId)
@@ -3384,90 +3346,104 @@ class OptionalUi {
         };
         document.addEventListener('mouseover', onHover, true);
         document.addEventListener('mouseenter', onHover, true);
+        document.addEventListener('focusin', onFocusIn, true);
         document.addEventListener('mouseout', onMouseOut, true);
         document.addEventListener('pointerdown', onPointerDown, true);
         document.addEventListener('pointerup', onPointerUp, true);
         document.addEventListener('pointercancel', onPointerCancel, true);
         document.addEventListener('pointermove', onMove, { capture: true, passive: false });
         document.addEventListener('dragstart', onDragStart, true);
-        document.addEventListener('dragend', onDragEnd, true);
-        document.addEventListener('drag', onMove, true);
         document.addEventListener('click', onClick, true);
-        document.addEventListener('mousemove', onMove, true);
     }
-    /** Click keeps the player-aid tooltip open. A second click on it closes the pin. */
-    togglePlayerAidTooltip(ev) {
-        if (this.lastPointerWasTouch)
-            return false;
-        const aid = this.playerAidEl(ev);
-        if (!aid)
-            return false;
-        const id = this.tooltipHostId(aid);
-        if (!id)
-            return false;
-        ev.preventDefault();
-        ev.stopPropagation();
-        if (this.tooltipPinnedId === id) {
-            this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
-            return true;
-        }
-        this.openPinnedTooltip(id);
-        return true;
-    }
-    playerAidEl(ev) {
-        const target = ev.target;
-        if (!target || typeof target.closest !== 'function')
+    /** Stable identity for the piece under the pointer, so a redraw does not clear the hold. */
+    actionTooltipKey(el) {
+        if (!el || typeof el.closest !== 'function')
             return null;
-        return target.closest('.bae_player_aid');
-    }
-    /** Blue interaction box for an objective tooltip. It is a hover cue, not a claim control. */
-    syncObjectiveHoverHit(ev) {
-        if (this.tooltipPointerHeld || this.pointerDrag || this.dragCardId != null)
-            return;
-        const target = ev.target;
-        const obj = target?.closest?.('.bae_obj');
-        if (obj) {
-            this.setTouchHit(obj);
-            return;
+        const hand = el.closest('[data-hand-card]');
+        if (hand?.dataset.handCard) {
+            const col = hand.closest('[data-player-id]');
+            return `hand:${col?.dataset.playerId ?? ''}:${hand.dataset.handCard}`;
         }
-        if (this.touchHitEl?.classList.contains('bae_obj'))
-            this.clearTouchHit();
+        const pool = el.closest('[data-pool-slot]');
+        if (pool?.dataset.poolSlot != null)
+            return `pool:${pool.dataset.poolSlot}`;
+        const obj = el.closest('[data-obj-idx]');
+        if (obj?.dataset.objIdx != null)
+            return `obj:${obj.dataset.objIdx}`;
+        const loc = el.closest('[data-loc]');
+        if (loc?.dataset.loc != null)
+            return `loc:${loc.dataset.playerId ?? ''}:${loc.dataset.loc}`;
+        const camp = el.closest('[data-camp-wrap]');
+        if (camp)
+            return `camp:${camp.dataset.playerId ?? ''}:${camp.id}`;
+        const control = el.closest('.bae_zoom_btn, .bgabutton, .action-button, .bae_scorepad_close, .bae_scorepad_reopen');
+        if (control)
+            return `ctl:${control.id || control.className}`;
+        return null;
     }
-    armTooltipQuiet(ev) {
-        this.tooltipPinnedId = null;
-        const mouse = ev;
-        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-        this.tooltipNeedMove = true;
-        this.tooltipClickX = mouse.clientX ?? 0;
-        this.tooltipClickY = mouse.clientY ?? 0;
-        this.tooltipWasBlocked = true;
-        const target = ev.target ?? this.lastHoverEl;
-        if (target && typeof target.closest === 'function') {
-            const interacted = this.interactiveTooltipTarget(target) ?? target;
-            this.tooltipLeaveSelector = this.selectorFor(interacted);
-        }
+    quietActionTooltip(el) {
+        this.actionTooltipQuietKey = this.actionTooltipKey(el);
+        this.closePinnedTooltip();
         this.cancelDojoTooltips();
-        this.dismissTooltipFrom(this.lastHoverEl);
+    }
+    shouldQuietActionTooltip(el) {
+        return this.actionTooltipQuietKey != null && this.actionTooltipKey(el) === this.actionTooltipQuietKey;
+    }
+    releaseActionTooltipQuiet(el) {
+        if (!this.actionTooltipQuietKey)
+            return;
+        if (this.actionTooltipKey(el) === this.actionTooltipQuietKey)
+            return;
+        if (el && typeof el.closest === 'function' && el.closest('.dijitTooltip, .dijitTooltipPopup, .bga-tooltip'))
+            return;
+        this.actionTooltipQuietKey = null;
+    }
+    /** A click that plays a piece or presses a control. Help-only clicks are not actions. */
+    isActionClickTarget(el) {
+        if (!el || typeof el.closest !== 'function')
+            return false;
+        const control = el.closest('.bae_zoom_btn, .bgabutton, .action-button, .bae_scorepad_close, .bae_scorepad_reopen');
+        if (control && !control.hasAttribute('disabled') && control.getAttribute('aria-disabled') !== 'true')
+            return true;
+        if (el.closest('#pagemaintitle_wrap, .pref_pop, .debug_info, .dijitDialog'))
+            return true;
+        return !!el.closest('.bae_can_act');
+    }
+    /** Show a tooltip immediately. A second call while it is already open leaves it open. */
+    showTooltipNow(id) {
+        const node = document.getElementById(id);
+        const tip = this.tooltipRecord(id);
+        if (!node || !tip?.open)
+            return;
+        const anchor = tip._connectNode;
+        const sameAnchor = anchor === node || anchor === id
+            || (anchor instanceof Element && (anchor === node || anchor.contains(node) || node.contains(anchor)));
+        if (tip.state === 'SHOWING' && sameAnchor)
+            return;
+        try {
+            tip.open(id);
+        }
+        catch { /* ignore */ }
+    }
+    tooltipRecord(id) {
+        const tooltips = this.host.bga.gameui.tooltips;
+        return tooltips?.[id];
     }
     handleTouchTap(ev) {
         const dx = (ev.clientX ?? 0) - this.touchStartX;
         const dy = (ev.clientY ?? 0) - this.touchStartY;
         if (dx * dx + dy * dy >= OptionalUi.TOUCH_TAP_PX * OptionalUi.TOUCH_TAP_PX) {
             this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
             return;
         }
         const target = ev.target ?? this.lastHoverEl;
         if (this.isTapActionTarget(target)) {
             this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
             return;
         }
         const id = this.tooltipHostId(target);
         if (!id) {
             this.closePinnedTooltip();
-            this.armTooltipQuiet(ev);
             return;
         }
         if (this.tooltipPinnedId === id) {
@@ -3526,9 +3502,6 @@ class OptionalUi {
     }
     openPinnedTooltip(id) {
         this.tooltipPinnedId = id;
-        this.tooltipQuietUntil = 0;
-        this.tooltipNeedMove = false;
-        this.tooltipWasBlocked = false;
         const gen = this.beginTooltipPlace();
         this.cancelDojoTooltips();
         const showAndFit = () => {
@@ -3632,65 +3605,6 @@ class OptionalUi {
         document.body.classList.remove('bae_tooltip_placing');
         this.cancelDojoTooltips();
     }
-    beginTooltipGuard(zones) {
-        const hoverZone = this.hoverTooltipZone();
-        const affected = zones.includes('all') || (hoverZone != null && zones.includes(hoverZone));
-        const hover = this.lastHoverEl;
-        this.tooltipPinnedId = null;
-        this.tooltipNeedMove = true;
-        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-        this.tooltipWasBlocked = true;
-        if (hover && typeof hover.closest === 'function') {
-            this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
-        }
-        if (affected)
-            this.dismissTooltipFrom(hover);
-        this.cancelDojoTooltips();
-    }
-    endTooltipGuard() {
-        this.tooltipNeedMove = true;
-        this.tooltipQuietUntil = Date.now() + OptionalUi.TOOLTIP_CLICK_MS;
-        this.tooltipWasBlocked = true;
-        const hover = this.lastHoverEl;
-        if (hover && typeof hover.closest === 'function') {
-            this.tooltipLeaveSelector = this.selectorFor(this.interactiveTooltipTarget(hover) ?? hover);
-        }
-        this.cancelDojoTooltips();
-    }
-    isTooltipBlocked() {
-        if (this.resolving)
-            return true;
-        if (this.tooltipPinnedId)
-            return false;
-        if (this.tooltipPointerHeld || this.tooltipDragging || this.dragCardId != null)
-            return true;
-        if (Date.now() < this.tooltipQuietUntil)
-            return true;
-        if (this.tooltipNeedMove)
-            return true;
-        return this.isHoveringLeaveTarget(this.lastHoverEl);
-    }
-    isHoveringLeaveTarget(hover) {
-        if (!hover || !this.tooltipLeaveSelector || typeof hover.closest !== 'function')
-            return false;
-        try {
-            return !!hover.closest(this.tooltipLeaveSelector);
-        }
-        catch {
-            return false;
-        }
-    }
-    retriggerTooltipHover() {
-        const hover = this.lastHoverEl;
-        if (!hover || typeof hover.dispatchEvent !== 'function')
-            return;
-        this.tooltipRetrigger = true;
-        hover.dispatchEvent(new MouseEvent('mouseover', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-        }));
-    }
     setTouchHit(el) {
         const next = this.touchHitTarget(el);
         if (!next) {
@@ -3786,48 +3700,6 @@ class OptionalUi {
             '.bae_score_card',
         ].join(','));
     }
-    interactiveTooltipTarget(el) {
-        return el.closest([
-            '.bae_card',
-            '.bae_pile_slot',
-            '.bae_pool_slot',
-            '.bae_obj',
-            '.bae_score_card',
-            '.bae_camp_zone',
-            '.bae_animal_loc_vp_track',
-            '.bae_vp_tokens_zone',
-            '.bae_player_aid',
-            '.bae_regroup_hold',
-            '.bae_location_zone',
-        ].join(','));
-    }
-    selectorFor(el) {
-        const host = el;
-        if (host.id)
-            return `#${host.id}`;
-        const loc = host.closest?.('.bae_location_zone');
-        if (loc?.dataset.playerId != null && loc.dataset.loc != null) {
-            return `.bae_location_zone[data-player-id="${loc.dataset.playerId}"][data-loc="${loc.dataset.loc}"]`;
-        }
-        const camp = host.closest?.('.bae_camp_zone');
-        if (camp?.id)
-            return `#${camp.id}`;
-        const card = host.closest?.('.bae_card');
-        if (card?.id)
-            return `#${card.id}`;
-        return null;
-    }
-    hoverTooltipZone() {
-        const el = this.lastHoverEl;
-        if (!el || typeof el.closest !== 'function')
-            return null;
-        if (el.closest('.bae_pool, .bae_top_pool'))
-            return 'pool';
-        const board = el.closest('.bae_playerboard');
-        if (board?.dataset.playerId)
-            return `player:${board.dataset.playerId}`;
-        return null;
-    }
     tooltipNodes() {
         return Array.from(document.querySelectorAll('.dijitTooltip, .dijitTooltipPopup, .bga-tooltip'));
     }
@@ -3841,22 +3713,6 @@ class OptionalUi {
         });
         document.querySelectorAll('.bae_tooltip_keeper').forEach((el) => el.remove());
         document.body.classList.remove('bae_block_tooltips');
-    }
-    dismissTooltipFrom(from) {
-        this.repairTooltipNodes();
-        if (from && typeof from.dispatchEvent === 'function') {
-            const related = document.body;
-            const bubble = { bubbles: true, cancelable: true, view: window, relatedTarget: related };
-            from.dispatchEvent(new MouseEvent('pointerout', bubble));
-            from.dispatchEvent(new MouseEvent('mouseout', bubble));
-            from.dispatchEvent(new MouseEvent('mouseleave', {
-                bubbles: false,
-                cancelable: true,
-                view: window,
-                relatedTarget: related,
-            }));
-        }
-        this.cancelDojoTooltips();
     }
     cancelDojoTooltips() {
         this.repairTooltipNodes();
@@ -4151,7 +4007,6 @@ class OptionalUi {
 OptionalUi.DISCARD_LOOP_MS = 1850;
 OptionalUi.POINTER_DRAG_PX = 16;
 OptionalUi.TOUCH_TAP_PX = 24;
-OptionalUi.TOOLTIP_CLICK_MS = 500;
 
 const SPECIES_COUNT = 5;
 const VEHICLE_COUNT = 5;
@@ -4684,7 +4539,7 @@ class Game {
             scoringTitle: (id) => this.gamedatas.materials.scoring_cards?.[id]?.title ?? '',
             addTooltip: (id, text) => {
                 if (typeof this.bga.gameui.addTooltip === 'function')
-                    this.bga.gameui.addTooltip(id, text, '');
+                    this.bga.gameui.addTooltip(id, text, '', Game.TOOLTIP_DELAY_MS);
             },
         });
         this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
@@ -5066,10 +4921,10 @@ class Game {
                 catch (_) { }
                 if (canHtmlTooltip) {
                     const html = this.buildCardTooltipSpriteHtml('animal', 9999, _('Hidden hand card'), [_('You cannot see cards in other players hands. Animations do not indicate cards positions.')]);
-                    this.bga.gameui.addTooltipHtml(id, html);
+                    this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
                 }
                 else {
-                    this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands. Animations do not indicate cards positions.'), '');
+                    this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands. Animations do not indicate cards positions.'), '', Game.TOOLTIP_DELAY_MS);
                 }
             });
         }
@@ -5096,10 +4951,10 @@ class Game {
                 : '';
             if (canHtmlTooltip) {
                 const html = this.buildCardTooltipSpriteHtml('animal', numericCardId, `${species || _('Animal card')} #${numericCardId}`, [effect, actionText]);
-                this.bga.gameui.addTooltipHtml(id, html);
+                this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
             }
             else {
-                this.bga.gameui.addTooltip(id, _('Your hand card'), actionText);
+                this.bga.gameui.addTooltip(id, _('Your hand card'), actionText, Game.TOOLTIP_DELAY_MS);
             }
         });
     }
@@ -5894,7 +5749,7 @@ class Game {
             }
             catch { /* none yet */ }
             if (typeof this.bga.gameui.addTooltip === 'function')
-                this.bga.gameui.addTooltip(btn.id, label, '');
+                this.bga.gameui.addTooltip(btn.id, label, '', Game.TOOLTIP_DELAY_MS);
         }
         this.root.appendChild(bar);
     }
@@ -6058,8 +5913,8 @@ class Game {
             catch (_) { }
             const campHelp = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 3);
             const campHelpR = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 4);
-            this.bga.gameui.addTooltip(leftId, campHelp, _('Select this camp to start/cancel regroup.'));
-            this.bga.gameui.addTooltip(rightId, campHelpR, _('Select this camp to start/cancel regroup.'));
+            this.bga.gameui.addTooltip(leftId, campHelp, _('Select this camp to start/cancel regroup.'), Game.TOOLTIP_DELAY_MS);
+            this.bga.gameui.addTooltip(rightId, campHelpR, _('Select this camp to start/cancel regroup.'), Game.TOOLTIP_DELAY_MS);
             const reassignParts = countParts(sciByPlayer[pid], [3, 4]);
             const reassignHelp = reassignParts.length > 0
                 ? `${_('Reassign')} ${reassignParts.join(', ')}`
@@ -6071,7 +5926,7 @@ class Game {
                 }
                 catch (_) { }
                 if (this.root.querySelector(`#${holdId}`)) {
-                    this.bga.gameui.addTooltip(holdId, reassignHelp, '');
+                    this.bga.gameui.addTooltip(holdId, reassignHelp, '', Game.TOOLTIP_DELAY_MS);
                 }
             }
             for (let loc = 0; loc < 3; loc++) {
@@ -6080,7 +5935,7 @@ class Game {
                     this.bga.gameui.removeTooltip(shelfId);
                 }
                 catch (_) { }
-                this.bga.gameui.addTooltip(shelfId, summaryAt(sciByPlayer[pid], loc), '');
+                this.bga.gameui.addTooltip(shelfId, summaryAt(sciByPlayer[pid], loc), '', Game.TOOLTIP_DELAY_MS);
             }
         }
     }
@@ -6098,13 +5953,13 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            this.bga.gameui.addTooltipHtml(id, poolGroupHtml);
+            this.bga.gameui.addTooltipHtml(id, poolGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
         });
         try {
             this.bga.gameui.removeTooltip('bae_pool_slot_deck');
         }
         catch (_) { }
-        this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
+        this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'), Game.TOOLTIP_DELAY_MS);
         // Objectives: hovering any one shows all of them in the top-row layout
         const objectiveCells = (d.objectives || []).map((obj) => {
             const objectiveMat = this.gamedatas.materials.objectives[obj.id];
@@ -6117,7 +5972,7 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml);
+            this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
         });
         // Scoring cards: hovering any one shows all of them in the top-row layout
         const scoringCells = (d.scoring_cards || []).map((scoringId) => {
@@ -6133,7 +5988,7 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            this.bga.gameui.addTooltipHtml(id, scoringGroupHtml);
+            this.bga.gameui.addTooltipHtml(id, scoringGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
         });
         // Camps, holds, and scientist shelves
         this.registerScientistTooltips();
@@ -6155,7 +6010,7 @@ class Game {
                         ? `${_('Moves')} ${sci[def.left_move] ?? def.left_move} ${_('left')} · ${sci[def.right_move] ?? def.right_move} ${_('right')}. ${_('Vehicle')}: ${vehicle}. ${_('Bonus VP')}: ${def.bonus_vp}.`
                         : '';
                     const html = this.buildCardTooltipSpriteHtml('animal', card.id, `${species || _('Animal card')} #${card.id}`, [effect]);
-                    this.bga.gameui.addTooltipHtml(id, html);
+                    this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
                 });
             });
         }
@@ -6174,7 +6029,7 @@ class Game {
                     this.bga.gameui.removeTooltip(trackId);
                 }
                 catch (_) { }
-                this.bga.gameui.addTooltipHtml(trackId, html);
+                this.bga.gameui.addTooltipHtml(trackId, html, Game.TOOLTIP_DELAY_MS);
                 for (let i = 0; i < 8; i++) {
                     try {
                         this.bga.gameui.removeTooltip(`bae_track_${pid}_${loc}_${i}`);
@@ -6190,7 +6045,7 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
+            this.bga.gameui.addTooltipHtml(id, speciesSetHtml, Game.TOOLTIP_DELAY_MS);
         }
         for (const pidStr of Object.keys(this.gamedatas.players)) {
             const pid = Number(pidStr);
@@ -6199,14 +6054,14 @@ class Game {
                 this.bga.gameui.removeTooltip(id);
             }
             catch (_) { }
-            this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid));
+            this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid), Game.TOOLTIP_DELAY_MS);
             if (pid === Number(this.bga.players.getCurrentPlayerId())) {
                 const aidId = `bae_player_aid_${pid}`;
                 try {
                     this.bga.gameui.removeTooltip(aidId);
                 }
                 catch (_) { }
-                this.bga.gameui.addTooltipHtml(aidId, this.playerAidTooltipHtml());
+                this.bga.gameui.addTooltipHtml(aidId, this.playerAidTooltipHtml(), Game.TOOLTIP_DELAY_MS);
             }
         }
     }
@@ -7013,7 +6868,7 @@ class Game {
         if (!params.tooltip)
             return;
         button.removeAttribute('title');
-        this.bga.gameui.addTooltipHtml(params.id, params.tooltip);
+        this.bga.gameui.addTooltipHtml(params.id, params.tooltip, Game.TOOLTIP_DELAY_MS);
     }
     onUpdateActionButtons(stateName, args) {
         this.cacheStateActionArgs(args);
@@ -7435,6 +7290,10 @@ Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 750 + 120 * 8;
 /** Top row and page chrome. Multiplied by $scale_card. */
 Game.MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
 Game.TOOLTIP_MAX_WIDTH_PX = 640;
+/** Usual Board Game Arena hover delay, so a quick pass does not open help. */
+Game.TOOLTIP_DELAY_MS = 400;
+/** Card previews cover a lot of the table, so they wait a little longer. */
+Game.TOOLTIP_CARD_DELAY_MS = 600;
 Game.ZOOM_STEP = 0.1;
 Game.ZOOM_MIN = 0.5;
 Game.ZOOM_MAX = 1.8;

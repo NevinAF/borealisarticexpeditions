@@ -23,6 +23,10 @@ export class Game {
   /** Top row and page chrome. Multiplied by $scale_card. */
   private static readonly MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
   private static readonly TOOLTIP_MAX_WIDTH_PX = 640;
+  /** Usual Board Game Arena hover delay, so a quick pass does not open help. */
+  private static readonly TOOLTIP_DELAY_MS = 400;
+  /** Card previews cover a lot of the table, so they wait a little longer. */
+  private static readonly TOOLTIP_CARD_DELAY_MS = 600;
   private static readonly ZOOM_STEP = 0.1;
   private static readonly ZOOM_MIN = 0.5;
   private static readonly ZOOM_MAX = 1.8;
@@ -111,7 +115,7 @@ export class Game {
       playerColor: (pid) => this.playerColorCss(pid),
       scoringTitle: (id) => this.gamedatas.materials.scoring_cards?.[id]?.title ?? '',
       addTooltip: (id, text) => {
-        if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(id, text, '');
+        if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(id, text, '', Game.TOOLTIP_DELAY_MS);
       },
     });
     this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
@@ -533,9 +537,9 @@ export class Game {
             _('Hidden hand card'),
             [_('You cannot see cards in other players hands. Animations do not indicate cards positions.')],
           );
-          this.bga.gameui.addTooltipHtml(id, html);
+          this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
         } else {
-          this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands. Animations do not indicate cards positions.'), '');
+          this.bga.gameui.addTooltip(id, _('You cannot see cards in other players hands. Animations do not indicate cards positions.'), '', Game.TOOLTIP_DELAY_MS);
         }
       });
     }
@@ -564,9 +568,9 @@ export class Game {
           `${species || _('Animal card')} #${numericCardId}`,
           [effect, actionText],
         );
-        this.bga.gameui.addTooltipHtml(id, html);
+        this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
       } else {
-        this.bga.gameui.addTooltip(id, _('Your hand card'), actionText);
+        this.bga.gameui.addTooltip(id, _('Your hand card'), actionText, Game.TOOLTIP_DELAY_MS);
       }
     });
   }
@@ -1370,7 +1374,7 @@ export class Game {
       });
       bar.appendChild(btn);
       try { this.bga.gameui.removeTooltip(btn.id); } catch { /* none yet */ }
-      if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(btn.id, label, '');
+      if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(btn.id, label, '', Game.TOOLTIP_DELAY_MS);
     }
     this.root.appendChild(bar);
   }
@@ -1539,8 +1543,8 @@ export class Game {
       try { this.bga.gameui.removeTooltip(rightId); } catch (_) {}
       const campHelp = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 3);
       const campHelpR = holding ? _('No scientists') : summaryAt(sciByPlayer[pid], 4);
-      this.bga.gameui.addTooltip(leftId, campHelp, _('Select this camp to start/cancel regroup.'));
-      this.bga.gameui.addTooltip(rightId, campHelpR, _('Select this camp to start/cancel regroup.'));
+      this.bga.gameui.addTooltip(leftId, campHelp, _('Select this camp to start/cancel regroup.'), Game.TOOLTIP_DELAY_MS);
+      this.bga.gameui.addTooltip(rightId, campHelpR, _('Select this camp to start/cancel regroup.'), Game.TOOLTIP_DELAY_MS);
 
       const reassignParts = countParts(sciByPlayer[pid], [3, 4]);
       const reassignHelp = reassignParts.length > 0
@@ -1550,14 +1554,14 @@ export class Game {
         const holdId = `bae_regroup_hold_${pid}_${side}`;
         try { this.bga.gameui.removeTooltip(holdId); } catch (_) {}
         if (this.root.querySelector(`#${holdId}`)) {
-          this.bga.gameui.addTooltip(holdId, reassignHelp, '');
+          this.bga.gameui.addTooltip(holdId, reassignHelp, '', Game.TOOLTIP_DELAY_MS);
         }
       }
 
       for (let loc = 0; loc < 3; loc++) {
         const shelfId = `bae_sci_shelf_loc_${pid}_${loc}`;
         try { this.bga.gameui.removeTooltip(shelfId); } catch (_) {}
-        this.bga.gameui.addTooltip(shelfId, summaryAt(sciByPlayer[pid], loc), '');
+        this.bga.gameui.addTooltip(shelfId, summaryAt(sciByPlayer[pid], loc), '', Game.TOOLTIP_DELAY_MS);
       }
     }
   }
@@ -1581,10 +1585,10 @@ export class Game {
     (d.pool || []).forEach((slot) => {
       const id = `bae_pool_slot_${slot.slot}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltipHtml(id, poolGroupHtml);
+      this.bga.gameui.addTooltipHtml(id, poolGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
     });
     try { this.bga.gameui.removeTooltip('bae_pool_slot_deck'); } catch (_) {}
-    this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'));
+    this.bga.gameui.addTooltip('bae_pool_slot_deck', `${_('Deck')}: ${d.deck_count}<br>${_('Discard')}: ${d.discard_count}`, _('Click to draw from deck'), Game.TOOLTIP_DELAY_MS);
 
     // Objectives: hovering any one shows all of them in the top-row layout
     const objectiveCells = (d.objectives || []).map((obj) => {
@@ -1601,7 +1605,7 @@ export class Game {
     (d.objectives || []).forEach((_obj, idx) => {
       const id = `bae_obj_${idx}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml);
+      this.bga.gameui.addTooltipHtml(id, objectiveGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
     });
 
     // Scoring cards: hovering any one shows all of them in the top-row layout
@@ -1621,7 +1625,7 @@ export class Game {
     (d.scoring_cards || []).forEach((_scoringId, idx) => {
       const id = `bae_score_${idx}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltipHtml(id, scoringGroupHtml);
+      this.bga.gameui.addTooltipHtml(id, scoringGroupHtml, Game.TOOLTIP_CARD_DELAY_MS);
     });
 
     // Camps, holds, and scientist shelves
@@ -1647,7 +1651,7 @@ export class Game {
             `${species || _('Animal card')} #${card.id}`,
             [effect],
           );
-          this.bga.gameui.addTooltipHtml(id, html);
+          this.bga.gameui.addTooltipHtml(id, html, Game.TOOLTIP_CARD_DELAY_MS);
         });
       });
     }
@@ -1670,7 +1674,7 @@ export class Game {
         );
         const trackId = `bae_track_${pid}_${loc}`;
         try { this.bga.gameui.removeTooltip(trackId); } catch (_) {}
-        this.bga.gameui.addTooltipHtml(trackId, html);
+        this.bga.gameui.addTooltipHtml(trackId, html, Game.TOOLTIP_DELAY_MS);
         for (let i = 0; i < 8; i++) {
           try { this.bga.gameui.removeTooltip(`bae_track_${pid}_${loc}_${i}`); } catch (_) {}
         }
@@ -1681,18 +1685,18 @@ export class Game {
     for (const pidStr of Object.keys(this.gamedatas.players)) {
       const id = `bae_animal_loc_vp_${Number(pidStr)}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltipHtml(id, speciesSetHtml);
+      this.bga.gameui.addTooltipHtml(id, speciesSetHtml, Game.TOOLTIP_DELAY_MS);
     }
 
     for (const pidStr of Object.keys(this.gamedatas.players)) {
       const pid = Number(pidStr);
       const id = `bae_vp_tokens_${pid}`;
       try { this.bga.gameui.removeTooltip(id); } catch (_) {}
-      this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid));
+      this.bga.gameui.addTooltipHtml(id, this.vpTokensTooltipHtml(pid), Game.TOOLTIP_DELAY_MS);
       if (pid === Number(this.bga.players.getCurrentPlayerId())) {
         const aidId = `bae_player_aid_${pid}`;
         try { this.bga.gameui.removeTooltip(aidId); } catch (_) {}
-        this.bga.gameui.addTooltipHtml(aidId, this.playerAidTooltipHtml());
+        this.bga.gameui.addTooltipHtml(aidId, this.playerAidTooltipHtml(), Game.TOOLTIP_DELAY_MS);
       }
     }
   }
@@ -2551,7 +2555,7 @@ export class Game {
     const button = this.bga.statusBar.addActionButton(label, callback, params);
     if (!params.tooltip) return;
     button.removeAttribute('title');
-    this.bga.gameui.addTooltipHtml(params.id, params.tooltip);
+    this.bga.gameui.addTooltipHtml(params.id, params.tooltip, Game.TOOLTIP_DELAY_MS);
   }
 
   onUpdateActionButtons(stateName: string, args: Record<string, unknown> | null) {

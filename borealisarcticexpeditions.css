@@ -688,7 +688,7 @@ html[data-theme=dark] .bae_player_aid {
   align-items: center;
   justify-content: center;
   padding: calc(6px * var(--bae-scale) * var(--bae-scale-board, 0.7));
-  cursor: default;
+  cursor: help;
 }
 .bae_camp_zone::before {
   content: "";
@@ -744,7 +744,7 @@ html[data-theme=dark] .bae_player_aid {
   transform: translateY(-120%);
   pointer-events: auto;
   z-index: 6;
-  cursor: default;
+  cursor: help;
 }
 .bae_regroup_hold .bae_sci_shelf {
   position: relative;
@@ -862,7 +862,7 @@ html[data-theme=dark] .bae_player_aid {
 
 #bae_playarea button.bae_card {
   width: calc(528px * var(--bae-scale) * var(--bae-scale-card, 1));
-  cursor: default;
+  cursor: help;
 }
 
 #bae_playarea .bae_player_handcol button.bae_card {
@@ -872,7 +872,7 @@ html[data-theme=dark] .bae_player_aid {
 #bae_playarea button.bae_obj {
   display: inline-flex;
   flex: none;
-  cursor: default;
+  cursor: help;
   border: none;
   border-radius: 0;
   padding: 0;
@@ -1039,6 +1039,7 @@ html[data-theme=dark] .bae_player_aid {
 .bae_sci_shelf {
   border-radius: 6px;
   position: relative;
+  cursor: help;
 }
 
 .bae_sci_shelf_camp_selected .bae_meeple_img {
@@ -1156,6 +1157,7 @@ html[data-theme=dark] .bae_player_aid {
   background: transparent;
   overflow: hidden;
   pointer-events: auto;
+  cursor: help;
 }
 
 .bae_pile_card_img {
@@ -1213,6 +1215,7 @@ html[data-theme=dark] .bae_player_aid {
 .bae_track_position {
   position: absolute;
   pointer-events: auto;
+  cursor: help;
   z-index: 1;
   top: calc(20.5693664796% + (sibling-index() - 1) * 0.0992381716 * 100%);
   height: 8.8461538462%;
@@ -1257,11 +1260,14 @@ html[data-theme=dark] .bae_player_aid {
   border: none;
   border-radius: 0;
   background: transparent;
-  cursor: default;
+  cursor: help;
   overflow: hidden;
 }
 
 .bae_can_act,
+.bae_can_act .bae_pile_slot,
+.bae_can_act .bae_sci_shelf,
+.bae_can_act .bae_track_position,
 .bae_location_zone.bae_can_act::before {
   cursor: pointer;
 }
@@ -1617,6 +1623,7 @@ html[data-theme=dark] .bae_player_aid {
   background: transparent;
   overflow: hidden;
   position: relative;
+  cursor: help;
 }
 
 .bae_toprow .bae_card,
@@ -2218,6 +2225,10 @@ body.bae_tooltip_placing .bga-tooltip {
   width: 72px;
 }
 
+.bae_scorepad_table th[scope=row] {
+  cursor: help;
+}
+
 .bae_scorepad_name {
   font-size: 13px;
   line-height: 1.15;
@@ -2351,7 +2362,7 @@ html[data-theme=dark] #bae_playarea button.bae_scorepad_reopen {
 
 #bae_playarea button.bae_zoom_btn:disabled {
   opacity: 0.38;
-  cursor: default;
+  cursor: help;
 }
 
 #bae_playarea button.bae_zoom_btn:focus-visible {
