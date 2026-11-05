@@ -97,11 +97,11 @@ class ReplenishAnimalCard extends GameState
         $g = $this->game;
         $pid = $activePlayerId;
         if ($this->bga->playerScore->get($pid) < 1) {
-            throw new UserException(clienttranslate('You need at least 1 VP to mulligan the pool'));
+            throw new UserException(clienttranslate('You need at least 1 VP to refresh the pool'));
         }
         $mull = $g->getMulliganUsed();
         if (! empty($mull[$pid])) {
-            throw new UserException(clienttranslate('You can only mulligan the pool once per round'));
+            throw new UserException(clienttranslate('You can refresh the pool only once per round'));
         }
         $this->bga->playerScore->inc($pid, -1, null);
         $poolCards = $g->getPool();

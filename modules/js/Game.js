@@ -7034,7 +7034,7 @@ class Game {
             }, {
                 color: 'primary',
                 disabled: false,
-                tooltip: _("Select any cards to replace, or keep your hand as is and confirm to begin the game."),
+                tooltip: _("If you are not satisfied with your starting hand, discard some or all of your cards and draw an equal number from the deck. Confirm with none selected to keep your hand."),
             });
             const clearDisabled = this.selectedRegroupIds.size === 0;
             this.bga.statusBar.addActionButton(_('Clear selection'), () => {
@@ -7132,15 +7132,15 @@ class Game {
                 tooltip: this.actionAidTooltip('observe', [3], _("Take the top card of the deck.")),
             });
             const can = replenishArgs?.canMulligan ?? this.cachedCanMulligan;
-            this.addActionButton(_("Mulligan pool (-1 VP)"), () => {
+            this.addActionButton(_("Refresh pool (-1 VP)"), () => {
                 void this.sendAction("actMulliganPool", {});
             }, {
                 id: 'bae_act_mulligan',
                 color: 'secondary',
                 disabled: !can,
                 tooltip: can
-                    ? this.actionAidTooltip('observe', [2], _("Pay 1 VP to refresh the pool before choosing your card."))
-                    : _("You can only mulligan the pool once per round, and only if you have at least 1 VP."),
+                    ? this.actionAidTooltip('observe', [2], _("Pay 1 VP to discard all 4 available cards in the pool and replace them with 4 new cards from the deck before choosing your card. You can do this only once per round."))
+                    : _("Refreshing the pool costs 1 VP and can be done only once per round."),
             });
             this.addUndoActionButton(replenishArgs?.canUndo ?? this.cachedUndoCanUndo, replenishArgs?.undoType ?? this.cachedUndoType);
         }

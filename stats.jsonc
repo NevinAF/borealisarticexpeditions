@@ -31,12 +31,12 @@
     },
     "pool_mulligans": {
       "id": 15,
-      "name": "Pool mulligans",
+      "name": "Pool refreshes",
       "type": "int"
     },
     "opening_mulligan_cards": {
       "id": 16,
-      "name": "Opening mulligan cards",
+      "name": "Starting cards replaced",
       "type": "int"
     },
     "cards_discarded_regroup": {
@@ -103,12 +103,12 @@
     },
     "pool_mulligans": {
       "id": 15,
-      "name": "Pool mulligans",
+      "name": "Pool refreshes",
       "type": "int"
     },
     "opening_mulligan_cards": {
       "id": 16,
-      "name": "Opening mulligan cards",
+      "name": "Starting cards replaced",
       "type": "int"
     },
     "cards_discarded_regroup": {

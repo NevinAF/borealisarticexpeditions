@@ -21,8 +21,8 @@ class OpeningMulligan extends GameState
             id: 5,
             type: StateType::MULTIPLE_ACTIVE_PLAYER,
             name: 'openingMulligan',
-            description: clienttranslate('Waiting for ${actplayer} to mulligan'),
-            descriptionMyTurn: clienttranslate('${you}: mulligan your starting hand'),
+            description: clienttranslate('Waiting for other players to replace starting cards'),
+            descriptionMyTurn: clienttranslate('${you}: replace cards from your starting hand'),
         );
     }
 
@@ -52,14 +52,14 @@ class OpeningMulligan extends GameState
         }
         $ids = is_array($decoded) ? array_map('intval', $decoded) : [];
         if (count($ids) !== count(array_unique($ids))) {
-            throw new UserException(clienttranslate('Duplicate cards in mulligan selection'));
+            throw new UserException(clienttranslate('The same card was selected more than once'));
         }
 
         $hands = $g->getHands();
         $playerHand = $hands[$currentPlayerId] ?? [];
         foreach ($ids as $cid) {
             if (array_search($cid, $playerHand, true) === false) {
-                throw new UserException(clienttranslate('Invalid card for mulligan'));
+                throw new UserException(clienttranslate('That card is not in your starting hand'));
             }
         }
 
@@ -76,20 +76,23 @@ class OpeningMulligan extends GameState
             $g->drawFromAnimalDeckFor($currentPlayerId);
         }
 
+        $discardCount = count($ids);
         $g->notifyAllWithBoardState(
             'mulliganHand',
-            clienttranslate('${player_name} mulligans ${discard_count} card(s)'),
+            $discardCount === 0
+                ? clienttranslate('${player_name} keeps their starting hand')
+                : clienttranslate('${player_name} discards ${discard_count} starting card(s) and draws that many'),
             [
                 'player_id' => $currentPlayerId,
                 'player_name' => $g->getPlayerNameById($currentPlayerId),
-                'discard_count' => count($ids),
+                'discard_count' => $discardCount,
             ],
             [
                 $currentPlayerId => ['discarded' => $ids],
             ]
         );
 
-        $g->recordOpeningMulliganStats($currentPlayerId, count($ids));
+        $g->recordOpeningMulliganStats($currentPlayerId, $discardCount);
 
         $finished = $this->game->gamestate->setPlayerNonMultiactive($currentPlayerId, Gameplay::class);
         if ($finished) {
