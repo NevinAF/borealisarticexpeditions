@@ -1,7 +1,7 @@
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 
 import { AnimalDefLite, canObserveAnywhere, canObserveAtLocation } from './optional/Legality';
-import { OptionalUi, MAX_LOCATION_CARDS } from './optional/OptionalUi';
+import { OptionalUi, MAX_LOCATION_CARDS, PREF_ZOOM } from './optional/OptionalUi';
 import { endScoreSheetFromState, objectiveProgress, scoreScoringCard, SPECIES_SET_VP } from './optional/Progress';
 import { parseEndScoreSheet, ScorePad, scorePadIcon } from './optional/ScorePad';
 import { optimalTokens, playerVp, scoringStepAmount, vpTokensInnerHtml } from './optional/VpTokens';
@@ -21,6 +21,14 @@ export class Game {
   /** Top row and page chrome. Multiplied by $scale_card. */
   private static readonly MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
   private static readonly TOOLTIP_MAX_WIDTH_PX = 640;
+  private static readonly ZOOM_STEP = 0.1;
+  private static readonly ZOOM_MIN = 0.5;
+  private static readonly ZOOM_MAX = 1.8;
+  private static readonly ZOOM_STORAGE_KEY = 'borealisarcticexpeditions-zoom';
+  /** 1 is the fitted table. Remembered even while the controls are hidden. */
+  private zoomFactor = 1;
+  /** Preference 104. The fitted scale ignores zoomFactor until this is on. */
+  private zoomControlsVisible = false;
   private static readonly ANIMAL_SPRITE_COLUMNS = 11;
   private static readonly ANIMAL_SPRITE_ROWS = 10;
   private static readonly ANIMAL_SPRITE_LAST_INDEX = 100;
@@ -105,6 +113,8 @@ export class Game {
       },
     });
     this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
+    this.zoomControlsVisible = (Number(this.bga.userPreferences?.get(PREF_ZOOM) ?? 0) === 1);
+    this.zoomFactor = this.readStoredZoom() ?? 1;
     // Fit the table to the 100% viewport. Later page zoom enlarges that layout.
     window.addEventListener('resize', () => this.updateBoardScale());
     this.watchBrowserZoom();
@@ -381,8 +391,8 @@ export class Game {
       + Game.MIN_PLAYAREA_HAND_REFERENCE_WIDTH_PX * card;
     const scaleByBoardWidth = availableWidth / referenceWidth;
     const scaleByBoardHeight = availableHeight / referenceHeight;
-    // const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
-    return Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
+    const fit = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
+    return this.zoomControlsVisible ? fit * this.zoomFactor : fit;
   }
 
   /** $scale_card / $scale_board from Game.scss, so the fitted zoom follows those consts. */
@@ -1208,6 +1218,119 @@ export class Game {
     this.optionalUi?.afterRender();
     this.syncSelectableAuras();
     this.scorePad?.reattach();
+    this.renderZoomControls();
+  }
+
+  syncZoomPreference(enabled?: boolean): void {
+    const on = enabled ?? (Number(this.bga.userPreferences?.get(PREF_ZOOM) ?? 0) === 1);
+    if (on) {
+      const stored = this.readStoredZoom();
+      if (stored != null) this.zoomFactor = stored;
+    }
+    this.zoomControlsVisible = on;
+    this.updateBoardScale();
+    this.renderZoomControls();
+  }
+
+  private readStoredZoom(): number | null {
+    try {
+      const item = window.localStorage.getItem(Game.ZOOM_STORAGE_KEY);
+      if (item == null) return null;
+      const raw = Number(item);
+      if (!Number.isFinite(raw)) return null;
+      return this.clampZoom(raw);
+    } catch {
+      return null;
+    }
+  }
+
+  private clampZoom(value: number): number {
+    const stepped = Math.round(value / Game.ZOOM_STEP) * Game.ZOOM_STEP;
+    return Math.min(Game.ZOOM_MAX, Math.max(Game.ZOOM_MIN, Number(stepped.toFixed(3))));
+  }
+
+  private applyZoom(kind: 'in' | 'out' | 'reset'): void {
+    if (!this.zoomControlsVisible) return;
+    const next = kind === 'reset'
+      ? 1
+      : this.clampZoom(this.zoomFactor + (kind === 'in' ? Game.ZOOM_STEP : -Game.ZOOM_STEP));
+    if (Math.abs(next - this.zoomFactor) <= 0.0001) return;
+    this.zoomFactor = next;
+    this.writeStoredZoom(next);
+    this.updateBoardScale();
+    this.renderZoomControls();
+  }
+
+  private writeStoredZoom(value: number): void {
+    try { window.localStorage.setItem(Game.ZOOM_STORAGE_KEY, String(value)); } catch { /* storage blocked */ }
+  }
+
+  private renderZoomControls(): void {
+    if (!this.root) return;
+    this.root.querySelector('.bae_zoom_controls')?.remove();
+    if (!this.zoomControlsVisible) {
+      this.root.style.removeProperty('--bae-zoom-clear');
+      return;
+    }
+
+    const bar = document.createElement('div');
+    bar.className = 'bae_zoom_controls';
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', _('Zoom controls'));
+    const buttons: Array<['out' | 'in' | 'reset', string, string, boolean]> = [
+      ['out', _('Zoom out'), this.zoomMark('out'), this.zoomFactor > Game.ZOOM_MIN + 0.0001],
+      ['in', _('Zoom in'), this.zoomMark('in'), this.zoomFactor < Game.ZOOM_MAX - 0.0001],
+      ['reset', _('Reset zoom'), this.zoomMark('reset'), Math.abs(this.zoomFactor - 1) > 0.0001],
+    ];
+    for (const [kind, label, icon, enabled] of buttons) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'bae_zoom_btn';
+      btn.id = `bae_zoom_${kind}`;
+      btn.dataset.zoom = kind;
+      btn.disabled = !enabled;
+      btn.setAttribute('aria-label', label);
+      btn.innerHTML = icon;
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this.applyZoom(kind);
+      });
+      bar.appendChild(btn);
+      try { this.bga.gameui.removeTooltip(btn.id); } catch { /* none yet */ }
+      if (typeof this.bga.gameui.addTooltip === 'function') this.bga.gameui.addTooltip(btn.id, label, '');
+    }
+    this.root.appendChild(bar);
+  }
+
+  private zoomMark(kind: 'in' | 'out' | 'reset'): string {
+    const svg = (body: string) => `<svg class="bae_zoom_icon" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+    if (kind === 'out') {
+      return svg('<path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>');
+    }
+    if (kind === 'in') {
+      return svg('<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>');
+    }
+    return svg('<path fill="currentColor" d="M12 3.6 3.2 11h2.3v8.6h4.4v-4.8h4.2v4.8h4.4V11h2.3L12 3.6z"/>');
+  }
+
+  /** Push the top row down only by the amount the controls actually cover the objectives. */
+  refreshZoomClearance(): void {
+    if (!this.root) return;
+    const bar = this.root.querySelector('.bae_zoom_controls');
+    const objectives = this.root.querySelector('.bae_top_objectives');
+    if (!bar || !objectives) {
+      this.root.style.removeProperty('--bae-zoom-clear');
+      return;
+    }
+    const currentClear = parseFloat(this.root.style.getPropertyValue('--bae-zoom-clear')) || 0;
+    const barRect = bar.getBoundingClientRect();
+    const objRect = objectives.getBoundingClientRect();
+    const coversRow = barRect.right > objRect.left + 1 && barRect.left < objRect.right - 1;
+    const naturalTop = objRect.top - currentClear;
+    const needed = coversRow ? Math.max(0, Math.ceil(barRect.bottom - naturalTop)) : 0;
+    if (needed > 0) this.root.style.setProperty('--bae-zoom-clear', `${needed}px`);
+    else this.root.style.removeProperty('--bae-zoom-clear');
   }
 
   private getTooltipScale(): number {

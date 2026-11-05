@@ -40,6 +40,7 @@ export const PREF_ANIM_SPEED = 100;
 export const PREF_PREVIEWS = 101;
 export const PREF_CONFIRM = 102;
 export const PREF_SOUND = 103;
+export const PREF_ZOOM = 104;
 export const MAX_LOCATION_CARDS = 7;
 
 export interface OptionalUiHost {
@@ -72,6 +73,8 @@ export interface OptionalUiHost {
   sendAction(action: string, args?: Record<string, unknown>): Promise<unknown>;
   isActionBusy(): boolean;
   syncSelectableAuras(): void;
+  syncZoomPreference(enabled?: boolean): void;
+  refreshZoomClearance(): void;
 }
 
 /**
@@ -791,6 +794,7 @@ export class OptionalUi {
       prev?.(prefId, value);
       this.applyPreferenceCss();
       this.updateActionPreviews();
+      if (prefId === PREF_ZOOM) this.host.syncZoomPreference(Number(value) === 1);
     };
   }
 
@@ -804,6 +808,7 @@ export class OptionalUi {
       if (this.tooltipPinnedId && !document.body.classList.contains('bae_tooltip_placing')) {
         this.fitPinnedTooltip();
       }
+      this.host.refreshZoomClearance();
     });
   }
 
@@ -1309,10 +1314,10 @@ export class OptionalUi {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
 
       const interactive = target?.closest?.(
-        '.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bgabutton, .action-button',
+        '.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button',
       ) as HTMLElement | null;
       if (interactive) {
-        if (interactive.matches('button, a, .bgabutton, .action-button, .bae_handcard, .bae_pool_slot, .bae_obj')) return;
+        if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj')) return;
         ev.preventDefault();
         interactive.click();
         return;
@@ -2479,7 +2484,7 @@ export class OptionalUi {
 
   private isTapActionTarget(el: Element | null): boolean {
     if (!el || typeof el.closest !== 'function') return false;
-    if (el.closest('.bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info')) return true;
+    if (el.closest('.bae_zoom_btn, .bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info')) return true;
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const active = this.host.bga.players.isCurrentPlayerActive() && !this.host.isActionBusy();
     if (!active) return false;
@@ -2749,7 +2754,7 @@ export class OptionalUi {
 
   private touchHitTarget(el: Element | null): HTMLElement | null {
     if (!el || typeof el.closest !== 'function') return null;
-    if (el.closest('.bgabutton, .action-button')) return null;
+    if (el.closest('.bae_zoom_btn, .bgabutton, .action-button')) return null;
     const myId = Number(this.host.bga.players.getCurrentPlayerId());
     const loc = el.closest('.bae_location_zone') as HTMLElement | null;
     const selectingLoc = !!loc

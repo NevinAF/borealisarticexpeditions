@@ -37,5 +37,22 @@
       "1": { "name": "On", "cssPref": "bae_sound_on" }
     },
     "default": 1
+  },
+  "104": {
+    "name": "Show zoom controls",
+    "needReload": false,
+    "values": {
+      "0": {
+        "name": "Disabled",
+        "description": "The table stays fitted to the screen. Browser zoom still enlarges the page.",
+        "cssPref": "bae_zoom_off"
+      },
+      "1": {
+        "name": "Enabled",
+        "description": "Shows zoom out, zoom in, and reset on the table.",
+        "cssPref": "bae_zoom_on"
+      }
+    },
+    "default": 0
   }
 }

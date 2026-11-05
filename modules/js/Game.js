@@ -1121,6 +1121,7 @@ const PREF_ANIM_SPEED = 100;
 const PREF_PREVIEWS = 101;
 const PREF_CONFIRM = 102;
 const PREF_SOUND = 103;
+const PREF_ZOOM = 104;
 const MAX_LOCATION_CARDS = 7;
 /**
  * OPTIONAL: Client-only UX (subtle previews, resolution motion, invalid-action hints, DnD, sound).
@@ -1808,6 +1809,8 @@ class OptionalUi {
             prev?.(prefId, value);
             this.applyPreferenceCss();
             this.updateActionPreviews();
+            if (prefId === PREF_ZOOM)
+                this.host.syncZoomPreference(Number(value) === 1);
         };
     }
     scheduleLayoutChrome() {
@@ -1823,6 +1826,7 @@ class OptionalUi {
             if (this.tooltipPinnedId && !document.body.classList.contains('bae_tooltip_placing')) {
                 this.fitPinnedTooltip();
             }
+            this.host.refreshZoomClearance();
         });
     }
     syncTopRowWrap() {
@@ -2305,9 +2309,9 @@ class OptionalUi {
             }
             if (ev.key !== 'Enter' && ev.key !== ' ')
                 return;
-            const interactive = target?.closest?.('.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bgabutton, .action-button');
+            const interactive = target?.closest?.('.bae_location_zone, .bae_camp_zone, .bae_handcard, .bae_pool_slot, .bae_obj, .bae_zoom_btn, .bgabutton, .action-button');
             if (interactive) {
-                if (interactive.matches('button, a, .bgabutton, .action-button, .bae_handcard, .bae_pool_slot, .bae_obj'))
+                if (interactive.matches('button, a, .bgabutton, .action-button, .bae_zoom_btn, .bae_handcard, .bae_pool_slot, .bae_obj'))
                     return;
                 ev.preventDefault();
                 interactive.click();
@@ -3476,7 +3480,7 @@ class OptionalUi {
     isTapActionTarget(el) {
         if (!el || typeof el.closest !== 'function')
             return false;
-        if (el.closest('.bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info'))
+        if (el.closest('.bae_zoom_btn, .bgabutton, .action-button, #pagemaintitle_wrap, .pref_pop, .debug_info'))
             return true;
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const active = this.host.bga.players.isCurrentPlayerActive() && !this.host.isActionBusy();
@@ -3759,7 +3763,7 @@ class OptionalUi {
     touchHitTarget(el) {
         if (!el || typeof el.closest !== 'function')
             return null;
-        if (el.closest('.bgabutton, .action-button'))
+        if (el.closest('.bae_zoom_btn, .bgabutton, .action-button'))
             return null;
         const myId = Number(this.host.bga.players.getCurrentPlayerId());
         const loc = el.closest('.bae_location_zone');
@@ -4626,6 +4630,10 @@ class ScorePad {
 const SCI_COLOR = ["#ddb162", "#eca6b8", "#7dc7bc"];
 class Game {
     constructor(bga) {
+        /** 1 is the fitted table. Remembered even while the controls are hidden. */
+        this.zoomFactor = 1;
+        /** Preference 104. The fitted scale ignores zoomFactor until this is on. */
+        this.zoomControlsVisible = false;
         this.selectedCardId = null;
         this.selectedLocation = null;
         this.selectedPoolSlot = null;
@@ -4681,6 +4689,8 @@ class Game {
             },
         });
         this.openingIntroPage = Game.OPENING_INTRO_ENABLED && !this.isReplayOrSpectator() ? "objectives" : null;
+        this.zoomControlsVisible = (Number(this.bga.userPreferences?.get(PREF_ZOOM) ?? 0) === 1);
+        this.zoomFactor = this.readStoredZoom() ?? 1;
         // Fit the table to the 100% viewport. Later page zoom enlarges that layout.
         window.addEventListener('resize', () => this.updateBoardScale());
         this.watchBrowserZoom();
@@ -4940,8 +4950,8 @@ class Game {
             + Game.MIN_PLAYAREA_HAND_REFERENCE_WIDTH_PX * card;
         const scaleByBoardWidth = availableWidth / referenceWidth;
         const scaleByBoardHeight = availableHeight / referenceHeight;
-        // const scaleByTopRowWidth = availableWidth / Game.TOP_ROW_REFERENCE_WIDTH_PX;
-        return Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
+        const fit = Math.max(0.01, Math.min(scaleByBoardWidth, scaleByBoardHeight));
+        return this.zoomControlsVisible ? fit * this.zoomFactor : fit;
     }
     /** $scale_card / $scale_board from Game.scss, so the fitted zoom follows those consts. */
     layoutFactor(name, fallback) {
@@ -5746,6 +5756,127 @@ class Game {
         this.optionalUi?.afterRender();
         this.syncSelectableAuras();
         this.scorePad?.reattach();
+        this.renderZoomControls();
+    }
+    syncZoomPreference(enabled) {
+        const on = enabled ?? (Number(this.bga.userPreferences?.get(PREF_ZOOM) ?? 0) === 1);
+        if (on) {
+            const stored = this.readStoredZoom();
+            if (stored != null)
+                this.zoomFactor = stored;
+        }
+        this.zoomControlsVisible = on;
+        this.updateBoardScale();
+        this.renderZoomControls();
+    }
+    readStoredZoom() {
+        try {
+            const item = window.localStorage.getItem(Game.ZOOM_STORAGE_KEY);
+            if (item == null)
+                return null;
+            const raw = Number(item);
+            if (!Number.isFinite(raw))
+                return null;
+            return this.clampZoom(raw);
+        }
+        catch {
+            return null;
+        }
+    }
+    clampZoom(value) {
+        const stepped = Math.round(value / Game.ZOOM_STEP) * Game.ZOOM_STEP;
+        return Math.min(Game.ZOOM_MAX, Math.max(Game.ZOOM_MIN, Number(stepped.toFixed(3))));
+    }
+    applyZoom(kind) {
+        if (!this.zoomControlsVisible)
+            return;
+        const next = kind === 'reset'
+            ? 1
+            : this.clampZoom(this.zoomFactor + (kind === 'in' ? Game.ZOOM_STEP : -Game.ZOOM_STEP));
+        if (Math.abs(next - this.zoomFactor) <= 0.0001)
+            return;
+        this.zoomFactor = next;
+        this.writeStoredZoom(next);
+        this.updateBoardScale();
+        this.renderZoomControls();
+    }
+    writeStoredZoom(value) {
+        try {
+            window.localStorage.setItem(Game.ZOOM_STORAGE_KEY, String(value));
+        }
+        catch { /* storage blocked */ }
+    }
+    renderZoomControls() {
+        if (!this.root)
+            return;
+        this.root.querySelector('.bae_zoom_controls')?.remove();
+        if (!this.zoomControlsVisible) {
+            this.root.style.removeProperty('--bae-zoom-clear');
+            return;
+        }
+        const bar = document.createElement('div');
+        bar.className = 'bae_zoom_controls';
+        bar.setAttribute('role', 'group');
+        bar.setAttribute('aria-label', _('Zoom controls'));
+        const buttons = [
+            ['out', _('Zoom out'), this.zoomMark('out'), this.zoomFactor > Game.ZOOM_MIN + 0.0001],
+            ['in', _('Zoom in'), this.zoomMark('in'), this.zoomFactor < Game.ZOOM_MAX - 0.0001],
+            ['reset', _('Reset zoom'), this.zoomMark('reset'), Math.abs(this.zoomFactor - 1) > 0.0001],
+        ];
+        for (const [kind, label, icon, enabled] of buttons) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'bae_zoom_btn';
+            btn.id = `bae_zoom_${kind}`;
+            btn.dataset.zoom = kind;
+            btn.disabled = !enabled;
+            btn.setAttribute('aria-label', label);
+            btn.innerHTML = icon;
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.applyZoom(kind);
+            });
+            bar.appendChild(btn);
+            try {
+                this.bga.gameui.removeTooltip(btn.id);
+            }
+            catch { /* none yet */ }
+            if (typeof this.bga.gameui.addTooltip === 'function')
+                this.bga.gameui.addTooltip(btn.id, label, '');
+        }
+        this.root.appendChild(bar);
+    }
+    zoomMark(kind) {
+        const svg = (body) => `<svg class="bae_zoom_icon" viewBox="0 0 24 24" aria-hidden="true">${body}</svg>`;
+        if (kind === 'out') {
+            return svg('<path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>');
+        }
+        if (kind === 'in') {
+            return svg('<path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>');
+        }
+        return svg('<path fill="currentColor" d="M12 3.6 3.2 11h2.3v8.6h4.4v-4.8h4.2v4.8h4.4V11h2.3L12 3.6z"/>');
+    }
+    /** Push the top row down only by the amount the controls actually cover the objectives. */
+    refreshZoomClearance() {
+        if (!this.root)
+            return;
+        const bar = this.root.querySelector('.bae_zoom_controls');
+        const objectives = this.root.querySelector('.bae_top_objectives');
+        if (!bar || !objectives) {
+            this.root.style.removeProperty('--bae-zoom-clear');
+            return;
+        }
+        const currentClear = parseFloat(this.root.style.getPropertyValue('--bae-zoom-clear')) || 0;
+        const barRect = bar.getBoundingClientRect();
+        const objRect = objectives.getBoundingClientRect();
+        const coversRow = barRect.right > objRect.left + 1 && barRect.left < objRect.right - 1;
+        const naturalTop = objRect.top - currentClear;
+        const needed = coversRow ? Math.max(0, Math.ceil(barRect.bottom - naturalTop)) : 0;
+        if (needed > 0)
+            this.root.style.setProperty('--bae-zoom-clear', `${needed}px`);
+        else
+            this.root.style.removeProperty('--bae-zoom-clear');
     }
     getTooltipScale() {
         const scaleRaw = this.root ? getComputedStyle(this.root).getPropertyValue('--bae-scale') : '';
@@ -7269,6 +7400,10 @@ Game.MIN_PLAYAREA_REFERENCE_HEIGHT_PX = 2600 + 750 + 120 * 8;
 /** Top row and page chrome. Multiplied by $scale_card. */
 Game.MIN_PLAYAREA_TOP_REFERENCE_HEIGHT_PX = 1200 + 400;
 Game.TOOLTIP_MAX_WIDTH_PX = 640;
+Game.ZOOM_STEP = 0.1;
+Game.ZOOM_MIN = 0.5;
+Game.ZOOM_MAX = 1.8;
+Game.ZOOM_STORAGE_KEY = 'borealisarcticexpeditions-zoom';
 Game.ANIMAL_SPRITE_COLUMNS = 11;
 Game.ANIMAL_SPRITE_ROWS = 10;
 Game.ANIMAL_SPRITE_LAST_INDEX = 100;

@@ -159,7 +159,7 @@ html[data-theme="dark"] {
 }
 
 .bae_toprow {
-  margin-top: scaled_card($space_7);
+  margin-top: calc(#{scaled_card($space_7)} + var(--bae-zoom-clear, 0px));
   margin-bottom: scaled_card($space_7);
   margin-left: auto;
   margin-right: auto;
@@ -1980,6 +1980,11 @@ html[data-theme="dark"] .bae_opening_intro {
   pointer-events: none;
 }
 
+#bae_playarea.bae_action_busy .bae_zoom_controls,
+#bae_playarea.bae_action_busy .bae_zoom_controls * {
+  pointer-events: auto;
+}
+
 .bae_motion_clone {
   pointer-events: none;
   overflow: hidden;
@@ -2374,6 +2379,73 @@ html[data-theme="dark"] #bae_playarea button.bae_scorepad_reopen {
   color: #e6edf5;
   border-color: #7aa2c4;
   box-shadow: none;
+}
+
+.bae_zoom_controls {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: stretch;
+  pointer-events: auto;
+  padding: 4px;
+  border: 1.5px solid #7d2813;
+  border-radius: 10px;
+  background: transparent;
+  color: #7d2813;
+}
+
+.bae_zoom_controls::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px dashed #7d2813;
+  border-radius: 7px;
+  pointer-events: none;
+}
+
+#bae_playarea button.bae_zoom_btn {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #7d2813;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+#bae_playarea button.bae_zoom_btn + button.bae_zoom_btn {
+  border-left: 1px dashed #7d2813;
+  border-radius: 0;
+}
+
+#bae_playarea button.bae_zoom_btn:hover:not(:disabled) {
+  background: rgba(125, 40, 19, 0.1);
+}
+
+#bae_playarea button.bae_zoom_btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+#bae_playarea button.bae_zoom_btn:focus-visible {
+  outline: 2px solid #7d2813;
+  outline-offset: -3px;
+}
+
+.bae_zoom_icon {
+  width: 18px;
+  height: 18px;
+  display: block;
 }
 
 #bae_playarea button.bae_scorepad_close:focus-visible,
